@@ -1,5 +1,6 @@
 package com.tradinglabs.vidingest.search.service.embedding;
 
+import com.tradinglabs.vidingest.commons.ConflictException;
 import com.tradinglabs.vidingest.core.fusion.domain.MultimodalSegment;
 import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
 import com.tradinglabs.vidingest.core.transcription.domain.Transcription;
@@ -74,7 +75,7 @@ public class ContextChunkGenerationService {
             return 0;
         }
         if (build.chunks.size() > MAX_CHUNKS) {
-            throw new IllegalStateException("Refusing to generate " + build.chunks.size()
+            throw new ConflictException("Refusing to generate " + build.chunks.size()
                     + " chunks (max=" + MAX_CHUNKS + ") for video " + videoId);
         }
 

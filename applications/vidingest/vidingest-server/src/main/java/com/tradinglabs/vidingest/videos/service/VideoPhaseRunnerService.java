@@ -23,7 +23,12 @@ import java.util.stream.Collectors;
  * in {@link PipelinePhaseRegistry} and executed through the same {@link PipelinePhase}
  * implementations the pipeline itself runs, so a rerun and an in-pipeline run cannot drift
  * apart. The phase services are idempotent (each wipes prior rows for the video before
- * re-populating), so this service adds only timing, status handling and error normalisation.
+ * re-populating), so this service adds only timing and status handling.
+ *
+ * <p>Failures are not swallowed into the response body: they propagate and are rendered by
+ * {@code VidingestApiExceptionHandler} as a {@code ProblemDetail}, so a caller sees 502 for an
+ * upstream tool that did not deliver and 500 for a genuine bug, the same as every other
+ * endpoint.
  *
  * <p>Phases supported here are those whose inputs are derivable from already-persisted state:
  * <ul>
@@ -67,7 +72,7 @@ public class VideoPhaseRunnerService {
     private final VideoRepository videoRepository;
     private final PipelinePhaseRegistry pipelinePhaseRegistry;
 
-    public RunVideoPhaseResult runPhase(UUID videoId, String phaseRaw) {
+    public RunVideoPhaseResult runPhase(UUID videoId, String phaseRaw) throws Exception {
         PipelineRunPhase phase = parsePhase(phaseRaw);
         PipelinePhase impl = pipelinePhaseRegistry.byPhase(phase)
                 .orElseThrow(() -> new IllegalArgumentException("No implementation registered for phase: " + phase));
@@ -79,25 +84,23 @@ public class VideoPhaseRunnerService {
         long startNs = System.nanoTime();
         try {
             impl.execute(ctx);
-            // Phases flip the video into a working status (TRANSCRIBING / PROCESSING) and leave
-            // the finalisation to PipelineService, which a single-phase rerun does not go
-            // through. Put the video back where it was so a rerun does not park it mid-flight.
-            restoreStatus(ctx.getVideo(), statusBefore);
-
-            long ms = elapsedMs(startNs);
-            log.info("Per-phase rerun OK: videoId={} phase={} elapsedMs={} rows={}",
-                    videoId, phase, ms, ctx.getRowsAffected());
-            return new RunVideoPhaseResult(
-                    videoId.toString(), phase.name(), "OK", null, ms, ctx.getRowsAffected()
-            );
         } catch (Exception e) {
-            long ms = elapsedMs(startNs);
+            // Logged here because the exception handler only sees the phase name via the URL,
+            // and the elapsed time is worth having when a sidecar hangs before failing.
             log.warn("Per-phase rerun FAILED: videoId={} phase={} elapsedMs={} error={}",
-                    videoId, phase, ms, e.getMessage());
-            return new RunVideoPhaseResult(
-                    videoId.toString(), phase.name(), "ERROR", e.getMessage(), ms, null
-            );
+                    videoId, phase, elapsedMs(startNs), e.getMessage());
+            throw e;
         }
+
+        // Phases flip the video into a working status (TRANSCRIBING / PROCESSING) and leave the
+        // finalisation to PipelineService, which a single-phase rerun does not go through. Put
+        // the video back where it was so a rerun does not park it mid-flight.
+        restoreStatus(ctx.getVideo(), statusBefore);
+
+        long ms = elapsedMs(startNs);
+        log.info("Per-phase rerun OK: videoId={} phase={} elapsedMs={} rows={}",
+                videoId, phase, ms, ctx.getRowsAffected());
+        return new RunVideoPhaseResult(videoId.toString(), phase.name(), ms, ctx.getRowsAffected());
     }
 
     /**

@@ -58,4 +58,5 @@ flowchart LR
     CS --> OL
     CS --> CC
 
-    ROUTER -.->|RunVideoPhaseResult: status, elapsedMs, rowsAffected| CALLER
+    ROUTER -.->|200 RunVideoPhaseResult: elapsedMs, rowsAffected| CALLER
+    ROUTER -.->|failure: ProblemDetail 502 / 500| CALLER

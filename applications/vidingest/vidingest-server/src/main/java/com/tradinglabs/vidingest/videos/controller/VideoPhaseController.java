@@ -33,9 +33,11 @@ public class VideoPhaseController {
             summary = "Re-run one pipeline phase for an existing video",
             description = "Synchronous. Allowed phase values (case-insensitive, '-' or '_' separated): "
                     + "TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT. Each phase "
-                    + "wipes its prior rows for the video before re-populating, so the call is idempotent."
+                    + "wipes its prior rows for the video before re-populating, so the call is idempotent. "
+                    + "A phase that fails returns an RFC 7807 ProblemDetail (502 when an upstream tool "
+                    + "did not deliver), not a 200 with an error body."
     )
-    public RunVideoPhaseResult run(@PathVariable UUID videoId, @PathVariable String phase) {
+    public RunVideoPhaseResult run(@PathVariable UUID videoId, @PathVariable String phase) throws Exception {
         log.info("REST run video phase: videoId={} phase={}", videoId, phase);
         return runner.runPhase(videoId, phase);
     }

@@ -1,5 +1,7 @@
 package com.tradinglabs.vidingest.core.knowledge.service;
 
+import com.tradinglabs.vidingest.commons.PhaseFailureException;
+
 /**
  * Thrown when the knowledge-extraction phase cannot complete — LLM unreachable, response
  * malformed beyond recovery, or persistence error. Surfaced via
@@ -9,7 +11,7 @@ package com.tradinglabs.vidingest.core.knowledge.service;
  * the batch's drafts are dropped so a single rogue LLM response doesn't fail the whole
  * video. Only when <i>every</i> batch fails do we escalate.
  */
-public class KnowledgeExtractionFailureException extends RuntimeException {
+public class KnowledgeExtractionFailureException extends PhaseFailureException {
 
     public KnowledgeExtractionFailureException(String message) {
         super(message);

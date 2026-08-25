@@ -74,8 +74,8 @@ public class VidingestApiExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "Not found", e.getMessage(), request, e);
     }
 
-    @ExceptionHandler(IllegalStateException.class)
-    ProblemDetail handleConflict(IllegalStateException e, HttpServletRequest request) {
+    @ExceptionHandler(ConflictException.class)
+    ProblemDetail handleConflict(ConflictException e, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, "Conflict", e.getMessage(), request, e);
     }
 
@@ -97,6 +97,16 @@ public class VidingestApiExceptionHandler {
     @ExceptionHandler(LocalStorageException.class)
     ProblemDetail handleLocalStorage(LocalStorageException e, HttpServletRequest request) {
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error", e.getMessage(), request, e);
+    }
+
+    /**
+     * Any phase that could not complete because an external tool or sidecar did not deliver —
+     * whisper, pyannote, ffmpeg, paddleocr, ollama. Matching the supertype rather than the six
+     * concrete types means a new phase is covered here the day it is written.
+     */
+    @ExceptionHandler(PhaseFailureException.class)
+    ProblemDetail handlePhaseFailure(PhaseFailureException e, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_GATEWAY, "Upstream failure", e.getMessage(), request, e);
     }
 
     @ExceptionHandler(IOException.class)
