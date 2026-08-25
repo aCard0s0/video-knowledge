@@ -128,8 +128,11 @@ cmd_build() {
 
 cmd_stop() {
   require_docker
-  local services; services="$(resolve "${1:-all}")"
-  info "stopping: ${services}"
+  # No target (or 'all') means every running service, including the opt-in cli/mcp
+  # sidecars that GROUP_ALL deliberately leaves out of 'start'.
+  local target="${1:-all}" services=""
+  [ "${target}" = "all" ] || services="$(resolve "${target}")"
+  info "stopping: ${services:-everything}"
   # shellcheck disable=SC2086
   "${COMPOSE[@]}" stop ${services}
   ok "stopped"

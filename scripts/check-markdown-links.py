@@ -47,7 +47,7 @@ def looks_like_repo_path(code_span: str) -> bool:
             "libraries/",
             "compose/",
             "scripts/",
-            ".agents/",
+            "docker/",
         )
     )
 
@@ -59,7 +59,6 @@ def normalize_code_span_path(code_span: str) -> str:
         return ""
     if "..." in s:
         return ""
-    # Strip only trailing punctuation; leading dots matter (e.g. ".agents/...").
     s = s.rstrip("()[],.;:")
     return s
 
@@ -75,10 +74,8 @@ class BrokenRef:
 
 def iter_target_files() -> list[Path]:
     candidates: list[Path] = []
-    # Keep scope aligned with docs fixups plan:
-    # - root README.md
-    # - docs/**/*.md
-    # - per-app README.md under applications/**/README.md
+    # Scope: root README.md, docs/**/*.md, and per-module README.md under
+    # applications/**/README.md.
     for p in ("README.md", "docs"):
         path = REPO_ROOT / p
         if path.is_file():
@@ -95,7 +92,7 @@ def iter_target_files() -> list[Path]:
     pruned: list[Path] = []
     for c in candidates:
         parts = set(c.parts)
-        if {"node_modules", "target", ".git", ".cursor"} & parts:
+        if {"target", ".git", "package"} & parts:
             continue
         pruned.append(c)
     return sorted(set(pruned))

@@ -43,9 +43,11 @@ Configuration is managed through Spring Boot property files and `@ConfigurationP
 | `spring.main.web-application-type` | `servlet` | Server uses Spring MVC; CLI uses `none` |
 | `server.port` | `8051` | HTTP port for server REST API |
 | `server.servlet.context-path` | `/vidingest` | Base context path |
-| `spring.shell.interactive.enabled` | `false` | Server disables shell; CLI enables interactive shell |
-| `spring.shell.noninteractive.enabled` | `false` | Server disables shell script mode |
 | `spring.threads.virtual.enabled` | `true` | Use virtual threads (Java 25) |
+
+The server has no `spring-shell` dependency; the interactive shell lives only in
+`vidingest-cli`, which sets `spring.main.web-application-type=none` plus
+`spring.shell.interactive.enabled=true`.
 
 ### MCP app (`vidingest-mcp`)
 
@@ -162,45 +164,71 @@ Notes:
 
 ## Docker configuration
 
-### docker-compose.yml
+### Compose layout
 
-The platform Docker stack runs:
+There is no single `docker-compose.yml`. `compose.yml` holds only the shared network and
+the named volumes; services live in split files layered on top of it:
 
-- `whisper` (infra) on `http://localhost:9000/docs`
-- `vidingest` (server) exposed on `http://localhost:8051/vidingest/...`
-- `vidingest-mcp` (MCP SSE) exposed on `http://localhost:8055/vidingest/sse`
-- `vidingest-cli` (optional CLI sidecar) for `docker exec` commands
+| File | Services |
+|------|----------|
+| `compose/infra/infra.yml` | `timescaledb`, `ollama`, `whisper`, `paddleocr-server`, `diarize-asr` |
+| `compose/services.yml` | `vidingest` (REST server) |
+| `compose/cli.yml` | `vidingest-cli` |
+| `compose/mcp.yml` | `vidingest-mcp` |
 
-VidIngest server storage uses bind mounts under `package/vidingest/`:
+`scripts/tradey.sh` and `scripts/compose.sh` apply the layering; running bare
+`docker compose` from the repo root sees only the empty base file. Host ports come from
+`compose/ports.env` and everything publishes to `127.0.0.1` unless `VK_BIND_ADDR` says
+otherwise.
 
-- `package/vidingest/videos` → `/data/videos`
-- Transcript sidecars are written next to the downloaded video file under `package/vidingest/videos/...`
+### Storage in containers
 
-Whisper model cache is persisted under:
+Storage is **named volumes**, not bind mounts — nothing under `package/` is mounted into
+a container. `package/` is only used when the server runs on the host, where
+`ProjectPathResolver` resolves `{projectRoot}/package/vidingest/videos`.
 
-- `package/vidingest/whisper-models` → `/data/whisper`
+| Volume | Mounted at | Used by |
+|--------|-----------|---------|
+| `vidingest_data` | `/data/videos` | `vidingest` (rw) — `application-docker.properties` sets `vidingest.storage.video-path=/data/videos`; also `paddleocr-server` as `:ro` so OCR reads frames in place |
+| `app_logs` | `/app/logs` | `vidingest`, `vidingest-mcp` (`LOG_DIR=/app/logs`) |
+| `timescaledb_data` | `/home/postgres/pgdata/data` | `timescaledb` |
+| `ollama_data` | `/root/.ollama` | `ollama` |
+| `ai_models` | `/models` | shared model cache for `ollama`, `whisper` (`ASR_MODEL_PATH=/models/whisper`), `paddleocr-server`, `diarize-asr` |
 
-### Dockerfile
+Transcript sidecars are written next to the downloaded video file, so under
+`/data/videos/...` in a container.
 
-- Build: Eclipse Temurin 25 JDK Alpine + Maven 3.9.11 (via shared installer script)
-- Runtime: Eclipse Temurin 25 JRE Alpine
-- Extra tools: python3, ffmpeg, yt-dlp (installed via pip)
-- User: `spring:spring` (uid/gid 1000)
-- JVM: `-Xms256m -Xmx512m -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError`
+### Dockerfile (`vidingest-server`)
+
+- Build stage: Eclipse Temurin 25 JDK Alpine + Maven 3.9.11 (via `docker/scripts/install-maven.sh`)
+- Runtime stage: Eclipse Temurin 25 JRE Alpine
+- Extra tools: `python3`, `py3-pip`, `ffmpeg`, `deno`, plus `yt-dlp` via pip
+- User: `spring:spring` (uid/gid 1000, from `docker/scripts/create-app-user.sh`)
+- JVM: `-Xms256m -Xmx768m -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC`
+- Container memory: `mem_limit: 768M`, `mem_reservation: 256M`
 - Health check: `GET /vidingest/api/v1/health/ready` from inside the container
+- Build context is the repository root so the Maven reactor can resolve sibling modules
+
+An OpenTelemetry Java agent (pinned 2.26.1) is downloaded into `/otel` by all three
+Dockerfiles but is **not** wired into `JAVA_TOOL_OPTIONS`, so nothing loads it at runtime.
 
 ### Running with Docker
 
 ```bash
-# Build and start
-docker compose up vidingest
-
-# Attach to interactive shell
-docker attach <container_id>
-
-# Run with custom DB credentials
-docker compose run -e DB_PASSWORD=secret vidingest
+./scripts/tradey.sh start vidingest --build
 ```
+
+```bash
+./scripts/tradey.sh logs -f vidingest
+```
+
+```bash
+./scripts/tradey.sh shell vidingest
+```
+
+Override credentials or any other setting through the environment before starting —
+`compose/services.yml` passes `SPRING_DATASOURCE_*` through, and the properties files
+accept `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`.
 
 ## Logging
 

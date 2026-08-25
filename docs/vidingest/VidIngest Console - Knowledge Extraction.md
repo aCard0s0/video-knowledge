@@ -247,9 +247,9 @@ export VIDINGEST_FRAMES_ENABLED=true
 export VIDINGEST_OCR_ENABLED=true
 export VIDINGEST_KNOWLEDGE_ENABLED=true
 
-# 4. Start the sidecars + server
-docker compose -f compose/infra/infra.yml -f compose/services.yml up \
-  whisper diarize-asr paddleocr-server ollama vidingest -d
+# 4. Start the sidecars + server (compose.sh layers in compose.yml, which declares
+#    the video-knowledge network and the named volumes the services reference)
+./scripts/compose.sh up -d whisper diarize-asr paddleocr-server ollama vidingest
 
 # 5. Submit a pipeline run with all phases enabled
 curl -sX POST http://localhost:8051/vidingest/api/v1/pipelines \

@@ -18,9 +18,6 @@ data/
 .classpath
 .settings/
 
-# Obsidian workspace state (keep the notes, drop the local UI state)
-docs/.obsidian/workspace.json
-
 # System files
 .DS_Store
 Thumbs.db
