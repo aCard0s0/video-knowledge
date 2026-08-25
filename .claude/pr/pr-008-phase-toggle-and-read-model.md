@@ -1,6 +1,6 @@
 # PR #8 — One skipPhases set, one PipelineRun writer, one preview ranking
 
-**Merged**: 2026-08-25 · **Branch**: `refactor/vidingest-phase-toggle-and-read-model`
+**Merged**: 2026-08-26 · **Branch**: `refactor/vidingest-phase-toggle-and-read-model`
 
 Three findings from a structure-and-boundaries review of `applications/vidingest`. The review
 found the module layout sound — dependency direction holds, `core/*` never reaches into
