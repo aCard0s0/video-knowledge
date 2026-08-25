@@ -8,6 +8,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -81,7 +82,7 @@ class FrameSamplingServiceTest {
 
     @Test
     void buildSelectExpressionCombinesSceneAndIntervalCriteria() {
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
         String expr = svc.buildSelectExpression();
         // Both terms present, comma-escaped inside function args, joined by `+` (OR).
         assertThat(expr).contains("gt(scene\\,0.35)");
@@ -92,7 +93,7 @@ class FrameSamplingServiceTest {
     @Test
     void buildSelectExpressionWithSceneOnly() {
         config.setIntervalSeconds(0);
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
         String expr = svc.buildSelectExpression();
         assertThat(expr).isEqualTo("gt(scene\\,0.35)");
     }
@@ -100,7 +101,7 @@ class FrameSamplingServiceTest {
     @Test
     void buildSelectExpressionWithIntervalOnly() {
         config.setSceneChangeThreshold(0);
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
         String expr = svc.buildSelectExpression();
         assertThat(expr).isEqualTo("isnan(prev_selected_t)+gte(t-prev_selected_t\\,10.0)");
     }
@@ -110,13 +111,13 @@ class FrameSamplingServiceTest {
         // Both heuristics off — keep nothing rather than every frame.
         config.setSceneChangeThreshold(0);
         config.setIntervalSeconds(0);
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
         assertThat(svc.buildSelectExpression()).isEqualTo("0");
     }
 
     @Test
     void framesDirForResolvesSubdirInsidePerVideoFolder() {
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
 
         Path videoFile = Path.of("/data/videos/MyChannel/20260512.cool-video/20260512.cool-video.mp4");
         Path framesDir = svc.framesDirFor(videoFile);
@@ -127,7 +128,7 @@ class FrameSamplingServiceTest {
     @Test
     void framesDirForUsesCustomDirName() {
         config.setFramesDirName("thumbs");
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
 
         assertThat(svc.framesDirFor(Path.of("/x/show/episode/episode.mkv")))
                 .isEqualTo(Path.of("/x/show/episode/thumbs"));
@@ -135,7 +136,7 @@ class FrameSamplingServiceTest {
 
     @Test
     void sampleFramesFailsCleanlyWhenVideoFileMissing(@TempDir Path tmp) {
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
 
         Video video = video(tmp.resolve("does-not-exist.mp4").toString());
 
@@ -146,7 +147,7 @@ class FrameSamplingServiceTest {
 
     @Test
     void sampleFramesReturnsEmptyWhenFilePathBlank() {
-        FrameSamplingService svc = new FrameSamplingService(config, repo);
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction());
 
         Video video = video("");
         List<VideoFrame> out = svc.sampleFrames(video);
@@ -167,7 +168,7 @@ class FrameSamplingServiceTest {
                 "[Parsed_showinfo_1 @ 0xff] n:2 pts:124800 pts_time:13.0 s:640x360"
         );
 
-        FrameSamplingService svc = new FrameSamplingService(config, repo) {
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction()) {
             @Override
             protected String runFfmpeg(Path inputVideo, Path framesDir) {
                 // Pretend ffmpeg wrote three JPGs into the prepared dir.
@@ -215,7 +216,7 @@ class FrameSamplingServiceTest {
         Path videoFile = tmp.resolve("v.mp4");
         Files.writeString(videoFile, "fake mp4");
 
-        FrameSamplingService svc = new FrameSamplingService(config, repo) {
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction()) {
             @Override
             protected String runFfmpeg(Path inputVideo, Path framesDir) {
                 writeFakeJpg(framesDir.resolve("0001.jpg"));
@@ -247,7 +248,7 @@ class FrameSamplingServiceTest {
         Path videoFile = tmp.resolve("v.mp4");
         Files.writeString(videoFile, "fake mp4");
 
-        FrameSamplingService svc = new FrameSamplingService(config, repo) {
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction()) {
             @Override
             protected String runFfmpeg(Path inputVideo, Path framesDir) {
                 writeFakeJpg(framesDir.resolve("0001.jpg"));

@@ -14,7 +14,6 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -136,15 +135,17 @@ public class KnowledgeExtractionService {
         return entities.size();
     }
 
-    @Transactional
-    protected int wipePrior(java.util.UUID videoId) {
+    // Not transactional, and deliberately so: the wipe commits before the LLM batch loop and
+    // the persist after it, because wrapping both would hold a pooled connection across every
+    // chat round-trip. Each half is atomic on its own — the repository's bulk delete carries
+    // its own @Transactional, and saveAll supplies its own.
+    private int wipePrior(java.util.UUID videoId) {
         int n = knowledgeUnitRepository.deleteByVideo_Id(videoId);
         knowledgeUnitRepository.flush();
         return n;
     }
 
-    @Transactional
-    protected void persist(List<KnowledgeUnit> entities) {
+    private void persist(List<KnowledgeUnit> entities) {
         if (entities.isEmpty()) return;
         knowledgeUnitRepository.saveAll(entities);
     }

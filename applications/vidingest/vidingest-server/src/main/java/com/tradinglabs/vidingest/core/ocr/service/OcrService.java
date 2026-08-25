@@ -12,7 +12,6 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -148,15 +147,17 @@ public class OcrService {
         return totalLinesKept;
     }
 
-    @Transactional
-    protected int wipePriorResults(UUID videoId) {
+    // Not transactional, and deliberately so: the wipe commits before the sidecar loop and
+    // the persist after it, because wrapping both would hold a pooled connection for the
+    // minutes that loop takes. The repository's bulk delete carries its own @Transactional
+    // and saveAll supplies its own, so each half is atomic on its own.
+    private int wipePriorResults(UUID videoId) {
         int n = ocrResultRepository.deleteByVideoId(videoId);
         ocrResultRepository.flush();
         return n;
     }
 
-    @Transactional
-    protected void persist(List<OcrResult> rows) {
+    private void persist(List<OcrResult> rows) {
         if (rows.isEmpty()) {
             return;
         }
