@@ -21,6 +21,7 @@ public class StuckItemReconciler {
     private final PipelineRunItemRepository runItemRepository;
     private final RunItemLifecycleService runItemLifecycleService;
     private final RunAggregationService runAggregationService;
+    private final PipelineService pipelineService;
     private final PipelineMetrics pipelineMetrics;
     private final Duration staleAfter;
 
@@ -28,12 +29,14 @@ public class StuckItemReconciler {
             PipelineRunItemRepository runItemRepository,
             RunItemLifecycleService runItemLifecycleService,
             RunAggregationService runAggregationService,
+            PipelineService pipelineService,
             PipelineMetrics pipelineMetrics,
             @Value("${vidingest.reconciler.itemStaleAfter:PT1H}") Duration staleAfter
     ) {
         this.runItemRepository = runItemRepository;
         this.runItemLifecycleService = runItemLifecycleService;
         this.runAggregationService = runAggregationService;
+        this.pipelineService = pipelineService;
         this.pipelineMetrics = pipelineMetrics;
         this.staleAfter = staleAfter;
     }
@@ -47,8 +50,19 @@ public class StuckItemReconciler {
             return;
         }
 
-        log.warn("Reconciler found {} pipeline run items stuck IN_PROGRESS for more than {}; marking FAILED", stuck.size(), staleAfter);
+        int reaped = 0;
+        int skippedLive = 0;
         for (PipelineRunItem item : stuck) {
+            // phase_updated_at only moves on a phase *transition*, so a phase that legitimately
+            // runs for hours (KNOWLEDGE and DIARIZE both do on a long video) looks identical to
+            // abandoned work. Failing a live item is not cosmetic: the operator sees FAILED and
+            // retries, and a second worker then wipes-and-repopulates the same video alongside
+            // the first. Anything this JVM is still executing is by definition not abandoned.
+            if (pipelineService.isItemInFlight(item.getId())) {
+                skippedLive++;
+                continue;
+            }
+
             PipelineRunPhase phase = item.getPhase();
             String reason = "reconciler: stuck IN_PROGRESS in phase " + (phase != null ? phase.name() : "UNKNOWN")
                     + " since " + item.getPhaseUpdatedAt();
@@ -58,9 +72,16 @@ public class StuckItemReconciler {
                     runAggregationService.refreshRunState(item.getPipelineRun().getId());
                 }
                 pipelineMetrics.incrementFailed(PipelineErrorCode.UNEXPECTED);
+                reaped++;
             } catch (Exception e) {
                 log.error("Failed to reconcile stuck item {}: {}", item.getId(), e.getMessage(), e);
             }
+        }
+
+        if (reaped > 0 || skippedLive > 0) {
+            log.warn("Reconciler swept {} items IN_PROGRESS for more than {}: {} marked FAILED, "
+                            + "{} left alone because this JVM is still running them",
+                    stuck.size(), staleAfter, reaped, skippedLive);
         }
         pipelineMetrics.refreshInflightGauge();
     }
