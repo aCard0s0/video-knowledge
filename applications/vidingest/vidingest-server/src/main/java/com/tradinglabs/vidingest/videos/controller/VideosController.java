@@ -103,8 +103,8 @@ public class VideosController {
     @GetMapping("/{videoId}/transcription")
     @Operation(summary = "Get transcription for a video", description = "Returns transcription metadata and a short snippet if present.")
     public VideoTranscriptionDetails getTranscription(@PathVariable UUID videoId) {
-        // Ensure the video exists so callers get a consistent 404 for unknown ids.
-        videoQueryService.getById(videoId);
+        // Existence check only — ensureExists skips hydrating the entity and its JSONB metadata.
+        videoQueryService.ensureExists(videoId);
         return videoTranscriptionQueryService.getTranscriptionDetails(videoId);
     }
 
@@ -115,8 +115,8 @@ public class VideosController {
             @RequestParam(name = "page", required = false) Integer page,
             @RequestParam(name = "size", required = false) Integer size
     ) {
-        // Ensure the video exists so callers get a consistent 404 for unknown ids.
-        videoQueryService.getById(videoId);
+        // Existence check only — ensureExists skips hydrating the entity and its JSONB metadata.
+        videoQueryService.ensureExists(videoId);
         return videoTranscriptionQueryService.listSegments(videoId, page, size);
     }
 
