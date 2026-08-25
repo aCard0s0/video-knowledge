@@ -1,7 +1,7 @@
 # VidIngest Console — Knowledge Extraction (M2–M8)
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-05-13
+- **Last reviewed**: 2026-08-25
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
@@ -90,7 +90,11 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   ```
 - **Single pass** with combined scene-change OR fixed-interval select. Each frame is
   classified as `INTERVAL` or `SCENE_CHANGE` based on proximity to an interval boundary.
-- **Idempotent**: re-runs wipe the `frames/` dir + `vidingest_video_frames` rows.
+- **Idempotent**: re-runs wipe the `frames/` dir + `vidingest_video_frames` rows. The row
+  wipe and the re-insert share one transaction, but the *directory* is emptied before ffmpeg
+  runs — so an ffmpeg failure leaves rows pointing at JPGs that no longer exist. `OCR` then
+  fails loudly rather than wiping its own rows and reporting a successful zero. Re-run
+  `FRAME_SAMPLE` before `OCR` to recover.
 
 ### OCR (M4)
 - **Code**: `core/ocr/` (Client + Service + Phase + Mapper)
@@ -145,6 +149,9 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   `@Modifying @Transactional @Query` on `KnowledgeUnitRepository.deleteByVideo_Id` —
   derived `deleteBy*` here would materialise the `vector(1536)` column via Hibernate's
   `FloatPrimitiveArrayJavaType` and trip the pgvector array-delimiter SELECT path.
+  The wipe commits *before* the LLM batch loop and the save after it, deliberately: one
+  transaction across the loop would pin a pooled connection for every chat round-trip. If
+  every batch fails the phase throws, so the run is FAILED rather than silently empty.
 
 ### CONTEXT (M7-enhanced)
 - **Code**: `search/service/embedding/ContextChunkGenerationService.java`

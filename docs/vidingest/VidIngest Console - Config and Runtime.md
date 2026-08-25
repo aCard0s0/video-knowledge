@@ -1,7 +1,7 @@
 # VidIngest Console - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
-- **Last reviewed**: 2026-03-15
+- **Last reviewed**: 2026-08-25
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -48,6 +48,24 @@ Configuration is managed through Spring Boot property files and `@ConfigurationP
 The server has no `spring-shell` dependency; the interactive shell lives only in
 `vidingest-cli`, which sets `spring.main.web-application-type=none` plus
 `spring.shell.interactive.enabled=true`.
+
+### Ingestion concurrency and reconcilers
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `vidingest.ingestion.concurrency` | `4` | How many run items execute phases at once |
+| `vidingest.reconciler.itemStaleAfter` | `PT1H` | An `IN_PROGRESS` item untouched for longer is failed |
+| `vidingest.reconciler.intervalMs` | `300000` | Stuck-item sweep interval |
+| `vidingest.reconciler.initialDelayMs` | `60000` | Delay before the first sweep |
+
+`vidingest.ingestion.concurrency` is a permit gate inside `PipelineService`, not the executor
+size — `vidingestIngestionExecutor` stays virtual-thread-per-task so shutdown waits only for
+in-flight work instead of draining a queue. Each item drives yt-dlp, ffmpeg and a sidecar, so
+keep this at or below `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` (default `10`); the
+compose stack passes it through as `VIDINGEST_INGESTION_CONCURRENCY`.
+
+See [Concurrency and run-status aggregation](#concurrency-and-run-status-aggregation) for what
+the reconcilers do and do not fix.
 
 ### MCP app (`vidingest-mcp`)
 
@@ -378,6 +396,44 @@ Once a video is past PERSIST, individual phases can be re-run via
 `POST /api/v1/videos/{videoId}/phases/{phase}/run`. Useful after a model swap or sidecar
 upgrade — no need to re-download / re-transcribe. See
 [Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md).
+
+## Concurrency and run-status aggregation
+
+A pipeline run fans out one item per URL onto `vidingestIngestionExecutor`, gated to
+`vidingest.ingestion.concurrency` at a time. Items run truly concurrently, which is what makes
+the run-status bookkeeping a concurrency problem.
+
+**Run status is derived, not assigned.** `RunAggregationService.refreshRunState` recomputes the
+run from its items every time an item reaches a terminal status: any item still
+PENDING/IN_PROGRESS keeps the run IN_PROGRESS, any FAILED item fails the run, all-CANCELLED
+cancels it, otherwise COMPLETED.
+
+**It takes the run row with `SELECT ... FOR UPDATE` before reading the items**
+(`PipelineRunRepository.findWithLockById`). That ordering is load-bearing. Without it, two
+items finishing at once each read the item list and the slower one wrote its stale conclusion
+over the other's, stranding the run at IN_PROGRESS with every item COMPLETED — and nothing
+re-runs the aggregation once all items are terminal, so it stayed wrong until someone noticed.
+
+The lock is scoped to `refreshRunState` alone. `ensureRunInProgress` and `updateRunPhase` fire
+on every phase transition of every item and must *not* take it: every audit-event insert
+already holds `FOR KEY SHARE` on the run row through its FK, which a plain `UPDATE`
+(`FOR NO KEY UPDATE`) tolerates and `FOR UPDATE` does not. Their own clobber risk is handled by
+`@DynamicUpdate` on `PipelineRun`, which stops a phase-only write from rewriting `status`.
+
+### Reconcilers
+
+| Component | Trigger | What it does |
+|-----------|---------|--------------|
+| `StuckItemReconciler` | `@Scheduled`, every `vidingest.reconciler.intervalMs` | Fails items IN_PROGRESS whose `phase_updated_at` is older than `itemStaleAfter`, then re-derives their run |
+| `ProgressPipelineRunReconciler` | `ApplicationReadyEvent` | Re-derives every IN_PROGRESS run from its items; only fails the ones still genuinely in progress |
+
+`ProgressPipelineRunReconciler` re-derives first on purpose: a run left IN_PROGRESS by a lost
+aggregation update has all its items COMPLETED, and failing that run is the bug rather than the
+fix. It therefore also self-heals rows stranded before the lock landed.
+
+Note that `itemStaleAfter` defaults to one hour while a long TRANSCRIBE or KNOWLEDGE phase can
+legitimately exceed that on CPU. Raise it on deployments that ingest long videos, or the
+reconciler will fail work that is still running.
 
 ## Related pages
 
