@@ -28,3 +28,6 @@ Thumbs.db
 
 # Runtime output (video storage + logs resolved by ProjectPathResolver)
 package/
+
+# Stray logs from running the CLI/server outside the container
+*.log
