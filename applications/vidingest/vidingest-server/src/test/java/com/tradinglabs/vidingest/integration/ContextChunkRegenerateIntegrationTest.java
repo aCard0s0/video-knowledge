@@ -18,6 +18,8 @@ import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -34,6 +36,12 @@ class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest
     @Test
     void regenerateContextPersistsChunks() throws Exception {
         when(embeddingsClient.embed(anyList())).thenAnswer(inv -> {
+            // The embeddings call batches 2000 chunks into 32 sequential HTTP requests at up
+            // to 180s each. Doing that while holding a pooled connection wedges the app, so
+            // fail here rather than the day someone re-adds @Transactional to regenerateFor.
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .as("embeddings call must not hold a DB connection")
+                    .isFalse();
             List<String> inputs = inv.getArgument(0);
             List<float[]> out = new ArrayList<>(inputs.size());
             for (int i = 0; i < inputs.size(); i++) {
@@ -78,6 +86,38 @@ class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest
         assertThat(json.get("videoId").asText()).isEqualTo(video.getId().toString());
 
         assertThat(contextChunkRepository.count()).isEqualTo(chunks);
+    }
+
+    /**
+     * A video with no transcript and no multimodal segments takes the early-return branch,
+     * which wipes stale chunks and returns 0. That branch supplies no transaction of its own,
+     * so it only works because the repository's bulk delete carries {@code @Transactional} —
+     * and nothing else in the suite exercises it.
+     */
+    @Test
+    void regenerateContextOnAVideoWithNoSourceTextWipesAndReturnsZero() throws Exception {
+        Video video = videoRepository.saveAndFlush(Video.builder()
+                .source("youtube")
+                .sourceVideoId("ctx002")
+                .title("No transcript")
+                .channelName("Channel")
+                .filePath("/tmp/ctx002.mp4")
+                .status(VideoStatus.COMPLETED)
+                .build());
+
+        HttpClient client = HttpClient.newHttpClient();
+        URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/videos/" + video.getId() + "/context/regenerate");
+        HttpResponse<String> res = client.send(
+                HttpRequest.newBuilder(uri)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        assertThat(res.statusCode()).isEqualTo(200);
+        assertThat(objectMapper.readTree(res.body()).get("chunks").asInt()).isZero();
+        assertThat(contextChunkRepository.count()).isZero();
     }
 }
 

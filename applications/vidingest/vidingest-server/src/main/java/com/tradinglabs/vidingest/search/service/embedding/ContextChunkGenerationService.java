@@ -11,7 +11,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -50,6 +50,7 @@ public class ContextChunkGenerationService {
     private final ContextChunkRepository contextChunkRepository;
     private final EmbeddingsClient embeddingsClient;
     private final MultimodalSegmentRepository multimodalSegmentRepository;
+    private final TransactionOperations transactionOperations;
 
     /**
      * Regenerates all context chunks for a video. Source selection:
@@ -60,8 +61,13 @@ public class ContextChunkGenerationService {
      * Returns the number of chunks persisted. Returns 0 (after wiping stale rows) when
      * neither source has usable content — never throws on missing inputs, so manual
      * regenerate calls on partially-ingested videos behave predictably.
+     *
+     * <p>Deliberately <b>not</b> {@code @Transactional}: {@link EmbeddingsClient#embed} is a
+     * blocking call to an external model that batches 2000 chunks into 32 sequential HTTP
+     * requests at up to 180s each. Holding a pooled connection across that starves every
+     * other caller — with the default pool of 10, a handful of concurrent CONTEXT phases
+     * wedges the whole application. Only the delete-and-replace below runs in a transaction.
      */
-    @Transactional
     public int regenerateFor(Video video) throws IOException {
         if (video == null || video.getId() == null) {
             throw new IllegalArgumentException("Video is missing id");
@@ -85,9 +91,6 @@ public class ContextChunkGenerationService {
                     + " vectors for " + build.chunks.size() + " chunks.");
         }
 
-        // Replace chunks atomically within the transaction.
-        contextChunkRepository.deleteByVideoId(videoId);
-
         List<ContextChunk> entities = new ArrayList<>(build.chunks.size());
         for (int i = 0; i < build.chunks.size(); i++) {
             entities.add(ContextChunk.builder()
@@ -97,7 +100,13 @@ public class ContextChunkGenerationService {
                     .embedding(vectors.get(i))
                     .build());
         }
-        contextChunkRepository.saveAll(entities);
+
+        // Now — and only now — take a connection: the wipe and the replacement commit together,
+        // so a reader never sees a video with its old chunks gone and its new ones not yet in.
+        transactionOperations.executeWithoutResult(status -> {
+            contextChunkRepository.deleteByVideoId(videoId);
+            contextChunkRepository.saveAll(entities);
+        });
 
         log.info("Context chunks generated: videoId={}, source={}, chunks={}",
                 videoId, build.source, entities.size());

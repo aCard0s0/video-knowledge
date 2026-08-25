@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,7 +20,16 @@ public interface ContextChunkRepository extends JpaRepository<ContextChunk, UUID
 
     List<ContextChunk> findByVideoIdOrderByChunkIndexAsc(UUID videoId);
 
+    /**
+     * Bulk-delete every context chunk for a video so regeneration converges cleanly.
+     *
+     * <p>{@code @Transactional} sits on the repository method, matching the six sibling
+     * bulk-deletes. {@code ContextChunkGenerationService} used to supply the transaction from
+     * its own {@code @Transactional}, but that annotation had to go: it also spanned the
+     * blocking embeddings call.
+     */
     @Modifying
+    @Transactional
     @Query("delete from ContextChunk c where c.video.id = :videoId")
     void deleteByVideoId(@Param("videoId") UUID videoId);
 
