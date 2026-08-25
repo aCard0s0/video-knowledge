@@ -49,6 +49,6 @@ public final class FusePhase implements PipelinePhase {
                     ctx.getRunId(), ctx.getItemId());
             return;
         }
-        segmentFusionService.fuse(video);
+        ctx.setRowsAffected(segmentFusionService.fuse(video).size());
     }
 }

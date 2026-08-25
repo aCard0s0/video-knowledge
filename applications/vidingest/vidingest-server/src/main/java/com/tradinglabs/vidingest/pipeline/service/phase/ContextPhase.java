@@ -37,6 +37,7 @@ public final class ContextPhase implements PipelinePhase {
         ctx.setVideo(video);
         try {
             int chunks = contextChunkGenerationService.regenerateFor(video);
+            ctx.setRowsAffected(chunks);
             log.info("Context generation complete: videoId={}, chunks={}", video.getId(), chunks);
         } catch (Exception e) {
             video.setStatus(VideoStatus.FAILED);

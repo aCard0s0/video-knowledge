@@ -6,7 +6,8 @@ flowchart LR
 
     subgraph backend [vidingest-server]
         CTRL["VideoPhaseController\nPOST /api/v1/videos/{id}/phases/{phase}/run"]:::api
-        ROUTER["VideoPhaseRunnerService\n(switch on phase)"]:::svc
+        ROUTER["VideoPhaseRunnerService\n(resolve + time + normalise errors)"]:::svc
+        REG["PipelinePhaseRegistry.byPhase\n-> PipelinePhase.execute(ctx)"]:::svc
         TS["TranscriptionService.transcribe"]:::svc
         DS["DiarizationService.diarize"]:::svc
         FS["FrameSamplingService.sampleFrames"]:::svc
@@ -35,13 +36,14 @@ flowchart LR
 
     CALLER(["REST caller\nPOST .../phases/{phase}/run"]):::api --> CTRL
     CTRL --> ROUTER
-    ROUTER -->|TRANSCRIBE| TS
-    ROUTER -->|DIARIZE| DS
-    ROUTER -->|FRAME_SAMPLE| FS
-    ROUTER -->|OCR| OS
-    ROUTER -->|FUSE| SF
-    ROUTER -->|KNOWLEDGE| KS
-    ROUTER -->|CONTEXT| CS
+    ROUTER --> REG
+    REG -->|TranscribePhase| TS
+    REG -->|DiarizePhase| DS
+    REG -->|FrameSamplePhase| FS
+    REG -->|OcrPhase| OS
+    REG -->|FusePhase| SF
+    REG -->|KnowledgePhase| KS
+    REG -->|ContextPhase| CS
 
     TS --> WH
     TS --> TR

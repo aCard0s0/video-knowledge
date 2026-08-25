@@ -49,6 +49,6 @@ public final class KnowledgePhase implements PipelinePhase {
                     ctx.getRunId(), ctx.getItemId());
             return;
         }
-        knowledgeExtractionService.extractKnowledge(video);
+        ctx.setRowsAffected(knowledgeExtractionService.extractKnowledge(video));
     }
 }

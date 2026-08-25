@@ -47,6 +47,6 @@ public final class FrameSamplePhase implements PipelinePhase {
                     ctx.getRunId(), ctx.getItemId());
             return;
         }
-        frameSamplingService.sampleFrames(video);
+        ctx.setRowsAffected(frameSamplingService.sampleFrames(video).size());
     }
 }
