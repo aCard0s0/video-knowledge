@@ -12,6 +12,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,14 +23,14 @@ import java.util.UUID;
 /**
  * Runs OCR over a video's sampled frames (produced by M3's {@code FrameSamplingService}),
  * filters detections by confidence + min-lines-per-frame, and persists the survivors as
- * {@link OcrResult} rows. Idempotent — re-running deletes prior OCR for the video so we
- * converge to the latest sidecar output.
+ * {@link OcrResult} rows. Idempotent — re-running replaces the video's prior OCR in one
+ * transaction so we converge to the latest sidecar output without a window where it has neither.
  *
  * <p>Failure semantics: a single frame failing the sidecar call, or having lost its JPG, is
  * logged and skipped (we don't want one bad frame to fail an otherwise good video). If
  * <i>no</i> frame was readable — every one either failed the sidecar or has no file left on
  * disk — we propagate {@link OcrFailureException} so the run is marked FAILED rather than
- * silently completing with zero results after having wiped the prior ones. A frame that
+ * silently replacing the video's OCR with nothing. A frame that
  * OCR'd fine but held too little text is not a failure: a video with no on-screen text
  * legitimately produces zero rows.
  */
@@ -42,6 +43,7 @@ public class OcrService {
     private final PaddleOcrClient paddleOcrClient;
     private final VideoFrameRepository videoFrameRepository;
     private final OcrResultRepository ocrResultRepository;
+    private final TransactionOperations transactionOperations;
 
     /**
      * OCR-and-persist for a video. Returns the count of rows persisted (one per surviving
@@ -62,14 +64,6 @@ public class OcrService {
         }
 
         log.info("OCR start: videoId={}, frames={}", video.getId(), frames.size());
-
-        // Wipe prior OCR rows so re-runs converge cleanly. Done before the (potentially
-        // slow) sidecar loop so a crash mid-run still leaves the DB consistent: empty +
-        // a failed pipeline run is preferable to stale rows interleaved with fresh ones.
-        int deleted = wipePriorResults(video.getId());
-        if (deleted > 0) {
-            log.info("OCR wiped {} prior result rows for videoId={}", deleted, video.getId());
-        }
 
         List<OcrResult> pending = new ArrayList<>();
         int framesWithText = 0;
@@ -126,12 +120,11 @@ public class OcrService {
             framesWithText++;
         }
 
-        // We already wiped this video's prior rows above. If not one frame was even readable
-        // — each either failed the sidecar or had no JPG left on disk — then completing with
-        // rows=0 would silently destroy every OCR result for the video and still report
-        // success. A frame that OCR'd fine but held too little text is NOT a failure: a video
-        // with no on-screen text legitimately produces zero rows, which is all framesSkipped
-        // means now.
+        // If not one frame was even readable — each either failed the sidecar or had no JPG left
+        // on disk — then replacing the prior rows with nothing would destroy every OCR result for
+        // the video and still report success. A frame that OCR'd fine but held too little text is
+        // NOT a failure: a video with no on-screen text legitimately produces zero rows, which is
+        // all framesSkipped means. Thrown before the replace, so the prior rows survive.
         if (framesFailed + framesMissing == frames.size()) {
             throw new OcrFailureException(
                     "OCR failed for every frame (sidecarFailures=" + framesFailed
@@ -140,28 +133,34 @@ public class OcrService {
             );
         }
 
-        persist(pending);
+        replaceAll(video.getId(), pending);
 
         log.info("OCR complete: videoId={}, framesTotal={}, framesWithText={}, framesSkipped={}, framesMissing={}, framesFailed={}, rowsPersisted={}",
                 video.getId(), frames.size(), framesWithText, framesSkipped, framesMissing, framesFailed, totalLinesKept);
         return totalLinesKept;
     }
 
-    // Not transactional, and deliberately so: the wipe commits before the sidecar loop and
-    // the persist after it, because wrapping both would hold a pooled connection for the
-    // minutes that loop takes. The repository's bulk delete carries its own @Transactional
-    // and saveAll supplies its own, so each half is atomic on its own.
-    private int wipePriorResults(UUID videoId) {
-        int n = ocrResultRepository.deleteByVideoId(videoId);
-        ocrResultRepository.flush();
-        return n;
-    }
-
-    private void persist(List<OcrResult> rows) {
-        if (rows.isEmpty()) {
-            return;
-        }
-        ocrResultRepository.saveAll(rows);
+    /**
+     * Wipe-then-repopulate in one transaction. The wipe used to commit on its own before the
+     * sidecar loop, so a crash or a throw anywhere in those minutes left the video with its OCR
+     * destroyed and nothing to replace it.
+     *
+     * <p>Only the two statements are transactional — the sidecar loop above still holds no pooled
+     * connection, which is the constraint that put the wipe before the loop in the first place.
+     * Which frames are allowed to fail without failing the phase is unchanged: a bad frame is
+     * still skipped, and a partial result still replaces the previous one, atomically.
+     */
+    private void replaceAll(UUID videoId, List<OcrResult> rows) {
+        transactionOperations.executeWithoutResult(status -> {
+            int deleted = ocrResultRepository.deleteByVideoId(videoId);
+            ocrResultRepository.flush();
+            if (deleted > 0) {
+                log.info("OCR replacing {} prior result rows for videoId={}", deleted, videoId);
+            }
+            if (!rows.isEmpty()) {
+                ocrResultRepository.saveAll(rows);
+            }
+        });
     }
 
     private List<OcrLine> filterLines(List<OcrLine> lines) {

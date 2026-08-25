@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -64,7 +65,8 @@ class KnowledgeExtractionServiceTest {
         ));
         service = new KnowledgeExtractionService(
                 config, chatClient, embeddingsClient,
-                multimodalSegmentRepository, knowledgeUnitRepository
+                multimodalSegmentRepository, knowledgeUnitRepository,
+                TransactionOperations.withoutTransaction()
         );
         lenient().when(knowledgeUnitRepository.saveAll(any())).thenAnswer(inv -> {
             Iterable<KnowledgeUnit> in = inv.getArgument(0);
@@ -210,8 +212,14 @@ class KnowledgeExtractionServiceTest {
         verify(embeddingsClient, never()).embed(any());
     }
 
+    /**
+     * A partly-failed run holds partial coverage. It used to replace a complete extraction with
+     * it and report success — 300 units becoming 12 with nothing above a per-batch warning to say
+     * so. The rows on disk are worth more than one run's salvage, so a failed batch fails the
+     * phase and leaves them alone.
+     */
     @Test
-    void perBatchFailureLogsAndContinuesWithRemainingBatches() {
+    void aFailedBatchLeavesThePriorRowsInPlace() {
         // Two ~600-char segments + ~32 char overhead each → each takes >700 chars in the
         // prompt. With budget=700 we get exactly two batches of one segment each.
         config.setMaxInputCharsPerBatch(700);
@@ -229,10 +237,12 @@ class KnowledgeExtractionServiceTest {
                 .thenThrow(new KnowledgeExtractionFailureException("batch 1 boom"))
                 .thenReturn(List.of(draft(KnowledgeUnitType.ENTITY, "survivor", 0.9)));
 
-        int persisted = service.extractKnowledge(video);
+        assertThatThrownBy(() -> service.extractKnowledge(video))
+                .isInstanceOf(KnowledgeExtractionFailureException.class)
+                .hasMessageContaining("failed for 1 of 2 batches");
 
-        // One batch failed, one succeeded → exception swallowed, one draft persisted.
-        assertThat(persisted).isEqualTo(1);
+        verify(knowledgeUnitRepository, never()).deleteByVideo_Id(any());
+        verify(knowledgeUnitRepository, never()).saveAll(any());
     }
 
     @Test
@@ -251,11 +261,18 @@ class KnowledgeExtractionServiceTest {
 
         assertThatThrownBy(() -> service.extractKnowledge(video))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)
-                .hasMessageContaining("failed for every batch");
+                .hasMessageContaining("failed for 2 of 2 batches");
+
+        verify(knowledgeUnitRepository, never()).deleteByVideo_Id(any());
     }
 
+    /**
+     * The wipe now follows the LLM loop rather than preceding it, and shares a transaction with
+     * the insert. Ordering is the whole point: everything that can fail has already failed by the
+     * time any row is deleted.
+     */
     @Test
-    void wipesPriorRowsBeforeNewLlmCalls() {
+    void wipesPriorRowsAfterTheLlmCallsAndAlongsideTheInsert() {
         Video video = video();
         when(multimodalSegmentRepository.findByVideo_IdOrderBySegmentIndexAsc(video.getId()))
                 .thenReturn(List.of(segment(0, 0.0, 10.0, "x", null)));
@@ -265,10 +282,32 @@ class KnowledgeExtractionServiceTest {
 
         service.extractKnowledge(video);
 
-        var inOrder = org.mockito.Mockito.inOrder(knowledgeUnitRepository, chatClient);
+        var inOrder = org.mockito.Mockito.inOrder(chatClient, knowledgeUnitRepository);
+        inOrder.verify(chatClient).extract(anyString(), anyString());
         inOrder.verify(knowledgeUnitRepository).deleteByVideo_Id(video.getId());
         inOrder.verify(knowledgeUnitRepository).flush();
-        inOrder.verify(chatClient).extract(anyString(), anyString());
+        inOrder.verify(knowledgeUnitRepository).saveAll(any());
+    }
+
+    /**
+     * An all-succeeded run that survives no filter is a real answer of "nothing salient here", so
+     * it still clears the table — unlike a failed run, which must not.
+     */
+    @Test
+    void anEmptyButCompleteResultStillClearsThePriorRows() {
+        Video video = video();
+        when(multimodalSegmentRepository.findByVideo_IdOrderBySegmentIndexAsc(video.getId()))
+                .thenReturn(List.of(segment(0, 0.0, 10.0, "x", null)));
+        // Below the 0.2 salience floor, so nothing survives filterAndCap.
+        when(chatClient.extract(anyString(), anyString())).thenReturn(List.of(
+                draft(KnowledgeUnitType.ENTITY, "noise", 0.01)
+        ));
+
+        int persisted = service.extractKnowledge(video);
+
+        assertThat(persisted).isZero();
+        verify(knowledgeUnitRepository).deleteByVideo_Id(video.getId());
+        verify(knowledgeUnitRepository, never()).saveAll(any());
     }
 
     @Test
