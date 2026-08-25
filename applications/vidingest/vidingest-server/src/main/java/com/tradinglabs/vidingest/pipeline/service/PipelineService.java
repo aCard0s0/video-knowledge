@@ -22,7 +22,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 
@@ -47,6 +49,13 @@ public class PipelineService {
      * from swamping the box and the connection pool.
      */
     private final Semaphore ingestionGate;
+
+    /**
+     * Run items executing phases right now, in this JVM. Read by {@link StuckItemReconciler},
+     * which cannot otherwise tell a genuinely abandoned item from one sitting in a phase that
+     * legitimately takes hours — {@code phase_updated_at} only moves on a phase *transition*.
+     */
+    private final Set<UUID> inFlightItemIds = ConcurrentHashMap.newKeySet();
 
     public PipelineService(
             VideoRepository videoRepository,
@@ -225,6 +234,7 @@ public class PipelineService {
             log.warn("Interrupted waiting for an ingestion slot: runId={}, itemId={}", runId, itemId);
             return;
         }
+        inFlightItemIds.add(itemId);
         // Started after the gate so elapsedMs stays execution time, not queue wait.
         long itemStartNs = System.nanoTime();
         try {
@@ -253,9 +263,18 @@ public class PipelineService {
             runAggregationService.refreshRunState(runId);
             pipelineMetrics.incrementFailed(code);
         } finally {
+            inFlightItemIds.remove(itemId);
             ingestionGate.release();
             pipelineMetrics.refreshInflightGauge();
         }
+    }
+
+    /**
+     * Whether this JVM is currently executing phases for {@code itemId}. Items abandoned by a
+     * previous process are absent, which is exactly what the reconciler should reap.
+     */
+    public boolean isItemInFlight(UUID itemId) {
+        return inFlightItemIds.contains(itemId);
     }
 
     private void executePhases(PipelinePhaseContext ctx) throws Exception {

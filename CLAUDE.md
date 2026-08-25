@@ -104,7 +104,10 @@ to `vidingestIngestionExecutor`, `RunLifecycleService`/`RunItemLifecycleService`
 `PipelineRun`/`PipelineRunItem` rows, `RunAggregationService` rolls item status up to run
 status, `PipelineAuditService` records `PipelineRunItemEvent`s, and
 `StuckItemReconciler`/`ProgressPipelineRunReconciler` sweep abandoned work
-(`vidingest.reconciler.*`).
+(`vidingest.reconciler.*`). `StuckItemReconciler` asks `PipelineService.isItemInFlight`
+before failing anything — `phase_updated_at` moves only on a phase *transition*, so a phase
+that legitimately runs for hours is otherwise indistinguishable from abandoned work, and
+failing a live item invites an operator retry that runs a second worker over the same video.
 
 The executor is virtual-thread-per-task and stays unbounded so shutdown waits only for
 in-flight work; concurrency is capped by a `Semaphore` inside `PipelineService`

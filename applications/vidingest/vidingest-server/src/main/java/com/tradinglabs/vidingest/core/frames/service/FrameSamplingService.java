@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -26,8 +27,10 @@ import java.util.concurrent.TimeUnit;
  * {@code VideoFrame} row per kept JPG, and tags each row with a {@link SamplingReason}
  * classified by proximity to a fixed-interval boundary.
  *
- * <p>Idempotent: re-running for the same video wipes the {@code frames/} sibling dir and
- * the existing {@code vidingest_video_frames} rows before re-sampling.
+ * <p>Idempotent: re-running for the same video replaces the {@code frames/} sibling dir and
+ * the existing {@code vidingest_video_frames} rows. ffmpeg writes into a staging dir that is
+ * promoted only once it exits cleanly, so a failed or timed-out run leaves the previous
+ * frames and their rows exactly as they were.
  *
  * <p>Disk layout (frames cascade with the video on delete — see {@code VideoDeleteService}):
  * <pre>
@@ -69,14 +72,26 @@ public class FrameSamplingService {
         }
 
         Path framesDir = framesDirFor(inputVideo);
-        prepareFramesDir(framesDir);
+        Path stagingDir = stagingDirFor(inputVideo);
+        prepareFramesDir(stagingDir);
 
         log.info("Frame sampling start: videoId={}, inputFile={}, framesDir={}",
                 video.getId(), inputVideo.getFileName(), framesDir);
 
         long startNs = System.nanoTime();
-        String stderr = runFfmpeg(inputVideo, framesDir);
+        String stderr;
+        try {
+            // ffmpeg writes to staging, never to the live dir. A failure or timeout here leaves
+            // the previous frames on disk and their rows pointing at files that still exist —
+            // otherwise a later OCR run finds rows whose JPGs were deleted before ffmpeg ran.
+            stderr = runFfmpeg(inputVideo, stagingDir);
+        } catch (RuntimeException e) {
+            bestEffortDeleteDir(stagingDir);
+            throw e;
+        }
         log.info("ffmpeg finished: videoId={}, elapsedMs={}", video.getId(), elapsedMs(startNs));
+
+        promoteStaging(stagingDir, framesDir);
 
         List<ShowinfoParser.ParsedFrame> parsed = ShowinfoParser.parseAll(stderr);
         List<Path> jpgs = listJpgsSorted(framesDir);
@@ -120,6 +135,45 @@ public class FrameSamplingService {
             throw new FrameSamplingFailureException("Video file has no parent directory: " + videoFile);
         }
         return parent.resolve(frameSamplingConfig.getFramesDirName());
+    }
+
+    /**
+     * Scratch dir ffmpeg writes into. A sibling of {@code frames/} inside the per-video folder,
+     * so a leftover from a crash is removed with the video by {@code VideoDeleteService} and
+     * cleared by the next run.
+     */
+    private Path stagingDirFor(Path videoFile) {
+        Path framesDir = framesDirFor(videoFile);
+        return framesDir.resolveSibling(framesDir.getFileName() + ".staging");
+    }
+
+    /** Swap staging into place. Only reached once ffmpeg has exited cleanly. */
+    private static void promoteStaging(Path stagingDir, Path framesDir) {
+        try {
+            if (Files.exists(framesDir)) {
+                deleteDirContents(framesDir);
+                Files.delete(framesDir);
+            }
+            try {
+                Files.move(stagingDir, framesDir, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException atomicUnsupported) {
+                Files.move(stagingDir, framesDir);
+            }
+        } catch (IOException e) {
+            throw new FrameSamplingFailureException(
+                    "Failed to promote staged frames into " + framesDir, e);
+        }
+    }
+
+    private static void bestEffortDeleteDir(Path dir) {
+        try {
+            if (Files.exists(dir)) {
+                deleteDirContents(dir);
+                Files.delete(dir);
+            }
+        } catch (IOException ignored) {
+            // best effort — the next run clears it
+        }
     }
 
     private void prepareFramesDir(Path framesDir) {

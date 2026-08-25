@@ -90,11 +90,12 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   ```
 - **Single pass** with combined scene-change OR fixed-interval select. Each frame is
   classified as `INTERVAL` or `SCENE_CHANGE` based on proximity to an interval boundary.
-- **Idempotent**: re-runs wipe the `frames/` dir + `vidingest_video_frames` rows. The row
-  wipe and the re-insert share one transaction, but the *directory* is emptied before ffmpeg
-  runs — so an ffmpeg failure leaves rows pointing at JPGs that no longer exist. `OCR` then
-  fails loudly rather than wiping its own rows and reporting a successful zero. Re-run
-  `FRAME_SAMPLE` before `OCR` to recover.
+- **Idempotent**: re-runs replace the `frames/` dir + `vidingest_video_frames` rows. ffmpeg
+  writes into a `frames.staging/` sibling that is promoted only once it exits cleanly, so a
+  failure or a timeout leaves the previous frames and their rows exactly as they were. The row
+  wipe and the re-insert share one transaction. If frames do go missing some other way (someone
+  clears the volume), `OCR` fails loudly rather than wiping its own rows and reporting a
+  successful zero — re-run `FRAME_SAMPLE` before `OCR` to recover.
 
 ### OCR (M4)
 - **Code**: `core/ocr/` (Client + Service + Phase + Mapper)

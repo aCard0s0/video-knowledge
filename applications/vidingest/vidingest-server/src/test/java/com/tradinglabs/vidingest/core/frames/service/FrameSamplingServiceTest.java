@@ -272,6 +272,47 @@ class FrameSamplingServiceTest {
         }
     }
 
+    /**
+     * The reason ffmpeg writes to a staging dir at all. Previously the live {@code frames/}
+     * dir was emptied *before* ffmpeg ran, so a failure left {@code vidingest_video_frames}
+     * rows pointing at JPGs that no longer existed — and a later OCR run then wiped its own
+     * rows and reported a successful zero over them.
+     */
+    @Test
+    void failedFfmpegLeavesThePreviousFramesAndRowsUntouched(@TempDir Path tmp) throws Exception {
+        Path videoFile = tmp.resolve("v.mp4");
+        Files.writeString(videoFile, "fake mp4");
+
+        FrameSamplingService svc = new FrameSamplingService(config, repo, TransactionOperations.withoutTransaction()) {
+            @Override
+            protected String runFfmpeg(Path inputVideo, Path framesDir) {
+                writeFakeJpg(framesDir.resolve("0001.jpg"));  // partial output, then blow up
+                throw new FrameSamplingFailureException("ffmpeg timed out after PT20M");
+            }
+        };
+
+        Path framesDir = svc.framesDirFor(videoFile);
+        Files.createDirectories(framesDir);
+        Files.writeString(framesDir.resolve("0001.jpg"), "from the last good run");
+
+        Video video = video(videoFile.toString());
+        assertThatThrownBy(() -> svc.sampleFrames(video))
+                .isInstanceOf(FrameSamplingFailureException.class)
+                .hasMessageContaining("ffmpeg timed out");
+
+        try (var stream = Files.list(framesDir)) {
+            assertThat(stream)
+                    .extracting(p -> p.getFileName().toString())
+                    .containsExactly("0001.jpg");
+        }
+        assertThat(Files.readString(framesDir.resolve("0001.jpg"))).isEqualTo("from the last good run");
+        // Rows survive with them, so the frames still describe what is on disk.
+        verify(repo, never()).deleteByVideo_Id(any());
+        verify(repo, never()).saveAll(any());
+        // And the partial output is not left lying next to the good frames.
+        assertThat(Files.exists(framesDir.resolveSibling(framesDir.getFileName() + ".staging"))).isFalse();
+    }
+
     private static Video video(String filePath) {
         Video v = new Video();
         v.setId(UUID.randomUUID());
