@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ProgressPipelineRunReconciler {
 
-    private final RunLifecycleService lifecycleService;
     private final RunQueryService queryService;
     private final RunAggregationService runAggregationService;
+    private final RunItemLeaseService runItemLeaseService;
 
     @EventListener(ApplicationReadyEvent.class)
     void reconcileInProgressPipelineRuns() {
@@ -42,7 +42,17 @@ public class ProgressPipelineRunReconciler {
                 continue;
             }
 
-            lifecycleService.markFailed(
+            // This instance starting up says nothing about the others. A live lease means some
+            // process is executing an item of this run right now, so failing it here would
+            // condemn a peer's work — the multi-instance form of the bug #7 fixed within a JVM.
+            // A crashed owner's lease outlives it by at most the TTL, after which
+            // StuckItemReconciler reaps the items and the run resolves through the normal path.
+            if (runItemLeaseService.runHasLiveLease(run.getId())) {
+                log.info("Pipeline run {} left alone: an item is still held by a live lease", run.getId());
+                continue;
+            }
+
+            runAggregationService.markFailed(
                     run.getId(),
                     PipelineErrorCode.UNEXPECTED,
                     "Pipeline run was IN_PROGRESS during server startup; marking failed for operator review.");

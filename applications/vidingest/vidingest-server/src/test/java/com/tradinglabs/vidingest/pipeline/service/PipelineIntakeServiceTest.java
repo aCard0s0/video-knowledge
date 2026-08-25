@@ -2,13 +2,15 @@ package com.tradinglabs.vidingest.pipeline.service;
 
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse.ItemStatus;
-import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -16,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -27,53 +30,61 @@ class PipelineIntakeServiceTest {
     @Mock
     private PipelineService pipelineService;
 
-    private static PipelineSkipFlags flags(boolean skipTranscription, boolean skipContext) {
-        return new PipelineSkipFlags(skipTranscription, skipContext, true, true, true, true);
+    /** The enrichment phases only; TRANSCRIBE/CONTEXT stay on unless a case says otherwise. */
+    private static Set<PipelineRunPhase> skipEnrichment() {
+        return EnumSet.of(PipelineRunPhase.DIARIZE, PipelineRunPhase.FRAME_SAMPLE,
+                PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE);
+    }
+
+    private static Set<PipelineRunPhase> skipEverything() {
+        return EnumSet.of(PipelineRunPhase.TRANSCRIBE, PipelineRunPhase.CONTEXT,
+                PipelineRunPhase.DIARIZE, PipelineRunPhase.FRAME_SAMPLE,
+                PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE);
     }
 
     @Test
     void emptyUrlListReturnsSingleRejectionAndDoesNotEnqueue() {
         PipelineIntakeService intake = new PipelineIntakeService(pipelineService);
 
-        CreatePipelineRunResponse response = intake.intake(List.of(), flags(false, false));
+        CreatePipelineRunResponse response = intake.intake(List.of(), skipEnrichment());
 
         assertThat(response.runId()).isNull();
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().status()).isEqualTo(ItemStatus.REJECTED);
         assertThat(response.items().getFirst().reason()).isEqualTo("urls must not be empty");
-        verify(pipelineService, never()).enqueuePipelineRunBatch(anyList(), any(PipelineSkipFlags.class));
+        verify(pipelineService, never()).enqueuePipelineRunBatch(anyList(), anySet());
     }
 
     @Test
     void nullUrlListBehavesLikeEmpty() {
         PipelineIntakeService intake = new PipelineIntakeService(pipelineService);
 
-        CreatePipelineRunResponse response = intake.intake(null, flags(false, false));
+        CreatePipelineRunResponse response = intake.intake(null, skipEnrichment());
 
         assertThat(response.runId()).isNull();
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().reason()).isEqualTo("urls must not be empty");
-        verify(pipelineService, never()).enqueuePipelineRunBatch(anyList(), any(PipelineSkipFlags.class));
+        verify(pipelineService, never()).enqueuePipelineRunBatch(anyList(), anySet());
     }
 
     @Test
     void blankAndNullUrlsRejectedWithoutDispatch() {
         PipelineIntakeService intake = new PipelineIntakeService(pipelineService);
 
-        CreatePipelineRunResponse response = intake.intake(Arrays.asList("", "  ", null), flags(false, false));
+        CreatePipelineRunResponse response = intake.intake(Arrays.asList("", "  ", null), skipEnrichment());
 
         assertThat(response.runId()).isNull();
         assertThat(response.items()).hasSize(3);
         assertThat(response.items()).allMatch(i -> i.status() == ItemStatus.REJECTED);
         assertThat(response.items()).allMatch(i -> "url must not be blank".equals(i.reason()));
-        verify(pipelineService, never()).enqueuePipelineRunBatch(anyList(), any(PipelineSkipFlags.class));
+        verify(pipelineService, never()).enqueuePipelineRunBatch(anyList(), anySet());
     }
 
     @Test
     void nonHttpSchemeRejected() {
         PipelineIntakeService intake = new PipelineIntakeService(pipelineService);
 
-        CreatePipelineRunResponse response = intake.intake(List.of("ftp://example.com/video"), flags(false, false));
+        CreatePipelineRunResponse response = intake.intake(List.of("ftp://example.com/video"), skipEnrichment());
 
         assertThat(response.runId()).isNull();
         assertThat(response.items()).hasSize(1);
@@ -85,7 +96,7 @@ class PipelineIntakeServiceTest {
     void duplicateUrlInRequestIsRejectedSecondTimeOnly() {
         UUID runId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
-        PipelineSkipFlags legacyFlags = flags(false, false);
+        Set<PipelineRunPhase> legacyFlags = skipEnrichment();
         when(pipelineService.enqueuePipelineRunBatch(eq(List.of("https://example.com/v")), eq(legacyFlags)))
                 .thenReturn(new PipelineService.BatchEnqueueResult(
                         runId,
@@ -95,7 +106,7 @@ class PipelineIntakeServiceTest {
 
         CreatePipelineRunResponse response = intake.intake(
                 List.of("https://example.com/v", "https://example.com/v"),
-                flags(false, false)
+                skipEnrichment()
         );
 
         assertThat(response.runId()).isEqualTo(runId.toString());
@@ -111,7 +122,7 @@ class PipelineIntakeServiceTest {
         UUID runId = UUID.randomUUID();
         UUID itemA = UUID.randomUUID();
         UUID itemB = UUID.randomUUID();
-        PipelineSkipFlags legacyFlags = flags(true, true);
+        Set<PipelineRunPhase> legacyFlags = skipEverything();
         when(pipelineService.enqueuePipelineRunBatch(
                 eq(List.of("https://example.com/a", "https://example.com/b")),
                 eq(legacyFlags)))
@@ -132,7 +143,7 @@ class PipelineIntakeServiceTest {
                         "https://example.com/b",
                         "https://example.com/a"
                 ),
-                flags(true, true)
+                skipEverything()
         );
 
         assertThat(response.runId()).isEqualTo(runId.toString());
@@ -153,7 +164,7 @@ class PipelineIntakeServiceTest {
     void trimsLeadingAndTrailingWhitespaceBeforeEnqueuing() {
         UUID runId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
-        PipelineSkipFlags legacyFlags = flags(false, false);
+        Set<PipelineRunPhase> legacyFlags = skipEnrichment();
         when(pipelineService.enqueuePipelineRunBatch(eq(List.of("https://example.com/v")), eq(legacyFlags)))
                 .thenReturn(new PipelineService.BatchEnqueueResult(
                         runId,
@@ -163,11 +174,11 @@ class PipelineIntakeServiceTest {
 
         CreatePipelineRunResponse response = intake.intake(
                 List.of("  https://example.com/v  "),
-                flags(false, false)
+                skipEnrichment()
         );
 
         ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
-        verify(pipelineService).enqueuePipelineRunBatch(captor.capture(), any(PipelineSkipFlags.class));
+        verify(pipelineService).enqueuePipelineRunBatch(captor.capture(), anySet());
         assertThat(captor.getValue()).containsExactly("https://example.com/v");
         assertThat(response.items().getFirst().url()).isEqualTo("https://example.com/v");
     }
@@ -176,7 +187,7 @@ class PipelineIntakeServiceTest {
     void enrichmentSkipFlagsPassThroughToPipelineService() {
         UUID runId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
-        PipelineSkipFlags fullFlags = new PipelineSkipFlags(false, false, false, false, false, false);
+        Set<PipelineRunPhase> fullFlags = Set.of();
         when(pipelineService.enqueuePipelineRunBatch(eq(List.of("https://example.com/v")), eq(fullFlags)))
                 .thenReturn(new PipelineService.BatchEnqueueResult(
                         runId,

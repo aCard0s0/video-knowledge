@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  * <p>Gates on:
  * <ul>
  *   <li>{@code vidingest.knowledge.enabled} (operator master switch)</li>
- *   <li>{@code !ctx.skipKnowledge} (per-run opt-out)</li>
+ *   <li>the run's own opt-out ({@code skipPhases} naming KNOWLEDGE)</li>
  * </ul>
  *
  * <p>The fusion phase (M5) is independent of this gate: fusion runs unconditionally when
@@ -38,7 +38,7 @@ public final class KnowledgePhase implements PipelinePhase {
 
     @Override
     public boolean applies(PipelinePhaseContext ctx) {
-        return knowledgeExtractionConfig.isEnabled() && !ctx.isSkipKnowledge();
+        return knowledgeExtractionConfig.isEnabled() && !ctx.skipped(PipelineRunPhase.KNOWLEDGE);
     }
 
     @Override

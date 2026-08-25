@@ -52,14 +52,24 @@ public class StuckItemReconciler {
 
         int reaped = 0;
         int skippedLive = 0;
+        int skippedLeased = 0;
         for (PipelineRunItem item : stuck) {
             // phase_updated_at only moves on a phase *transition*, so a phase that legitimately
             // runs for hours (KNOWLEDGE and DIARIZE both do on a long video) looks identical to
             // abandoned work. Failing a live item is not cosmetic: the operator sees FAILED and
             // retries, and a second worker then wipes-and-repopulates the same video alongside
-            // the first. Anything this JVM is still executing is by definition not abandoned.
+            // the first.
+            //
+            // Two answers, because they fail in opposite directions. The lease sees every
+            // instance's work but goes stale if this process stops heartbeating; the in-flight
+            // set cannot see other instances but is never wrong about this one. An item is
+            // abandoned only when neither claims it.
             if (pipelineService.isItemInFlight(item.getId())) {
                 skippedLive++;
+                continue;
+            }
+            if (RunItemLeaseService.isLive(item.getLeaseExpiresAt())) {
+                skippedLeased++;
                 continue;
             }
 
@@ -78,10 +88,11 @@ public class StuckItemReconciler {
             }
         }
 
-        if (reaped > 0 || skippedLive > 0) {
+        if (reaped > 0 || skippedLive > 0 || skippedLeased > 0) {
             log.warn("Reconciler swept {} items IN_PROGRESS for more than {}: {} marked FAILED, "
-                            + "{} left alone because this JVM is still running them",
-                    stuck.size(), staleAfter, reaped, skippedLive);
+                            + "{} left alone because this JVM is still running them, "
+                            + "{} because a live lease holds them",
+                    stuck.size(), staleAfter, reaped, skippedLive, skippedLeased);
         }
         pipelineMetrics.refreshInflightGauge();
     }

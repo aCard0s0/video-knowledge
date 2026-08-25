@@ -16,10 +16,10 @@ import org.springframework.stereotype.Component;
  * <p>Gates on:
  * <ul>
  *   <li>{@code vidingest.frames.enabled} (operator master switch)</li>
- *   <li>{@code !ctx.skipFrames} (per-run opt-out from REST/MCP/CLI)</li>
+ *   <li>the run's own opt-out ({@code skipPhases} naming FRAME_SAMPLE)</li>
  * </ul>
- * Independent of {@code skipTranscription} — frames are useful for OCR / vision regardless
- * of whether the audio gets transcribed.
+ * Independent of TRANSCRIBE — frames are useful for OCR / vision regardless of whether the
+ * audio gets transcribed.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,7 +36,7 @@ public final class FrameSamplePhase implements PipelinePhase {
 
     @Override
     public boolean applies(PipelinePhaseContext ctx) {
-        return frameSamplingConfig.isEnabled() && !ctx.isSkipFrames();
+        return frameSamplingConfig.isEnabled() && !ctx.skipped(PipelineRunPhase.FRAME_SAMPLE);
     }
 
     @Override

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,12 +82,8 @@ class FusePhaseTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "https://example.com/v",
-                /* skipTranscription */ false,
-                /* skipContext       */ false,
-                /* skipDiarize       */ true,
-                /* skipFrames        */ true,
-                /* skipOcr           */ true,
-                /* skipKnowledge     */ true
+                EnumSet.of(PipelineRunPhase.DIARIZE, PipelineRunPhase.FRAME_SAMPLE,
+                        PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE)
         );
     }
 }

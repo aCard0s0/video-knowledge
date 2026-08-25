@@ -34,7 +34,7 @@ public class KnowledgeExtractionConfig {
 
     /**
      * Master switch. When false the {@code KnowledgePhase} short-circuits regardless of the
-     * per-run {@code skipKnowledge} flag.
+     * run's own {@code skipPhases} opt-out.
      */
     private boolean enabled = false;
 

@@ -26,7 +26,7 @@ public class DiarizationConfig {
 
     /**
      * Master switch. When false the {@code DiarizePhase} short-circuits regardless of
-     * the per-run {@code skipDiarize} flag.
+     * the run's own {@code skipPhases} opt-out.
      */
     private boolean enabled = false;
 

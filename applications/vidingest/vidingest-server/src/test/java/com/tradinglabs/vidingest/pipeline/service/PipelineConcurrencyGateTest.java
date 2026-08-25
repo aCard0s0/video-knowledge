@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,9 @@ import static org.mockito.Mockito.when;
 class PipelineConcurrencyGateTest {
 
     private static final int PERMITS = 2;
+
+    @Mock
+    private RunItemLeaseService runItemLeaseService;
     private static final int ITEMS = 4;
 
     @Mock
@@ -120,9 +124,9 @@ class PipelineConcurrencyGateTest {
         PipelineService service = new PipelineService(
                 videoRepository, runLifecycle, runItemLifecycleService, runAggregationService,
                 pipelineRunItemRepository, pipelinePhaseRegistry, pipelineErrorClassifier,
-                pipelineMetrics, executor, PERMITS);
+                pipelineMetrics, runItemLeaseService, executor, PERMITS);
 
-        service.enqueuePipelineRunBatch(urls, PipelineService.PipelineSkipFlags.defaults());
+        service.enqueuePipelineRunBatch(urls, Set.of());
 
         // The permits get handed out...
         assertThat(firstBatchAdmitted.await(5, TimeUnit.SECONDS))

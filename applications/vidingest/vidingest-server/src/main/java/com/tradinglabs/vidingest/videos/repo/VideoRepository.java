@@ -19,8 +19,6 @@ public interface VideoRepository extends JpaRepository<Video, UUID>, JpaSpecific
 
     List<Video> findBySourceAndSourceVideoIdIn(String source, Collection<String> sourceVideoIds);
 
-    List<Video> findAllByPipelineRun_Id(UUID pipelineRunId);
-
     List<Video> findByPipelineRun_IdIn(Collection<UUID> pipelineRunIds);
 
     /**

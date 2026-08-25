@@ -1,10 +1,10 @@
 package com.tradinglabs.vidingest.features.ingestion.web;
 
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.commons.VidingestApiExceptionHandler;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
 import com.tradinglabs.vidingest.pipeline.service.PipelineService;
-import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunNotFoundException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunItemNotFoundException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunRetryNotAllowedException;
@@ -23,10 +23,13 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -36,9 +39,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({VidingestApiExceptionHandler.class, RunSummaryMapper.class})
 class PipelinesApiControllerWebMvcTest {
 
-    private static final PipelineSkipFlags DEFAULT_SKIP_ALL = new PipelineSkipFlags(
-            true, true, true, true, true, true
-    );
+    private static final Set<PipelineRunPhase> DEFAULT_SKIP_ALL = EnumSet.of(
+            PipelineRunPhase.TRANSCRIBE, PipelineRunPhase.CONTEXT, PipelineRunPhase.DIARIZE,
+            PipelineRunPhase.FRAME_SAMPLE, PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE);
 
     @Autowired
     private MockMvc mockMvc;
@@ -57,6 +60,38 @@ class PipelinesApiControllerWebMvcTest {
     private RunDetailsMapper runDetailsMapper;
     @MockitoBean
     private PipelineAuditQueryService pipelineAuditQueryService;
+
+    @Test
+    void createRejectsABodyStillUsingTheOldBooleanFlags() throws Exception {
+        // The six skipTranscription/skipDiarize/... booleans became one skipPhases list. Jackson
+        // ignores unknown properties by default, which meant an un-updated client got a 202 and
+        // a run that executed every phase it had asked to skip — its intent silently discarded.
+        // spring.jackson.deserialization.fail-on-unknown-properties turns that into a 400.
+        mockMvc.perform(post("/api/v1/pipelines")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"urls":["https://example.com/video"],"skipTranscription":true,"skipContext":true}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        org.hamcrest.Matchers.containsString("skipTranscription")));
+
+        verifyNoInteractions(pipelineIntakeService);
+    }
+
+    @Test
+    void createRejectsSkippingAMandatoryPhase() throws Exception {
+        mockMvc.perform(post("/api/v1/pipelines")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"urls":["https://example.com/video"],"skipPhases":["DOWNLOAD"]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        org.hamcrest.Matchers.containsString("Unsupported phase: DOWNLOAD")));
+
+        verifyNoInteractions(pipelineIntakeService);
+    }
 
     @Test
     void createPartiallyAcceptsValidAndInvalidUrls() throws Exception {
@@ -86,7 +121,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"urls":["https://example.com/video","ftp://invalid"],"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"urls":["https://example.com/video","ftp://invalid"],"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.runId").value(runId.toString()))
@@ -115,7 +150,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"urls":["ftp://invalid"],"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"urls":["ftp://invalid"],"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.items.length()").value(1))
@@ -131,7 +166,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines/{pipelineId}/retry", missingPipelineId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.title").value("Not found"))
@@ -147,7 +182,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines/{pipelineId}/retry", pipelineId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("Conflict"))
@@ -173,7 +208,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines/{runId}/items/{itemId}/retry", runId, itemId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.runId").value(runId.toString()))
@@ -192,7 +227,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines/{runId}/items/{itemId}/retry", missingRunId, itemId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.title").value("Not found"))
@@ -209,7 +244,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines/{runId}/items/{itemId}/retry", runId, missingItemId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.title").value("Not found"))
@@ -226,7 +261,7 @@ class PipelinesApiControllerWebMvcTest {
         mockMvc.perform(post("/api/v1/pipelines/{runId}/items/{itemId}/retry", runId, itemId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("Conflict"))

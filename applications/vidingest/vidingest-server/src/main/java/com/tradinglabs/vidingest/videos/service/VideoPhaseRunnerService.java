@@ -5,6 +5,7 @@ import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhase;
 import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhaseContext;
 import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhaseRegistry;
+import com.tradinglabs.vidingest.pipeline.util.SkipPhasesParser;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import com.tradinglabs.vidingest.videos.domain.VideoStatus;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
@@ -12,11 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.EnumSet;
-import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Dispatches per-phase reruns for a video that has already been ingested. Phases are looked up
@@ -53,20 +50,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class VideoPhaseRunnerService {
-
-    /**
-     * Phases reachable without a pipeline run. Everything before TRANSCRIBE consumes the source
-     * URL rather than the persisted video row.
-     */
-    private static final Set<PipelineRunPhase> RERUNNABLE = EnumSet.of(
-            PipelineRunPhase.TRANSCRIBE,
-            PipelineRunPhase.DIARIZE,
-            PipelineRunPhase.FRAME_SAMPLE,
-            PipelineRunPhase.OCR,
-            PipelineRunPhase.FUSE,
-            PipelineRunPhase.KNOWLEDGE,
-            PipelineRunPhase.CONTEXT
-    );
 
     private final VideoQueryService videoQueryService;
     private final VideoRepository videoRepository;
@@ -119,22 +102,9 @@ public class VideoPhaseRunnerService {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("phase path variable is required");
         }
-        String normalised = raw.trim().toUpperCase(Locale.ROOT).replace('-', '_');
-        PipelineRunPhase phase;
-        try {
-            phase = PipelineRunPhase.valueOf(normalised);
-        } catch (IllegalArgumentException e) {
-            throw unsupported(raw);
-        }
-        if (!RERUNNABLE.contains(phase)) {
-            throw unsupported(raw);
-        }
-        return phase;
-    }
-
-    private static IllegalArgumentException unsupported(String raw) {
-        return new IllegalArgumentException("Unsupported phase: " + raw + ". Allowed: "
-                + RERUNNABLE.stream().map(Enum::name).collect(Collectors.joining(", ")));
+        // Same question the run opt-out list asks, answered by the same parser: an optional
+        // phase is exactly one whose input is the persisted video row.
+        return SkipPhasesParser.parseOptional(raw.trim());
     }
 
     private static long elapsedMs(long startNs) {

@@ -27,7 +27,9 @@ import static org.mockito.Mockito.when;
  * runs for hours — KNOWLEDGE and DIARIZE both do on a long video — is indistinguishable from
  * abandoned work by timestamp alone. Failing a live item is not cosmetic: the operator sees
  * FAILED, retries, and a second worker wipes-and-repopulates the same video alongside the
- * first. The reconciler therefore asks whether this JVM is still running the item.
+ * first. The reconciler therefore asks two questions that fail in opposite directions: the
+ * in-flight set (blind to other instances, never wrong about this one) and the lease (sees
+ * every instance, goes stale if this one stops heartbeating).
  */
 @ExtendWith(MockitoExtension.class)
 class StuckItemReconcilerTest {
@@ -59,6 +61,38 @@ class StuckItemReconcilerTest {
 
         verify(runItemLifecycleService, never()).markFailed(any(), any(), any());
         verify(pipelineMetrics, never()).incrementFailed(any());
+    }
+
+    @Test
+    void leavesItemsAloneWhileAnotherInstanceHoldsALiveLease() {
+        // Not in *this* JVM's in-flight set — the whole point. Before the lease, a second
+        // instance reaped the first instance's live work and the operator's retry then ran a
+        // second worker over the same video.
+        PipelineRunItem item = staleItem();
+        item.setLeaseOwner("4242@other-host");
+        item.setLeaseExpiresAt(LocalDateTime.now().plusMinutes(5));
+        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+                .thenReturn(List.of(item));
+        when(pipelineService.isItemInFlight(item.getId())).thenReturn(false);
+
+        reconciler().reconcileStuckItems();
+
+        verify(runItemLifecycleService, never()).markFailed(any(), any(), any());
+    }
+
+    @Test
+    void reapsItemsWhoseLeaseHasExpired() {
+        // An owner that stopped heartbeating is an owner that died.
+        PipelineRunItem item = staleItem();
+        item.setLeaseOwner("4242@other-host");
+        item.setLeaseExpiresAt(LocalDateTime.now().minusMinutes(30));
+        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+                .thenReturn(List.of(item));
+        when(pipelineService.isItemInFlight(item.getId())).thenReturn(false);
+
+        reconciler().reconcileStuckItems();
+
+        verify(runItemLifecycleService).markFailed(eq(item.getId()), eq(PipelineErrorCode.UNEXPECTED), any());
     }
 
     @Test

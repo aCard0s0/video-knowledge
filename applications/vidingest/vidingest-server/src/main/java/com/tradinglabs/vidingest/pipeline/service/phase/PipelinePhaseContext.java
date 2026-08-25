@@ -1,21 +1,23 @@
 package com.tradinglabs.vidingest.pipeline.service.phase;
 
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Mutable carrier passed through {@link PipelinePhase} executions for a single run item.
  * Not thread-safe: only one phase runs against a given context at a time.
  *
- * <p>M1 of the knowledge-extraction expansion adds the {@code skipDiarize / skipFrames /
- * skipOcr / skipKnowledge} flags. The corresponding phases are wired up but no-op in M1
- * (always return {@code applies(ctx) = false}); the flags are plumbed end-to-end now so
- * later milestones can flip them on without further signature changes.
+ * <p>{@code skipPhases} names the phases this run opts out of. It replaced one boolean per
+ * optional phase, which had grown to six positional flags threaded through the REST records,
+ * the MCP tools and the CLI — adding a phase meant editing all of them, and the flag order was
+ * identical at every construction site, so inserting one silently reordered the rest.
  */
 @Getter
 @RequiredArgsConstructor
@@ -24,12 +26,7 @@ public class PipelinePhaseContext {
     private final UUID runId;
     private final UUID itemId;
     private final String videoUrl;
-    private final boolean skipTranscription;
-    private final boolean skipContext;
-    private final boolean skipDiarize;
-    private final boolean skipFrames;
-    private final boolean skipOcr;
-    private final boolean skipKnowledge;
+    private final Set<PipelineRunPhase> skipPhases;
 
     @Setter
     private Map<String, Object> metadata;
@@ -49,24 +46,18 @@ public class PipelinePhaseContext {
     @Setter
     private Integer rowsAffected;
 
-    /**
-     * Convenience constructor for callers that only know about the original two skip flags.
-     * Defaults the new enrichment skip flags to {@code true} (skip) so behaviour matches the
-     * pre-M1 pipeline exactly.
-     */
-    public PipelinePhaseContext(UUID runId, UUID itemId, String videoUrl,
-                                boolean skipTranscription, boolean skipContext) {
-        this(runId, itemId, videoUrl, skipTranscription, skipContext, true, true, true, true);
+    /** Whether this run opted out of {@code phase}. Non-optional phases can never be skipped. */
+    public boolean skipped(PipelineRunPhase phase) {
+        return skipPhases.contains(phase);
     }
 
     /**
-     * Context for a single-phase rerun against an already-persisted video. There is no run,
-     * no run item and no source URL — the phase is invoked directly rather than through
-     * {@code applies(ctx)}, so the skip flags are irrelevant and set to "do not skip".
+     * Context for a single-phase rerun against an already-persisted video. There is no run, no
+     * run item and no source URL — the phase is invoked directly rather than through
+     * {@code applies(ctx)}, so nothing is skipped.
      */
     public static PipelinePhaseContext forRerun(Video video) {
-        PipelinePhaseContext ctx = new PipelinePhaseContext(
-                null, null, null, false, false, false, false, false, false);
+        PipelinePhaseContext ctx = new PipelinePhaseContext(null, null, null, Set.of());
         ctx.setVideo(video);
         return ctx;
     }

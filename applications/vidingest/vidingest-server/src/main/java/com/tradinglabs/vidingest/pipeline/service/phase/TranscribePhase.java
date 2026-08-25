@@ -21,11 +21,6 @@ public final class TranscribePhase implements PipelinePhase {
     }
 
     @Override
-    public boolean applies(PipelinePhaseContext ctx) {
-        return !ctx.isSkipTranscription();
-    }
-
-    @Override
     public void execute(PipelinePhaseContext ctx) throws Exception {
         Video video = ctx.getVideo();
         video.setStatus(VideoStatus.TRANSCRIBING);

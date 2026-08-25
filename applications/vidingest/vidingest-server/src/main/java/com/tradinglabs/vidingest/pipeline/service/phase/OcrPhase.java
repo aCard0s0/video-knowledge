@@ -15,9 +15,9 @@ import org.springframework.stereotype.Component;
  * <p>Gates on:
  * <ul>
  *   <li>{@code vidingest.ocr.enabled} (operator master switch)</li>
- *   <li>{@code !ctx.skipOcr} (per-run opt-out from REST/MCP/CLI)</li>
- *   <li>{@code !ctx.skipFrames} — there's nothing to OCR if the frame-sampling phase was
- *       skipped, so we skip OCR too rather than running it against an empty frame set</li>
+ *   <li>the run's own opt-out ({@code skipPhases} naming OCR)</li>
+ *   <li>FRAME_SAMPLE not being skipped — there's nothing to OCR if frame sampling did not
+ *       run, so we skip OCR too rather than working through an empty frame set</li>
  * </ul>
  */
 @Component
@@ -36,8 +36,8 @@ public final class OcrPhase implements PipelinePhase {
     @Override
     public boolean applies(PipelinePhaseContext ctx) {
         return ocrConfig.isEnabled()
-                && !ctx.isSkipOcr()
-                && !ctx.isSkipFrames();
+                && !ctx.skipped(PipelineRunPhase.OCR)
+                && !ctx.skipped(PipelineRunPhase.FRAME_SAMPLE);
     }
 
     @Override

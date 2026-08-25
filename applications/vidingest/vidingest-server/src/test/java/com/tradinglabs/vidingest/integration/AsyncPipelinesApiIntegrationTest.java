@@ -89,7 +89,7 @@ class AsyncPipelinesApiIntegrationTest extends BaseVidingestIntegrationTest {
         HttpClient client = HttpClient.newHttpClient();
         URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/pipelines/" + pipelineId + "/retry");
         String body = """
-                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
 
         HttpRequest req = HttpRequest.newBuilder(uri)
@@ -111,7 +111,7 @@ class AsyncPipelinesApiIntegrationTest extends BaseVidingestIntegrationTest {
         HttpClient client = HttpClient.newHttpClient();
         URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/pipelines");
         String body = """
-                {"urls":["https://example.com/video","ftp://invalid"],"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"urls":["https://example.com/video","ftp://invalid"],"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
 
         HttpRequest req = HttpRequest.newBuilder(uri)
@@ -153,8 +153,8 @@ class AsyncPipelinesApiIntegrationTest extends BaseVidingestIntegrationTest {
         HttpClient client = HttpClient.newHttpClient();
         URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/pipelines");
         String body = """
-                {"urls":["%s"],"skipTranscription":%s,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
-                """.formatted(url, skipTranscription);
+                {"urls":["%s"],"skipPhases":[%s"CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
+                """.formatted(url, skipTranscription ? "\"TRANSCRIBE\"," : "");
 
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header("Content-Type", "application/json")

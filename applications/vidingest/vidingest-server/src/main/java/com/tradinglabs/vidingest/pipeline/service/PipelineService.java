@@ -4,6 +4,7 @@ import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineErrorCode;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRun;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunRetryNotAllowedException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunItemNotFoundException;
@@ -19,6 +20,7 @@ import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -40,6 +42,7 @@ public class PipelineService {
     private final PipelinePhaseRegistry pipelinePhaseRegistry;
     private final PipelineErrorClassifier pipelineErrorClassifier;
     private final PipelineMetrics pipelineMetrics;
+    private final RunItemLeaseService runItemLeaseService;
     private final ExecutorService ingestionExecutor;
 
     /**
@@ -66,6 +69,7 @@ public class PipelineService {
             PipelinePhaseRegistry pipelinePhaseRegistry,
             PipelineErrorClassifier pipelineErrorClassifier,
             PipelineMetrics pipelineMetrics,
+            RunItemLeaseService runItemLeaseService,
             @Qualifier("vidingestIngestionExecutor") ExecutorService ingestionExecutor,
             @Value("${vidingest.ingestion.concurrency:4}") int ingestionConcurrency
     ) {
@@ -77,6 +81,7 @@ public class PipelineService {
         this.pipelinePhaseRegistry = pipelinePhaseRegistry;
         this.pipelineErrorClassifier = pipelineErrorClassifier;
         this.pipelineMetrics = pipelineMetrics;
+        this.runItemLeaseService = runItemLeaseService;
         this.ingestionExecutor = ingestionExecutor;
         this.ingestionGate = new Semaphore(ingestionConcurrency);
     }
@@ -87,25 +92,7 @@ public class PipelineService {
     public record BatchEnqueueResult(UUID runId, List<EnqueuedItem> items) {
     }
 
-    /**
-     * Bundles the enrichment skip flags so signatures don't multiply as more phases land.
-     */
-    public record PipelineSkipFlags(
-            boolean skipTranscription,
-            boolean skipContext,
-            boolean skipDiarize,
-            boolean skipFrames,
-            boolean skipOcr,
-            boolean skipKnowledge
-    ) {
-        public static PipelineSkipFlags defaults() {
-            return new PipelineSkipFlags(false, false, true, true, true, true);
-        }
-    }
-
-    // --- Full-flag entry points (used by intake + retry from M1 onwards) ----------------------
-
-    public BatchEnqueueResult enqueuePipelineRunBatch(List<String> urls, PipelineSkipFlags flags) {
+    public BatchEnqueueResult enqueuePipelineRunBatch(List<String> urls, Set<PipelineRunPhase> skipPhases) {
         if (urls == null || urls.isEmpty()) {
             throw new IllegalArgumentException("urls must not be empty");
         }
@@ -114,11 +101,11 @@ public class PipelineService {
         PipelineRun run = runLifecycle.createPipelineRun(previewUrl);
         List<PipelineRunItem> items = runItemLifecycleService.createItems(run.getId(), urls);
 
-        log.info("Pipeline run started: runId={}, items={}, urls={}, skipFlags={}",
-                run.getId(), items.size(), urls.size(), flags);
+        log.info("Pipeline run started: runId={}, items={}, urls={}, skipPhases={}",
+                run.getId(), items.size(), urls.size(), skipPhases);
 
         for (var item : items) {
-            enqueueItem(run.getId(), item.getId(), item.getUrl(), flags);
+            enqueueItem(run.getId(), item.getId(), item.getUrl(), skipPhases);
         }
         pipelineMetrics.incrementCreated(items.size());
         pipelineMetrics.refreshInflightGauge();
@@ -129,7 +116,7 @@ public class PipelineService {
         return new BatchEnqueueResult(run.getId(), enqueued);
     }
 
-    public CreatePipelineRunResponse enqueueRetryBatch(UUID runId, PipelineSkipFlags flags) {
+    public CreatePipelineRunResponse enqueueRetryBatch(UUID runId, Set<PipelineRunPhase> skipPhases) {
         List<PipelineRunItem> items = runItemLifecycleService.listItems(runId);
         if (items.isEmpty()) {
             PipelineRun run = runLifecycle.prepareRetry(runId);
@@ -145,7 +132,7 @@ public class PipelineService {
 
             var created = runItemLifecycleService.createItems(runId, List.of(url));
             var item = created.getFirst();
-            enqueueItem(runId, item.getId(), url, flags);
+            enqueueItem(runId, item.getId(), url, skipPhases);
             return new CreatePipelineRunResponse(runId.toString(), List.of(new CreatePipelineRunResponse.ItemResult(
                     url,
                     CreatePipelineRunResponse.ItemStatus.ACCEPTED,
@@ -168,7 +155,7 @@ public class PipelineService {
                     }
 
                     runItemLifecycleService.prepareRetry(itemId);
-                    enqueueItem(runId, itemId, i.getUrl(), flags);
+                    enqueueItem(runId, itemId, i.getUrl(), skipPhases);
                     return new CreatePipelineRunResponse.ItemResult(i.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemIdStr, null);
                 })
                 .toList();
@@ -176,7 +163,7 @@ public class PipelineService {
         return new CreatePipelineRunResponse(runId.toString(), results);
     }
 
-    public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, PipelineSkipFlags flags) {
+    public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, Set<PipelineRunPhase> skipPhases) {
         PipelineRun run = runLifecycle.getPipelineRun(runId);
 
         PipelineRunItem item = pipelineRunItemRepository.findByIdAndPipelineRun_Id(itemId, runId)
@@ -195,16 +182,16 @@ public class PipelineService {
 
         runLifecycle.prepareRetry(runId);
         runItemLifecycleService.prepareRetry(itemId);
-        enqueueItem(runId, itemId, item.getUrl(), flags);
+        enqueueItem(runId, itemId, item.getUrl(), skipPhases);
         return new CreatePipelineRunResponse(runId.toString(), List.of(
                 new CreatePipelineRunResponse.ItemResult(item.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemIdStr, null)
         ));
     }
 
-    private void enqueueItem(UUID runId, UUID itemId, String videoUrl, PipelineSkipFlags flags) {
+    private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
         ingestionExecutor.submit(() -> {
             try {
-                runPipelineRunItem(runId, itemId, videoUrl, flags);
+                runPipelineRunItem(runId, itemId, videoUrl, skipPhases);
             } catch (Throwable t) {
                 // runPipelineRunItem handles its own failures, but the recovery path can throw
                 // too (markFailed hits getReferenceById on a row that may be gone). The Future
@@ -215,18 +202,8 @@ public class PipelineService {
         });
     }
 
-    private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, PipelineSkipFlags flags) {
-        PipelinePhaseContext ctx = new PipelinePhaseContext(
-                runId,
-                itemId,
-                videoUrl,
-                flags.skipTranscription(),
-                flags.skipContext(),
-                flags.skipDiarize(),
-                flags.skipFrames(),
-                flags.skipOcr(),
-                flags.skipKnowledge()
-        );
+    private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
+        PipelinePhaseContext ctx = new PipelinePhaseContext(runId, itemId, videoUrl, skipPhases);
         try {
             ingestionGate.acquire();
         } catch (InterruptedException e) {
@@ -235,6 +212,14 @@ public class PipelineService {
             return;
         }
         inFlightItemIds.add(itemId);
+        // Claimed after the gate, so a queued item is never counted as running. Best-effort:
+        // losing the lease write costs us reap protection, not correctness, and failing the
+        // item here would be worse than proceeding without it.
+        try {
+            runItemLeaseService.acquire(itemId);
+        } catch (Exception e) {
+            log.warn("Could not acquire lease for item {}: {}", itemId, e.getMessage());
+        }
         // Started after the gate so elapsedMs stays execution time, not queue wait.
         long itemStartNs = System.nanoTime();
         try {
@@ -264,17 +249,50 @@ public class PipelineService {
             pipelineMetrics.incrementFailed(code);
         } finally {
             inFlightItemIds.remove(itemId);
+            try {
+                runItemLeaseService.release(itemId);
+            } catch (Exception e) {
+                log.warn("Could not release lease for item {}: {}", itemId, e.getMessage());
+            }
             ingestionGate.release();
             pipelineMetrics.refreshInflightGauge();
         }
     }
 
     /**
-     * Whether this JVM is currently executing phases for {@code itemId}. Items abandoned by a
-     * previous process are absent, which is exactly what the reconciler should reap.
+     * Whether this JVM is currently executing phases for {@code itemId}. Narrower than the
+     * lease — it says nothing about other instances — but it is the one answer that stays right
+     * even if the lease heartbeat has stalled, so the reconciler consults both.
      */
     public boolean isItemInFlight(UUID itemId) {
         return inFlightItemIds.contains(itemId);
+    }
+
+    /**
+     * Keeps this instance's leases alive while it is executing items. Lives here because this is
+     * where both halves already are — the in-flight set and the lease service. The interval must
+     * stay well below {@code vidingest.lease.ttl}; the defaults leave a 5x margin, so several
+     * consecutive misses are needed before live work looks abandoned.
+     */
+    @Scheduled(fixedDelayString = "${vidingest.lease.heartbeatMs:120000}",
+            initialDelayString = "${vidingest.lease.heartbeatMs:120000}")
+    public void renewLeases() {
+        Set<UUID> inFlight = Set.copyOf(inFlightItemIds);
+        if (inFlight.isEmpty()) {
+            return;
+        }
+        try {
+            int renewed = runItemLeaseService.renew(inFlight);
+            if (renewed < inFlight.size()) {
+                // Someone else owns an item we think we are running, or the row is gone. Worth
+                // seeing: it is the shape a split brain or a premature reap would take.
+                log.warn("Lease heartbeat renewed {} of {} in-flight items", renewed, inFlight.size());
+            }
+        } catch (Exception e) {
+            // A heartbeat failure must not kill the scheduler thread; the next tick retries and
+            // the TTL margin covers several misses.
+            log.error("Lease heartbeat failed: {}", e.getMessage(), e);
+        }
     }
 
     private void executePhases(PipelinePhaseContext ctx) throws Exception {

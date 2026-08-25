@@ -26,7 +26,7 @@ public final class ContextPhase implements PipelinePhase {
 
     @Override
     public boolean applies(PipelinePhaseContext ctx) {
-        return !ctx.isSkipContext() && searchConfig.isSemanticEnabled();
+        return !ctx.skipped(PipelineRunPhase.CONTEXT) && searchConfig.isSemanticEnabled();
     }
 
     @Override

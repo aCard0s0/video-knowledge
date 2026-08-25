@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -43,6 +44,19 @@ public class VidingestApiExceptionHandler {
         }
         pd.setProperty("fields", fields);
         return pd;
+    }
+
+    /**
+     * A body Jackson cannot bind: malformed JSON, a wrong type, or — since request bodies are
+     * strict — a property this API does not have. That is a client error, so it must not fall
+     * through to the {@code Exception} catch-all and answer 500.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleUnreadableBody(HttpMessageNotReadableException e, HttpServletRequest request) {
+        // Jackson's own message already names the offending property and lists the known ones,
+        // which is exactly what a caller sending a removed field needs to see.
+        return problem(HttpStatus.BAD_REQUEST, "Bad request",
+                "Request body could not be read: " + e.getMostSpecificCause().getMessage(), request, e);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -33,6 +33,22 @@ public class RunAggregationService {
         pipelineRunRepository.save(run);
     }
 
+    /**
+     * Condemns a run outright, bypassing the item-derived status. Only the startup reconciler
+     * uses this: a run still {@code IN_PROGRESS} after {@link #refreshRunState} has re-derived
+     * it has items that no live process owns, and no later event will move it.
+     */
+    @Transactional
+    public void markFailed(UUID runId, PipelineErrorCode errorCode, String errorMessage) {
+        PipelineRun run = pipelineRunRepository.findById(runId)
+                .orElseThrow(() -> new RunNotFoundException(runId));
+        run.setStatus(RunStatus.FAILED);
+        run.setError(errorMessage);
+        run.setErrorCode(errorCode);
+        run.setPhase(PipelineRunPhase.DONE);
+        pipelineRunRepository.save(run);
+    }
+
     @Transactional
     public void updateRunPhase(UUID runId, PipelineRunPhase phase) {
         PipelineRun run = pipelineRunRepository.getReferenceById(runId);

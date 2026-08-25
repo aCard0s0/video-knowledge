@@ -6,7 +6,6 @@ import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse.ItemResult;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse.ItemStatus;
 import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
-import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
 import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryResult;
 import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryService;
 import org.junit.jupiter.api.Test;
@@ -25,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -73,7 +73,7 @@ class YoutubeChannelPipelinesApiIntegrationTest extends BaseVidingestIntegration
                 "https://www.youtube.com/watch?v=vid001",
                 "https://www.youtube.com/watch?v=vid002"
         );
-        when(pipelineIntakeService.intake(eq(expectedUrls), any(PipelineSkipFlags.class)))
+        when(pipelineIntakeService.intake(eq(expectedUrls), anySet()))
                 .thenReturn(new CreatePipelineRunResponse(
                         "run-123",
                         List.of(
@@ -111,7 +111,7 @@ class YoutubeChannelPipelinesApiIntegrationTest extends BaseVidingestIntegration
 
         URI pipelinesUri = URI.create("http://localhost:" + port + "/vidingest/api/v1/youtube/channels/" + channelId + "/pipelines");
         String pipelinesBody = """
-                {"youtubeVideoIds":["vid001","vid002"],"skipTranscription":true,"skipContext":false,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"youtubeVideoIds":["vid001","vid002"],"skipPhases":["TRANSCRIBE","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
         HttpResponse<String> pipelinesRes = client.send(
                 HttpRequest.newBuilder(pipelinesUri)
@@ -126,7 +126,7 @@ class YoutubeChannelPipelinesApiIntegrationTest extends BaseVidingestIntegration
         assertThat(res.get("runId").asText()).isEqualTo("run-123");
         assertThat(res.get("items").size()).isEqualTo(2);
 
-        verify(pipelineIntakeService).intake(eq(expectedUrls), any(PipelineSkipFlags.class));
+        verify(pipelineIntakeService).intake(eq(expectedUrls), anySet());
     }
 
     @Test
@@ -168,7 +168,7 @@ class YoutubeChannelPipelinesApiIntegrationTest extends BaseVidingestIntegration
 
         URI pipelinesUri = URI.create("http://localhost:" + port + "/vidingest/api/v1/youtube/channels/" + channelId + "/pipelines");
         String pipelinesBody = """
-                {"youtubeVideoIds":["vid999"],"skipTranscription":false,"skipContext":false,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"youtubeVideoIds":["vid999"],"skipPhases":["DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
         HttpResponse<String> pipelinesRes = client.send(
                 HttpRequest.newBuilder(pipelinesUri)
@@ -183,7 +183,7 @@ class YoutubeChannelPipelinesApiIntegrationTest extends BaseVidingestIntegration
         assertThat(pd.get("title").asText()).isEqualTo("Bad request");
         assertThat(pd.get("detail").asText()).contains("Unknown youtubeVideoIds");
 
-        verify(pipelineIntakeService, never()).intake(anyList(), any(PipelineSkipFlags.class));
+        verify(pipelineIntakeService, never()).intake(anyList(), anySet());
     }
 
     @Test
@@ -205,7 +205,7 @@ class YoutubeChannelPipelinesApiIntegrationTest extends BaseVidingestIntegration
 
         URI pipelinesUri = URI.create("http://localhost:" + port + "/vidingest/api/v1/youtube/channels/" + channelId + "/pipelines");
         String pipelinesBody = """
-                {"youtubeVideoIds":[],"skipTranscription":false,"skipContext":false,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"youtubeVideoIds":[],"skipPhases":["DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
         HttpResponse<String> pipelinesRes = client.send(
                 HttpRequest.newBuilder(pipelinesUri)

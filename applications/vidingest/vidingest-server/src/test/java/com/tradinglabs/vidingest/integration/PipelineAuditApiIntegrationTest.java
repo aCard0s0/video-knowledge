@@ -43,7 +43,7 @@ class PipelineAuditApiIntegrationTest extends BaseVidingestIntegrationTest {
         HttpClient client = HttpClient.newHttpClient();
         URI createUri = URI.create("http://localhost:" + port + "/vidingest/api/v1/pipelines");
         String createBody = """
-                {"urls":["https://example.com/video"],"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"urls":["https://example.com/video"],"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
         HttpResponse<String> createRes = client.send(
                 HttpRequest.newBuilder(createUri)
@@ -85,7 +85,7 @@ class PipelineAuditApiIntegrationTest extends BaseVidingestIntegrationTest {
 
         URI retryUri = URI.create("http://localhost:" + port + "/vidingest/api/v1/pipelines/" + runId + "/items/" + itemId + "/retry");
         String retryBody = """
-                {"skipTranscription":true,"skipContext":true,"skipDiarize":true,"skipFrames":true,"skipOcr":true,"skipKnowledge":true}
+                {"skipPhases":["TRANSCRIBE","CONTEXT","DIARIZE","FRAME_SAMPLE","OCR","KNOWLEDGE"]}
                 """;
         HttpResponse<String> retryRes = client.send(
                 HttpRequest.newBuilder(retryUri)

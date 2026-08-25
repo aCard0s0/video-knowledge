@@ -14,7 +14,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -27,21 +26,6 @@ public class VideoQueryService {
     private static final int MAX_PAGE_SIZE = 200;
 
     private final VideoRepository videoRepository;
-
-    @Transactional(readOnly = true)
-    public List<Video> listAll() {
-        return videoRepository.findAll(DEFAULT_SORT);
-    }
-
-    @Transactional(readOnly = true)
-    public List<Video> list(String status, String source, String channelName, Integer page, Integer size) {
-        Specification<Video> spec = VideoSpecifications.filter(parseStatus(status), source, channelName);
-        boolean paged = page != null || size != null;
-        if (paged) {
-            return videoRepository.findAll(spec, pageable(page, size)).getContent();
-        }
-        return videoRepository.findAll(spec, DEFAULT_SORT);
-    }
 
     @Transactional(readOnly = true)
     public Page<Video> listPage(String status, String source, String channelName, Integer page, Integer size) {

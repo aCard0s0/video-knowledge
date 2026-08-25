@@ -16,8 +16,12 @@ public sealed interface PipelinePhase
 
     PipelineRunPhase phase();
 
+    /**
+     * Whether this phase runs for the given item. The default honours the run's opt-outs, so a
+     * phase only overrides this to add a deployment toggle or an upstream dependency.
+     */
     default boolean applies(PipelinePhaseContext ctx) {
-        return true;
+        return !ctx.skipped(phase());
     }
 
     void execute(PipelinePhaseContext ctx) throws Exception;

@@ -24,6 +24,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -101,6 +103,25 @@ class VideosControllerWebMvcTest {
                 .andExpect(jsonPath("$.counts.multimodalSegments").value(4))
                 .andExpect(jsonPath("$.counts.transcriptionSegments").value(5))
                 .andExpect(jsonPath("$.counts.knowledgeUnits").value(6));
+    }
+
+    @Test
+    void transcriptionEndpointsReturn404WhenTheVideoIsUnknown() throws Exception {
+        // Both endpoints exist to give a consistent 404 rather than an empty transcription for
+        // an id that was never ingested. They check existence without hydrating the entity, so
+        // the guard is a doThrow on ensureExists — nothing else in the call would 404.
+        UUID missingId = UUID.fromString("bd0f2d31-3c96-4a4e-9f8b-2a2a7f0f5f11");
+        doThrow(new VideoNotFoundException(missingId)).when(videoQueryService).ensureExists(missingId);
+
+        for (String path : new String[]{"/api/v1/videos/{id}/transcription",
+                                        "/api/v1/videos/{id}/transcription/segments"}) {
+            mockMvc.perform(get(path, missingId))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.title").value("Not found"))
+                    .andExpect(jsonPath("$.detail").value("Video not found: " + missingId));
+        }
+
+        verifyNoInteractions(videoTranscriptionQueryService);
     }
 
     @Test

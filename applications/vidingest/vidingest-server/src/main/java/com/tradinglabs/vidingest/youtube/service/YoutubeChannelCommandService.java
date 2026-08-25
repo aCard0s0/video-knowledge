@@ -8,7 +8,7 @@ import com.tradinglabs.vidingest.api.common.PageResponse;
 import com.tradinglabs.vidingest.commons.ConflictException;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
-import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
+import com.tradinglabs.vidingest.pipeline.util.SkipPhasesParser;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
 import com.tradinglabs.vidingest.youtube.config.YoutubeSyncProperties;
 import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryResult;
@@ -197,16 +197,9 @@ public class YoutubeChannelCommandService {
                 .map(id -> byId.get(id).getWatchUrl())
                 .toList();
 
-        // Pass through all skip flags so channel-driven runs honour the same enrichment
-        // toggles as direct user runs. Defaults (skip = true) keep the scheduler safe.
-        return pipelineIntakeService.intake(urls, new PipelineSkipFlags(
-                request.skipTranscription(),
-                request.skipContext(),
-                request.skipDiarize(),
-                request.skipFrames(),
-                request.skipOcr(),
-                request.skipKnowledge()
-        ));
+        // Pass the opt-out set through so channel-driven runs honour the same toggles as
+        // direct user runs rather than silently enabling enrichment.
+        return pipelineIntakeService.intake(urls, SkipPhasesParser.parse(request.skipPhases()));
     }
 
     private void upsertVideos(YoutubeChannel channel, List<YoutubeChannelDiscoveryResult.YoutubeVideoCandidate> discovered) {

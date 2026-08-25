@@ -215,7 +215,7 @@ For local development:
 
 ### Transcript files
 
-When transcription is enabled (skipTranscription=false), VidIngest writes transcript artifacts to:
+When the TRANSCRIBE phase runs (it is not named in the run's `skipPhases`), VidIngest writes transcript artifacts to:
 
 The same directory as the downloaded video file under `package/vidingest/videos/` (local dev) or `/data/videos` (container).
 

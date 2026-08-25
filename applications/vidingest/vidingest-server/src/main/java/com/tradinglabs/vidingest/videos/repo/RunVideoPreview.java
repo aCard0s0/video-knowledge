@@ -3,6 +3,7 @@ package com.tradinglabs.vidingest.videos.repo;
 import com.tradinglabs.vidingest.videos.domain.VideoStatus;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.UUID;
 
 /**
@@ -20,4 +21,31 @@ public record RunVideoPreview(
         VideoStatus status,
         LocalDateTime createdAt
 ) {
+
+    /**
+     * Which video represents a run: the most-progressed one, oldest first on a tie, then by
+     * video id so the pick is stable across calls. Nulls sort last throughout.
+     *
+     * <p>Lives here because the run-list and run-details read paths both need it and used to
+     * carry a copy each — one over this projection, one over the {@code Video} entity, with
+     * two independent exhaustive {@code VideoStatus} switches to keep in step.
+     */
+    public static final Comparator<RunVideoPreview> PREVIEW_ORDER = Comparator
+            .comparingInt((RunVideoPreview p) -> statusRank(p.status()))
+            .thenComparing(RunVideoPreview::createdAt, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(RunVideoPreview::videoId, Comparator.nullsLast(Comparator.naturalOrder()));
+
+    private static int statusRank(VideoStatus status) {
+        if (status == null) return 100;
+        return switch (status) {
+            case COMPLETED -> 0;
+            case PROCESSING -> 1;
+            case TRANSCRIBING -> 2;
+            case DOWNLOADED -> 3;
+            case DOWNLOADING -> 4;
+            case EXTRACTING -> 5;
+            case PENDING -> 6;
+            case FAILED -> 7;
+        };
+    }
 }

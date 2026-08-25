@@ -9,6 +9,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +20,7 @@ import static org.mockito.Mockito.verify;
 
 /**
  * Gating + delegation tests for {@link OcrPhase}. Three knobs must be open: master switch,
- * per-run {@code skipOcr}, and {@code !skipFrames} (since OCR has no input without frames).
+ * the run's own opt-out, and FRAME_SAMPLE (since OCR has no input without frames).
  */
 @ExtendWith(MockitoExtension.class)
 class OcrPhaseTest {
@@ -87,16 +89,18 @@ class OcrPhaseTest {
     }
 
     private static PipelinePhaseContext ctx(boolean skipFrames, boolean skipOcr) {
+        Set<PipelineRunPhase> skip = EnumSet.of(PipelineRunPhase.DIARIZE, PipelineRunPhase.KNOWLEDGE);
+        if (skipFrames) {
+            skip.add(PipelineRunPhase.FRAME_SAMPLE);
+        }
+        if (skipOcr) {
+            skip.add(PipelineRunPhase.OCR);
+        }
         return new PipelinePhaseContext(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "https://example.com/v",
-                /* skipTranscription */ false,
-                /* skipContext       */ false,
-                /* skipDiarize       */ true,
-                skipFrames,
-                skipOcr,
-                /* skipKnowledge     */ true
+                skip
         );
     }
 }

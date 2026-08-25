@@ -28,7 +28,7 @@ public class OcrConfig {
 
     /**
      * Master switch. When false the {@code OcrPhase} short-circuits regardless of the
-     * per-run {@code skipOcr} flag.
+     * run's own {@code skipPhases} opt-out.
      */
     private boolean enabled = false;
 
