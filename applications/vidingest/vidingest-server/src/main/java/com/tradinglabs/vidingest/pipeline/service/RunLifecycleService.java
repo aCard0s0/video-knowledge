@@ -55,50 +55,5 @@ public class RunLifecycleService {
         return pipelineRunRepository.findById(runId)
                 .orElseThrow(() -> new RunNotFoundException(runId));
     }
-
-    @Transactional
-    public void markInProgress(UUID runId, PipelineRunPhase phase) {
-        PipelineRun run = getPipelineRun(runId);
-        run.setStatus(RunStatus.IN_PROGRESS);
-        run.setError(null);
-        run.setErrorCode(null);
-        run.setPhase(phase);
-        pipelineRunRepository.save(run);
-    }
-
-    @Transactional
-    public void markPhase(UUID runId, PipelineRunPhase phase) {
-        PipelineRun run = getPipelineRun(runId);
-        run.setPhase(phase);
-        pipelineRunRepository.save(run);
-    }
-
-    @Transactional
-    public void markCompleted(UUID runId) {
-        PipelineRun run = getPipelineRun(runId);
-        run.setStatus(RunStatus.COMPLETED);
-        run.setPhase(PipelineRunPhase.DONE);
-        pipelineRunRepository.save(run);
-    }
-
-    @Transactional
-    public void markFailed(UUID runId, PipelineErrorCode errorCode, String errorMessage) {
-        PipelineRun run = getPipelineRun(runId);
-        run.setStatus(RunStatus.FAILED);
-        run.setError(errorMessage);
-        run.setErrorCode(errorCode);
-        run.setPhase(PipelineRunPhase.DONE);
-        pipelineRunRepository.save(run);
-    }
-
-    @Transactional
-    public void markCancelled(UUID runId, PipelineErrorCode errorCode, String message) {
-        PipelineRun run = getPipelineRun(runId);
-        run.setStatus(RunStatus.CANCELLED);
-        run.setError(message);
-        run.setErrorCode(errorCode);
-        run.setPhase(PipelineRunPhase.DONE);
-        pipelineRunRepository.save(run);
-    }
 }
 

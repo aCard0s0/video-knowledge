@@ -97,11 +97,7 @@ public class PipelineService {
             boolean skipFrames,
             boolean skipOcr,
             boolean skipKnowledge
-    ) {
-        public static PipelineSkipFlags defaults() {
-            return new PipelineSkipFlags(false, false, true, true, true, true);
-        }
-    }
+    ) {    }
 
     // --- Full-flag entry points (used by intake + retry from M1 onwards) ----------------------
 

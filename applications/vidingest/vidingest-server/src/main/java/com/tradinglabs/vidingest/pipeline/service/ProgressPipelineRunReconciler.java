@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ProgressPipelineRunReconciler {
 
-    private final RunLifecycleService lifecycleService;
     private final RunQueryService queryService;
     private final RunAggregationService runAggregationService;
 
@@ -42,7 +41,7 @@ public class ProgressPipelineRunReconciler {
                 continue;
             }
 
-            lifecycleService.markFailed(
+            runAggregationService.markFailed(
                     run.getId(),
                     PipelineErrorCode.UNEXPECTED,
                     "Pipeline run was IN_PROGRESS during server startup; marking failed for operator review.");

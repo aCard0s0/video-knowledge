@@ -27,8 +27,6 @@ import static org.mockito.Mockito.when;
 class ProgressPipelineRunReconcilerTest {
 
     @Mock
-    private RunLifecycleService lifecycleService;
-    @Mock
     private RunQueryService queryService;
     @Mock
     private RunAggregationService runAggregationService;
@@ -44,7 +42,7 @@ class ProgressPipelineRunReconcilerTest {
 
         reconciler.reconcileInProgressPipelineRuns();
 
-        verify(lifecycleService, never()).markFailed(any(), any(), any());
+        verify(runAggregationService, never()).markFailed(any(), any(), any());
     }
 
     @Test
@@ -55,7 +53,7 @@ class ProgressPipelineRunReconcilerTest {
 
         reconciler.reconcileInProgressPipelineRuns();
 
-        verify(lifecycleService).markFailed(eq(runId), eq(PipelineErrorCode.UNEXPECTED), any());
+        verify(runAggregationService).markFailed(eq(runId), eq(PipelineErrorCode.UNEXPECTED), any());
     }
 
     @Test
@@ -69,8 +67,8 @@ class ProgressPipelineRunReconcilerTest {
 
         reconciler.reconcileInProgressPipelineRuns();
 
-        verify(lifecycleService, never()).markFailed(eq(broken), any(), any());
-        verify(lifecycleService).markFailed(eq(stillRunning), eq(PipelineErrorCode.UNEXPECTED), any());
+        verify(runAggregationService, never()).markFailed(eq(broken), any(), any());
+        verify(runAggregationService).markFailed(eq(stillRunning), eq(PipelineErrorCode.UNEXPECTED), any());
     }
 
     private static PipelineRun run(UUID id) {

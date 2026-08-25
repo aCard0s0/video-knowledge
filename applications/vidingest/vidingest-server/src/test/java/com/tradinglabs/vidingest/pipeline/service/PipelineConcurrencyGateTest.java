@@ -122,7 +122,8 @@ class PipelineConcurrencyGateTest {
                 pipelineRunItemRepository, pipelinePhaseRegistry, pipelineErrorClassifier,
                 pipelineMetrics, executor, PERMITS);
 
-        service.enqueuePipelineRunBatch(urls, PipelineService.PipelineSkipFlags.defaults());
+        service.enqueuePipelineRunBatch(urls, new PipelineService.PipelineSkipFlags(
+                false, false, true, true, true, true));
 
         // The permits get handed out...
         assertThat(firstBatchAdmitted.await(5, TimeUnit.SECONDS))

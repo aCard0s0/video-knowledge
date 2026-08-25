@@ -50,16 +50,6 @@ public class PipelinePhaseContext {
     private Integer rowsAffected;
 
     /**
-     * Convenience constructor for callers that only know about the original two skip flags.
-     * Defaults the new enrichment skip flags to {@code true} (skip) so behaviour matches the
-     * pre-M1 pipeline exactly.
-     */
-    public PipelinePhaseContext(UUID runId, UUID itemId, String videoUrl,
-                                boolean skipTranscription, boolean skipContext) {
-        this(runId, itemId, videoUrl, skipTranscription, skipContext, true, true, true, true);
-    }
-
-    /**
      * Context for a single-phase rerun against an already-persisted video. There is no run,
      * no run item and no source URL — the phase is invoked directly rather than through
      * {@code applies(ctx)}, so the skip flags are irrelevant and set to "do not skip".

@@ -8,10 +8,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class RunSummaryMapper {
 
-    public RunSummary toSummary(PipelineRun run) {
-        return toSummary(run, (RunVideoPreview) null, 0);
-    }
-
     /**
      * Builds the run-list {@link RunSummary} from a lightweight {@link RunVideoPreview} preview row
      * instead of a full {@code Video} entity, so the list view never hydrates JSONB metadata (#266).
