@@ -5,6 +5,7 @@ import com.tradinglabs.vidingest.pipeline.domain.PipelineRun;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
+import com.tradinglabs.vidingest.pipeline.exceptions.RunNotFoundException;
 import com.tradinglabs.vidingest.pipeline.repo.PipelineRunRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,23 +42,35 @@ public class RunAggregationService {
         }
     }
 
+    /**
+     * Recomputes the run's status from its items and returns the status the run now holds.
+     *
+     * <p>The lock is taken <b>before</b> the item read, and that ordering is the whole point:
+     * two items finishing at once would otherwise each read the item list, and the one that
+     * read first could write its stale conclusion over the other's. That stranded the run at
+     * {@code IN_PROGRESS} with every item {@code COMPLETED}, permanently — nothing else
+     * re-runs this once all items are terminal. Locking first serialises the finalisers, so
+     * whichever thread runs second observes every transition the first committed.
+     */
     @Transactional
-    public void refreshRunState(UUID runId) {
+    public RunStatus refreshRunState(UUID runId) {
+        PipelineRun run = pipelineRunRepository.findWithLockById(runId)
+                .orElseThrow(() -> new RunNotFoundException(runId));
+
         List<PipelineRunItem> items = runItemLifecycleService.listItems(runId);
         if (items.isEmpty()) {
-            return;
+            return run.getStatus();
         }
 
         boolean anyPendingOrInProgress = items.stream().anyMatch(i ->
                 i.getStatus() == RunStatus.PENDING || i.getStatus() == RunStatus.IN_PROGRESS);
 
-        PipelineRun run = pipelineRunRepository.getReferenceById(runId);
         if (anyPendingOrInProgress) {
             if (run.getStatus() != RunStatus.IN_PROGRESS) {
                 run.setStatus(RunStatus.IN_PROGRESS);
                 pipelineRunRepository.save(run);
             }
-            return;
+            return run.getStatus();
         }
 
         boolean anyFailed = items.stream().anyMatch(i -> i.getStatus() == RunStatus.FAILED);
@@ -81,6 +94,7 @@ public class RunAggregationService {
 
         run.setPhase(PipelineRunPhase.DONE);
         pipelineRunRepository.save(run);
+        return run.getStatus();
     }
 }
 
