@@ -1,0 +1,191 @@
+package com.tradinglabs.vidingest.pipeline.service;
+
+import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
+import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse.ItemStatus;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRun;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
+import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
+import com.tradinglabs.vidingest.pipeline.exceptions.RunRetryNotAllowedException;
+import com.tradinglabs.vidingest.pipeline.repo.PipelineRunItemRepository;
+import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhaseRegistry;
+import com.tradinglabs.vidingest.videos.repo.VideoRepository;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * Which run items a retry may re-run, and what a retry that can re-run nothing is allowed to do
+ * to the run row.
+ *
+ * <p>Both were wrong together. Retry accepted only FAILED items, so work abandoned as PENDING by a
+ * dying process was unreachable — and {@code prepareRetry} ran <em>before</em> that check, so the
+ * refusal still moved the run out of FAILED and the next attempt was rejected outright with
+ * "Only FAILED pipeline runs can be retried". A restart mid-run could therefore strand a batch of
+ * URLs with no route back to them at all.
+ */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class PipelineRetryEligibilityTest {
+
+    @Mock private VideoRepository videoRepository;
+    @Mock private RunLifecycleService runLifecycle;
+    @Mock private RunItemLifecycleService runItemLifecycleService;
+    @Mock private RunAggregationService runAggregationService;
+    @Mock private PipelineRunItemRepository pipelineRunItemRepository;
+    @Mock private PipelinePhaseRegistry pipelinePhaseRegistry;
+    @Mock private PipelineErrorClassifier pipelineErrorClassifier;
+    @Mock private PipelineMetrics pipelineMetrics;
+    @Mock private RunItemLeaseService runItemLeaseService;
+
+    private ExecutorService executor;
+    private PipelineService service;
+
+    private final UUID runId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        when(runLifecycle.getPipelineRun(runId))
+                .thenReturn(PipelineRun.builder().id(runId).status(RunStatus.FAILED).build());
+        // No phases registered: an enqueued item runs an empty pipeline and finishes immediately.
+        // This test is about what gets enqueued, not what happens afterwards.
+        when(pipelinePhaseRegistry.phases()).thenReturn(List.of());
+        executor = Executors.newVirtualThreadPerTaskExecutor();
+        service = new PipelineService(
+                videoRepository, runLifecycle, runItemLifecycleService, runAggregationService,
+                pipelineRunItemRepository, pipelinePhaseRegistry, pipelineErrorClassifier,
+                pipelineMetrics, runItemLeaseService, executor, 4);
+    }
+
+    @AfterEach
+    void tearDown() {
+        executor.shutdownNow();
+    }
+
+    /** The run-level gate is separate from the per-item one and still answers 409 first. */
+    @Test
+    void refusesOutrightWhenTheRunItselfIsNotFailed() {
+        when(runLifecycle.getPipelineRun(runId))
+                .thenReturn(PipelineRun.builder().id(runId).status(RunStatus.COMPLETED).build());
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(item(RunStatus.FAILED)));
+
+        assertThatThrownBy(() -> service.enqueueRetryBatch(runId, Set.of()))
+                .isInstanceOf(RunRetryNotAllowedException.class);
+
+        verify(runLifecycle, never()).prepareRetry(any());
+    }
+
+    @Test
+    void retriesAnItemAbandonedWhileStillPending() {
+        PipelineRunItem pending = item(RunStatus.PENDING);
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(pending));
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
+
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .isEqualTo(ItemStatus.ACCEPTED);
+        verify(runItemLifecycleService).prepareRetry(pending.getId());
+    }
+
+    /**
+     * The state-destroying half. Nothing is retryable here, so the run must be left exactly as it
+     * was — still FAILED, and still retryable once the operator has dealt with the cause.
+     */
+    @Test
+    void aRetryThatAcceptsNothingLeavesTheRunUntouched() {
+        when(runItemLifecycleService.listItems(runId))
+                .thenReturn(List.of(item(RunStatus.CANCELLED), item(RunStatus.COMPLETED)));
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
+
+        assertThat(response.items())
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .containsOnly(ItemStatus.REJECTED);
+        assertThat(response.items())
+                .extracting(CreatePipelineRunResponse.ItemResult::reason)
+                .containsExactly("run item was cancelled", "run item already completed");
+        verify(runLifecycle, never()).prepareRetry(any());
+        verify(runItemLifecycleService, never()).prepareRetry(any());
+    }
+
+    @Test
+    void refusesAnItemAnotherInstanceHoldsALeaseOn() {
+        PipelineRunItem leased = item(RunStatus.IN_PROGRESS);
+        leased.setLeaseOwner("4242@some-other-host");
+        leased.setLeaseExpiresAt(LocalDateTime.now().plusMinutes(5));
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(leased));
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
+
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::reason)
+                .isEqualTo("run item is already running");
+        verify(runLifecycle, never()).prepareRetry(any());
+    }
+
+    /**
+     * An expired lease is the signature of an owner that stopped heartbeating — crashed, killed,
+     * or cut off from the database. That is precisely the work a retry exists to recover.
+     */
+    @Test
+    void retriesAnItemWhoseLeaseHasExpired() {
+        PipelineRunItem stale = item(RunStatus.IN_PROGRESS);
+        stale.setLeaseOwner("4242@a-host-that-is-gone");
+        stale.setLeaseExpiresAt(LocalDateTime.now().minusMinutes(5));
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(stale));
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
+
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .isEqualTo(ItemStatus.ACCEPTED);
+        verify(runLifecycle).prepareRetry(runId);
+    }
+
+    @Test
+    void retriesTheFailedItemsAndRejectsTheRestInOneBatch() {
+        PipelineRunItem failed = item(RunStatus.FAILED);
+        PipelineRunItem done = item(RunStatus.COMPLETED);
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(failed, done));
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
+
+        assertThat(response.items())
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .containsExactly(ItemStatus.ACCEPTED, ItemStatus.REJECTED);
+        verify(runLifecycle).prepareRetry(runId);
+        verify(runItemLifecycleService).prepareRetry(failed.getId());
+        verify(runItemLifecycleService, never()).prepareRetry(done.getId());
+    }
+
+    private PipelineRunItem item(RunStatus status) {
+        return PipelineRunItem.builder()
+                .id(UUID.randomUUID())
+                .pipelineRun(PipelineRun.builder().id(runId).build())
+                .url("https://www.youtube.com/watch?v=" + UUID.randomUUID())
+                .status(status)
+                .phase(PipelineRunPhase.CREATED)
+                .attempt(1)
+                .build();
+    }
+}

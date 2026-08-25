@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,8 +29,11 @@ import static org.mockito.Mockito.when;
  * abandoned work by timestamp alone. Failing a live item is not cosmetic: the operator sees
  * FAILED, retries, and a second worker wipes-and-repopulates the same video alongside the
  * first. The reconciler therefore asks two questions that fail in opposite directions: the
- * in-flight set (blind to other instances, never wrong about this one) and the lease (sees
+ * ownership set (blind to other instances, never wrong about this one) and the lease (sees
  * every instance, goes stale if this one stops heartbeating).
+ *
+ * <p>The sweep also covers PENDING, because an item whose owner died before it ever reached the
+ * gate never becomes IN_PROGRESS — and nothing else in the system would look at it again.
  */
 @ExtendWith(MockitoExtension.class)
 class StuckItemReconcilerTest {
@@ -53,9 +57,9 @@ class StuckItemReconcilerTest {
     @Test
     void leavesStaleLookingItemsAloneWhileThisJvmIsStillRunningThem() {
         PipelineRunItem item = staleItem();
-        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemInFlight(item.getId())).thenReturn(true);
+        when(pipelineService.isItemOwned(item.getId())).thenReturn(true);
 
         reconciler().reconcileStuckItems();
 
@@ -71,9 +75,9 @@ class StuckItemReconcilerTest {
         PipelineRunItem item = staleItem();
         item.setLeaseOwner("4242@other-host");
         item.setLeaseExpiresAt(LocalDateTime.now().plusMinutes(5));
-        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemInFlight(item.getId())).thenReturn(false);
+        when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -86,9 +90,9 @@ class StuckItemReconcilerTest {
         PipelineRunItem item = staleItem();
         item.setLeaseOwner("4242@other-host");
         item.setLeaseExpiresAt(LocalDateTime.now().minusMinutes(30));
-        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemInFlight(item.getId())).thenReturn(false);
+        when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -98,9 +102,9 @@ class StuckItemReconcilerTest {
     @Test
     void failsItemsAbandonedByAPreviousProcess() {
         PipelineRunItem item = staleItem();
-        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemInFlight(item.getId())).thenReturn(false);
+        when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -112,10 +116,10 @@ class StuckItemReconcilerTest {
     void reapsTheAbandonedItemEvenWhenALiveOneSharesTheSweep() {
         PipelineRunItem live = staleItem();
         PipelineRunItem abandoned = staleItem();
-        when(runItemRepository.findByStatusAndPhaseUpdatedAtBefore(eq(RunStatus.IN_PROGRESS), any()))
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(live, abandoned));
-        when(pipelineService.isItemInFlight(live.getId())).thenReturn(true);
-        when(pipelineService.isItemInFlight(abandoned.getId())).thenReturn(false);
+        when(pipelineService.isItemOwned(live.getId())).thenReturn(true);
+        when(pipelineService.isItemOwned(abandoned.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -123,13 +127,55 @@ class StuckItemReconcilerTest {
         verify(runItemLifecycleService).markFailed(eq(abandoned.getId()), any(), any());
     }
 
+    /**
+     * The orphan case. A process that dies with items still queued leaves them PENDING forever:
+     * they never reach IN_PROGRESS, so the old sweep never saw them, and retry refused anything
+     * that was not FAILED. The run stayed IN_PROGRESS and those URLs were unrecoverable.
+     */
+    @Test
+    void failsPendingItemsAbandonedBeforeTheyEverStarted() {
+        PipelineRunItem queued = stalePendingItem();
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
+                .thenReturn(List.of(queued));
+        when(pipelineService.isItemOwned(queued.getId())).thenReturn(false);
+
+        reconciler().reconcileStuckItems();
+
+        verify(runItemLifecycleService).markFailed(eq(queued.getId()), eq(PipelineErrorCode.UNEXPECTED), any());
+        verify(runAggregationService).refreshRunState(queued.getPipelineRun().getId());
+    }
+
+    /**
+     * The other half of that: an item can sit PENDING for hours purely because it is queued behind
+     * the concurrency gate. Reaping it would fail work that is about to run.
+     */
+    @Test
+    void leavesPendingItemsAloneWhileThisJvmStillOwnsThem() {
+        PipelineRunItem queued = stalePendingItem();
+        when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
+                .thenReturn(List.of(queued));
+        when(pipelineService.isItemOwned(queued.getId())).thenReturn(true);
+
+        reconciler().reconcileStuckItems();
+
+        verify(runItemLifecycleService, never()).markFailed(any(), any(), any());
+    }
+
     private static PipelineRunItem staleItem() {
+        return staleItem(RunStatus.IN_PROGRESS, PipelineRunPhase.KNOWLEDGE);
+    }
+
+    private static PipelineRunItem stalePendingItem() {
+        return staleItem(RunStatus.PENDING, PipelineRunPhase.CREATED);
+    }
+
+    private static PipelineRunItem staleItem(RunStatus status, PipelineRunPhase phase) {
         return PipelineRunItem.builder()
                 .id(UUID.randomUUID())
                 .pipelineRun(PipelineRun.builder().id(UUID.randomUUID()).build())
                 .url("https://example.com/v")
-                .status(RunStatus.IN_PROGRESS)
-                .phase(PipelineRunPhase.KNOWLEDGE)
+                .status(status)
+                .phase(phase)
                 .phaseUpdatedAt(LocalDateTime.now().minusHours(2))
                 .attempt(1)
                 .build();

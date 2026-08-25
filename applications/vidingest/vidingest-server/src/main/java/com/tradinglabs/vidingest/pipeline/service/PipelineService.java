@@ -29,6 +29,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -59,6 +60,17 @@ public class PipelineService {
      * legitimately takes hours — {@code phase_updated_at} only moves on a phase *transition*.
      */
     private final Set<UUID> inFlightItemIds = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Run items this JVM has taken responsibility for — queued behind the gate as well as
+     * executing. Wider than {@link #inFlightItemIds} on purpose, and the two cannot be merged:
+     * the heartbeat iterates the in-flight set, and a queued item holds no lease to renew.
+     *
+     * <p>This is what makes a {@code PENDING} item safe to reap. Such an item is either waiting on
+     * our gate or was abandoned by a process that is gone, and only the owner can tell those
+     * apart — {@code phase_updated_at} is stamped at creation for both.
+     */
+    private final Set<UUID> ownedItemIds = ConcurrentHashMap.newKeySet();
 
     public PipelineService(
             VideoRepository videoRepository,
@@ -140,27 +152,81 @@ public class PipelineService {
                     null
             )));
         }
+        // Run-level gate, separate from the per-item one below and answered before anything is
+        // written. prepareRetry used to be what enforced this, but it validates and mutates in the
+        // same call, so it cannot also be the thing we defer.
+        if (runLifecycle.getPipelineRun(runId).getStatus() != RunStatus.FAILED) {
+            throw new RunRetryNotAllowedException("Only FAILED pipeline runs can be retried");
+        }
+
+        // Decide first, mutate second. prepareRetry moves the run out of FAILED, and it used to
+        // run before this partition — so a retry that accepted nothing still left the run PENDING,
+        // and the next attempt was refused because only a FAILED run may be retried. That turned
+        // "nothing to retry" into "this run can never be retried again".
+        List<PipelineRunItem> retryable = items.stream()
+                .filter(i -> i.getId() != null && retryRejection(i) == null)
+                .toList();
+
+        if (retryable.isEmpty()) {
+            return new CreatePipelineRunResponse(runId.toString(), items.stream()
+                    .map(i -> rejected(i, retryRejection(i)))
+                    .toList());
+        }
+
         runLifecycle.prepareRetry(runId);
 
+        Set<UUID> accepted = retryable.stream().map(PipelineRunItem::getId).collect(Collectors.toSet());
         List<CreatePipelineRunResponse.ItemResult> results = items.stream()
                 .map(i -> {
                     UUID itemId = i.getId();
-                    String itemIdStr = itemId != null ? itemId.toString() : null;
-                    if (i.getStatus() != RunStatus.FAILED) {
-                        return new CreatePipelineRunResponse.ItemResult(i.getUrl(), CreatePipelineRunResponse.ItemStatus.REJECTED, itemIdStr, "run item is not FAILED");
+                    if (itemId == null || !accepted.contains(itemId)) {
+                        return rejected(i, retryRejection(i));
                     }
-
-                    if (itemId == null) {
-                        return new CreatePipelineRunResponse.ItemResult(i.getUrl(), CreatePipelineRunResponse.ItemStatus.REJECTED, null, "run item has no id");
-                    }
-
                     runItemLifecycleService.prepareRetry(itemId);
                     enqueueItem(runId, itemId, i.getUrl(), skipPhases);
-                    return new CreatePipelineRunResponse.ItemResult(i.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemIdStr, null);
+                    return new CreatePipelineRunResponse.ItemResult(
+                            i.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemId.toString(), null);
                 })
                 .toList();
 
         return new CreatePipelineRunResponse(runId.toString(), results);
+    }
+
+    /**
+     * Why this item cannot be retried, or {@code null} when it can.
+     *
+     * <p>The old rule was {@code status == FAILED}, which left every other non-terminal state
+     * unreachable. An item whose process died while it was still queued stays PENDING forever —
+     * no reconciler swept PENDING, and retry refused it — so the URLs of a run interrupted by a
+     * restart were simply lost, with the run stuck IN_PROGRESS and no error to show for it.
+     *
+     * <p>The question that actually matters is whether someone is running the item right now, and
+     * the lease from PR #8 answers it across instances; {@code ownedItemIds} covers the window
+     * before this JVM's own item has claimed one. Anything else non-terminal is fair game.
+     */
+    private String retryRejection(PipelineRunItem item) {
+        if (item.getId() == null) {
+            return "run item has no id";
+        }
+        if (item.getStatus() == RunStatus.COMPLETED) {
+            return "run item already completed";
+        }
+        if (item.getStatus() == RunStatus.CANCELLED) {
+            // Deliberate terminal state (duplicate video), not a failure to recover from.
+            return "run item was cancelled";
+        }
+        if (ownedItemIds.contains(item.getId()) || RunItemLeaseService.isLive(item.getLeaseExpiresAt())) {
+            return "run item is already running";
+        }
+        return null;
+    }
+
+    private static CreatePipelineRunResponse.ItemResult rejected(PipelineRunItem item, String reason) {
+        return new CreatePipelineRunResponse.ItemResult(
+                item.getUrl(),
+                CreatePipelineRunResponse.ItemStatus.REJECTED,
+                item.getId() != null ? item.getId().toString() : null,
+                reason);
     }
 
     public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, Set<PipelineRunPhase> skipPhases) {
@@ -173,33 +239,45 @@ public class PipelineService {
             throw new RunRetryNotAllowedException("Only FAILED pipeline runs can be retried");
         }
 
-        String itemIdStr = item.getId() != null ? item.getId().toString() : null;
-        if (item.getStatus() != RunStatus.FAILED) {
-            return new CreatePipelineRunResponse(runId.toString(), List.of(
-                    new CreatePipelineRunResponse.ItemResult(item.getUrl(), CreatePipelineRunResponse.ItemStatus.REJECTED, itemIdStr, "run item is not FAILED")
-            ));
+        String rejection = retryRejection(item);
+        if (rejection != null) {
+            return new CreatePipelineRunResponse(runId.toString(), List.of(rejected(item, rejection)));
         }
 
         runLifecycle.prepareRetry(runId);
         runItemLifecycleService.prepareRetry(itemId);
         enqueueItem(runId, itemId, item.getUrl(), skipPhases);
         return new CreatePipelineRunResponse(runId.toString(), List.of(
-                new CreatePipelineRunResponse.ItemResult(item.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemIdStr, null)
+                new CreatePipelineRunResponse.ItemResult(
+                        item.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, item.getId().toString(), null)
         ));
     }
 
     private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
-        ingestionExecutor.submit(() -> {
-            try {
-                runPipelineRunItem(runId, itemId, videoUrl, skipPhases);
-            } catch (Throwable t) {
-                // runPipelineRunItem handles its own failures, but the recovery path can throw
-                // too (markFailed hits getReferenceById on a row that may be gone). The Future
-                // is discarded, so without this the cause never reaches the log and the item is
-                // left for StuckItemReconciler to reap an hour later with no explanation.
-                log.error("Pipeline run {} item {} died outside its own error handling", runId, itemId, t);
-            }
-        });
+        // Claimed before the submit, not inside the task: between the two the item is PENDING with
+        // nothing running, which is precisely what the reconciler now reaps.
+        ownedItemIds.add(itemId);
+        try {
+            ingestionExecutor.submit(() -> {
+                try {
+                    runPipelineRunItem(runId, itemId, videoUrl, skipPhases);
+                } catch (Throwable t) {
+                    // runPipelineRunItem handles its own failures, but the recovery path can throw
+                    // too (markFailed hits getReferenceById on a row that may be gone). The Future
+                    // is discarded, so without this the cause never reaches the log and the item is
+                    // left for StuckItemReconciler to reap an hour later with no explanation.
+                    log.error("Pipeline run {} item {} died outside its own error handling", runId, itemId, t);
+                } finally {
+                    // Covers every exit, including the interrupt that returns before the gate.
+                    ownedItemIds.remove(itemId);
+                }
+            });
+        } catch (RuntimeException e) {
+            // Rejected at submit (shutdown): the task will never run, so nothing else would drop
+            // the claim, and the item would look live to the reconciler forever.
+            ownedItemIds.remove(itemId);
+            throw e;
+        }
     }
 
     private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
@@ -260,12 +338,17 @@ public class PipelineService {
     }
 
     /**
-     * Whether this JVM is currently executing phases for {@code itemId}. Narrower than the
-     * lease — it says nothing about other instances — but it is the one answer that stays right
-     * even if the lease heartbeat has stalled, so the reconciler consults both.
+     * Whether this JVM has taken responsibility for {@code itemId} — executing it, or holding it
+     * queued behind the gate. Narrower than the lease in one direction (it says nothing about
+     * other instances) and wider in another (it covers items that have not started, which hold no
+     * lease yet), so the reconciler and the retry path consult both.
+     *
+     * <p>Replaces {@code isItemInFlight}, which answered only for items past the gate and so had
+     * nothing to say about the PENDING ones this now protects. The in-flight set is still what the
+     * heartbeat renews — leases exist only past the gate.
      */
-    public boolean isItemInFlight(UUID itemId) {
-        return inFlightItemIds.contains(itemId);
+    public boolean isItemOwned(UUID itemId) {
+        return ownedItemIds.contains(itemId);
     }
 
     /**

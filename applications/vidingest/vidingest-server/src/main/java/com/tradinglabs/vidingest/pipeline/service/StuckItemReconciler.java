@@ -12,11 +12,20 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 @Component
 @Slf4j
 public class StuckItemReconciler {
+
+    /**
+     * Statuses a sweep may reap. PENDING is here because an item whose owner died while it was
+     * still queued never reaches IN_PROGRESS — and before this, nothing ever looked at it again:
+     * the run stayed IN_PROGRESS forever and retry refused every one of its items.
+     */
+    private static final Set<RunStatus> SWEEPABLE = EnumSet.of(RunStatus.PENDING, RunStatus.IN_PROGRESS);
 
     private final PipelineRunItemRepository runItemRepository;
     private final RunItemLifecycleService runItemLifecycleService;
@@ -45,7 +54,8 @@ public class StuckItemReconciler {
             initialDelayString = "${vidingest.reconciler.initialDelayMs:60000}")
     public void reconcileStuckItems() {
         LocalDateTime threshold = LocalDateTime.now().minus(staleAfter);
-        List<PipelineRunItem> stuck = runItemRepository.findByStatusAndPhaseUpdatedAtBefore(RunStatus.IN_PROGRESS, threshold);
+        List<PipelineRunItem> stuck =
+                runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(SWEEPABLE, threshold);
         if (stuck.isEmpty()) {
             return;
         }
@@ -61,10 +71,14 @@ public class StuckItemReconciler {
             // the first.
             //
             // Two answers, because they fail in opposite directions. The lease sees every
-            // instance's work but goes stale if this process stops heartbeating; the in-flight
+            // instance's work but goes stale if this process stops heartbeating; the ownership
             // set cannot see other instances but is never wrong about this one. An item is
             // abandoned only when neither claims it.
-            if (pipelineService.isItemInFlight(item.getId())) {
+            //
+            // Ownership, not just in-flight: a PENDING item is queued behind this JVM's gate and
+            // has neither started nor taken a lease, so those two would both say "abandoned" for
+            // work that is merely waiting its turn.
+            if (pipelineService.isItemOwned(item.getId())) {
                 skippedLive++;
                 continue;
             }
@@ -74,7 +88,8 @@ public class StuckItemReconciler {
             }
 
             PipelineRunPhase phase = item.getPhase();
-            String reason = "reconciler: stuck IN_PROGRESS in phase " + (phase != null ? phase.name() : "UNKNOWN")
+            String reason = "reconciler: stuck " + item.getStatus()
+                    + " in phase " + (phase != null ? phase.name() : "UNKNOWN")
                     + " since " + item.getPhaseUpdatedAt();
             try {
                 runItemLifecycleService.markFailed(item.getId(), PipelineErrorCode.UNEXPECTED, reason);
@@ -89,8 +104,8 @@ public class StuckItemReconciler {
         }
 
         if (reaped > 0 || skippedLive > 0 || skippedLeased > 0) {
-            log.warn("Reconciler swept {} items IN_PROGRESS for more than {}: {} marked FAILED, "
-                            + "{} left alone because this JVM is still running them, "
+            log.warn("Reconciler swept {} items PENDING or IN_PROGRESS for more than {}: {} marked FAILED, "
+                            + "{} left alone because this JVM owns them, "
                             + "{} because a live lease holds them",
                     stuck.size(), staleAfter, reaped, skippedLive, skippedLeased);
         }
