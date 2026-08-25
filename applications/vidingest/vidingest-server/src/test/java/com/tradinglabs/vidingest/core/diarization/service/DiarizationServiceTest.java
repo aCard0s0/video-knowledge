@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionOperations;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +62,8 @@ class DiarizationServiceTest {
                 speakerRepository,
                 transcriptionRepository,
                 transcriptionSegmentRepository,
-                TransactionOperations.withoutTransaction()
+                TransactionOperations.withoutTransaction(),
+                Duration.ofMinutes(20)
         );
     }
 

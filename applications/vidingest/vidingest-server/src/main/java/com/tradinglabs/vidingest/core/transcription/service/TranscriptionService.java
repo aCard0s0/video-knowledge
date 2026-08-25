@@ -3,6 +3,7 @@ package com.tradinglabs.vidingest.core.transcription.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradinglabs.vidingest.config.VideoStorageConfig;
+import com.tradinglabs.vidingest.core.download.util.FfmpegRunner;
 import com.tradinglabs.vidingest.core.download.util.FileSystemHelper;
 import com.tradinglabs.vidingest.core.transcription.domain.Transcription;
 import com.tradinglabs.vidingest.core.transcription.domain.TranscriptionSegment;
@@ -12,8 +13,8 @@ import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionRepository
 import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionSegmentRepository;
 import com.tradinglabs.vidingest.core.transcription.whisper.WhisperAsrClient;
 import com.tradinglabs.vidingest.videos.domain.Video;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -23,11 +24,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class TranscriptionService {
 
@@ -38,7 +39,36 @@ public class TranscriptionService {
     private final ObjectMapper objectMapper;
     private final TransactionOperations transactionOperations;
 
+    /**
+     * Ceiling on the audio-extraction ffmpeg pass. Shared with {@code DiarizationService}, which
+     * runs the identical command — one knob for "how long may an ffmpeg audio extract take".
+     * Frame sampling keeps its own ({@code vidingest.frames.ffmpeg-timeout}): a full-video keyframe
+     * pass and a stream copy to WAV are not the same workload.
+     */
+    private final Duration ffmpegTimeout;
+
     private Path scratchDir;
+
+    // Explicit constructor rather than @RequiredArgsConstructor: Lombok does not reliably copy a
+    // field-level @Value onto the generated constructor parameter, which is where Spring looks.
+    // Same reason WhisperAsrClient hand-writes its own.
+    public TranscriptionService(
+            VideoStorageConfig storageConfig,
+            WhisperAsrClient whisperAsrClient,
+            TranscriptionRepository transcriptionRepository,
+            TranscriptionSegmentRepository transcriptionSegmentRepository,
+            ObjectMapper objectMapper,
+            TransactionOperations transactionOperations,
+            @Value("${vidingest.ffmpeg.timeout:PT20M}") Duration ffmpegTimeout
+    ) {
+        this.storageConfig = storageConfig;
+        this.whisperAsrClient = whisperAsrClient;
+        this.transcriptionRepository = transcriptionRepository;
+        this.transcriptionSegmentRepository = transcriptionSegmentRepository;
+        this.objectMapper = objectMapper;
+        this.transactionOperations = transactionOperations;
+        this.ffmpegTimeout = ffmpegTimeout;
+    }
 
     @PostConstruct
     public void init() {
@@ -152,27 +182,7 @@ public class TranscriptionService {
                 outputWav.toString()
         );
 
-        Process process = new ProcessBuilder(cmd)
-                .redirectErrorStream(true)
-                .start();
-
-        byte[] outputBytes;
-        try (var is = process.getInputStream()) {
-            outputBytes = is.readAllBytes();
-        }
-
-        int exitCode;
-        try {
-            exitCode = process.waitFor();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new TranscriptionFailureException("Interrupted while running ffmpeg", e);
-        }
-
-        if (exitCode != 0) {
-            String output = new String(outputBytes, StandardCharsets.UTF_8).trim();
-            throw new TranscriptionFailureException("ffmpeg audio extraction failed (exitCode=" + exitCode + "): " + output);
-        }
+        FfmpegRunner.run(cmd, ffmpegTimeout);
 
         if (!Files.exists(outputWav)) {
             throw new TranscriptionFailureException("ffmpeg did not produce output file: " + outputWav);

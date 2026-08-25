@@ -1,6 +1,7 @@
 package com.tradinglabs.vidingest.core.frames.service;
 
 import com.tradinglabs.vidingest.config.FrameSamplingConfig;
+import com.tradinglabs.vidingest.core.download.util.FfmpegRunner;
 import com.tradinglabs.vidingest.core.frames.domain.SamplingReason;
 import com.tradinglabs.vidingest.core.frames.domain.VideoFrame;
 import com.tradinglabs.vidingest.core.frames.repo.VideoFrameRepository;
@@ -11,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Extracts keyframes from a {@link Video} using a single local ffmpeg pass, persists one
@@ -206,50 +205,14 @@ public class FrameSamplingService {
      * the real binary. Returns the process's combined stderr+stdout for {@link ShowinfoParser}.
      */
     protected String runFfmpeg(Path inputVideo, Path framesDir) {
-        List<String> cmd = buildFfmpegCommand(inputVideo, framesDir);
-        log.debug("ffmpeg cmd: {}", String.join(" ", cmd));
-
-        Process process;
         try {
-            process = new ProcessBuilder(cmd)
-                    .redirectErrorStream(true)  // showinfo writes to stderr; merging keeps things simple
-                    .start();
-        } catch (IOException e) {
-            throw new FrameSamplingFailureException("Failed to spawn ffmpeg: " + e.getMessage(), e);
-        }
-
-        byte[] outputBytes;
-        try (var is = process.getInputStream()) {
-            outputBytes = is.readAllBytes();
-        } catch (IOException e) {
-            throw new FrameSamplingFailureException("Failed to read ffmpeg output", e);
-        }
-
-        boolean finished;
-        try {
-            finished = process.waitFor(
-                    frameSamplingConfig.getFfmpegTimeout().toMillis(),
-                    TimeUnit.MILLISECONDS
+            return FfmpegRunner.run(
+                    buildFfmpegCommand(inputVideo, framesDir),
+                    frameSamplingConfig.getFfmpegTimeout()
             );
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-            throw new FrameSamplingFailureException("Interrupted while running ffmpeg", e);
+        } catch (IOException e) {
+            throw new FrameSamplingFailureException(e.getMessage(), e);
         }
-
-        if (!finished) {
-            process.destroyForcibly();
-            throw new FrameSamplingFailureException(
-                    "ffmpeg timed out after " + frameSamplingConfig.getFfmpegTimeout());
-        }
-
-        int exitCode = process.exitValue();
-        String output = new String(outputBytes, StandardCharsets.UTF_8);
-        if (exitCode != 0) {
-            String snippet = output.length() > 1000 ? output.substring(0, 1000) + "..." : output;
-            throw new FrameSamplingFailureException("ffmpeg exited with code " + exitCode + ": " + snippet);
-        }
-        return output;
     }
 
     /**

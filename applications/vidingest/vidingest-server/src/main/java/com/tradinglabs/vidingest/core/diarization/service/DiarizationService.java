@@ -7,21 +7,22 @@ import com.tradinglabs.vidingest.core.diarization.dto.DiarizationResult;
 import com.tradinglabs.vidingest.core.diarization.dto.DiarizationSegment;
 import com.tradinglabs.vidingest.core.diarization.dto.DiarizationSpeaker;
 import com.tradinglabs.vidingest.core.diarization.repo.SpeakerRepository;
+import com.tradinglabs.vidingest.core.download.util.FfmpegRunner;
 import com.tradinglabs.vidingest.core.transcription.domain.Transcription;
 import com.tradinglabs.vidingest.core.transcription.domain.TranscriptionSegment;
 import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionRepository;
 import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionSegmentRepository;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,6 @@ import java.util.UUID;
  * Failures bubble up as {@link DiarizationFailureException}.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class DiarizationService {
 
@@ -57,7 +57,30 @@ public class DiarizationService {
     private final TranscriptionSegmentRepository transcriptionSegmentRepository;
     private final TransactionOperations transactionOperations;
 
+    /** Same ceiling {@code TranscriptionService} uses — this runs the identical ffmpeg command. */
+    private final Duration ffmpegTimeout;
+
     private Path scratchDir;
+
+    // Explicit constructor rather than @RequiredArgsConstructor: Lombok does not reliably copy a
+    // field-level @Value onto the generated constructor parameter, which is where Spring looks.
+    public DiarizationService(
+            DiarizationClient diarizationClient,
+            DiarizationConfig diarizationConfig,
+            SpeakerRepository speakerRepository,
+            TranscriptionRepository transcriptionRepository,
+            TranscriptionSegmentRepository transcriptionSegmentRepository,
+            TransactionOperations transactionOperations,
+            @Value("${vidingest.ffmpeg.timeout:PT20M}") Duration ffmpegTimeout
+    ) {
+        this.diarizationClient = diarizationClient;
+        this.diarizationConfig = diarizationConfig;
+        this.speakerRepository = speakerRepository;
+        this.transcriptionRepository = transcriptionRepository;
+        this.transcriptionSegmentRepository = transcriptionSegmentRepository;
+        this.transactionOperations = transactionOperations;
+        this.ffmpegTimeout = ffmpegTimeout;
+    }
 
     @PostConstruct
     public void init() {
@@ -249,27 +272,7 @@ public class DiarizationService {
                 outputWav.toString()
         );
 
-        Process process = new ProcessBuilder(cmd)
-                .redirectErrorStream(true)
-                .start();
-
-        byte[] outputBytes;
-        try (var is = process.getInputStream()) {
-            outputBytes = is.readAllBytes();
-        }
-
-        int exitCode;
-        try {
-            exitCode = process.waitFor();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new DiarizationFailureException("Interrupted while running ffmpeg", e);
-        }
-
-        if (exitCode != 0) {
-            String output = new String(outputBytes, StandardCharsets.UTF_8).trim();
-            throw new DiarizationFailureException("ffmpeg audio extraction failed (exitCode=" + exitCode + "): " + output);
-        }
+        FfmpegRunner.run(cmd, ffmpegTimeout);
 
         if (!Files.exists(outputWav)) {
             throw new DiarizationFailureException("ffmpeg did not produce output file: " + outputWav);
