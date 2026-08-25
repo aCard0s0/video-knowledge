@@ -48,6 +48,9 @@ import static org.mockito.Mockito.when;
 class PipelineConcurrencyGateTest {
 
     private static final int PERMITS = 2;
+
+    @Mock
+    private RunItemLeaseService runItemLeaseService;
     private static final int ITEMS = 4;
 
     @Mock
@@ -121,7 +124,7 @@ class PipelineConcurrencyGateTest {
         PipelineService service = new PipelineService(
                 videoRepository, runLifecycle, runItemLifecycleService, runAggregationService,
                 pipelineRunItemRepository, pipelinePhaseRegistry, pipelineErrorClassifier,
-                pipelineMetrics, executor, PERMITS);
+                pipelineMetrics, runItemLeaseService, executor, PERMITS);
 
         service.enqueuePipelineRunBatch(urls, Set.of());
 

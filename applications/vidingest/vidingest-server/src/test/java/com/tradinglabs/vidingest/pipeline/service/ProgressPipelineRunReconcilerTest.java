@@ -30,6 +30,8 @@ class ProgressPipelineRunReconcilerTest {
     private RunQueryService queryService;
     @Mock
     private RunAggregationService runAggregationService;
+    @Mock
+    private RunItemLeaseService runItemLeaseService;
 
     @InjectMocks
     private ProgressPipelineRunReconciler reconciler;
@@ -54,6 +56,20 @@ class ProgressPipelineRunReconcilerTest {
         reconciler.reconcileInProgressPipelineRuns();
 
         verify(runAggregationService).markFailed(eq(runId), eq(PipelineErrorCode.UNEXPECTED), any());
+    }
+
+    @Test
+    void leavesRunsAloneWhileAnotherInstanceHoldsALiveLease() {
+        // This instance's startup says nothing about the others: failing the run here would
+        // condemn a peer's in-flight work.
+        UUID runId = UUID.randomUUID();
+        when(queryService.listPipelineRunsByStatus(RunStatus.IN_PROGRESS)).thenReturn(List.of(run(runId)));
+        when(runAggregationService.refreshRunState(runId)).thenReturn(RunStatus.IN_PROGRESS);
+        when(runItemLeaseService.runHasLiveLease(runId)).thenReturn(true);
+
+        reconciler.reconcileInProgressPipelineRuns();
+
+        verify(runAggregationService, never()).markFailed(any(), any(), any());
     }
 
     @Test

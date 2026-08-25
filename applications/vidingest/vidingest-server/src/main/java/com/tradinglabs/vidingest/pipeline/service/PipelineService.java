@@ -41,6 +41,7 @@ public class PipelineService {
     private final PipelinePhaseRegistry pipelinePhaseRegistry;
     private final PipelineErrorClassifier pipelineErrorClassifier;
     private final PipelineMetrics pipelineMetrics;
+    private final RunItemLeaseService runItemLeaseService;
     private final ExecutorService ingestionExecutor;
 
     /**
@@ -67,6 +68,7 @@ public class PipelineService {
             PipelinePhaseRegistry pipelinePhaseRegistry,
             PipelineErrorClassifier pipelineErrorClassifier,
             PipelineMetrics pipelineMetrics,
+            RunItemLeaseService runItemLeaseService,
             @Qualifier("vidingestIngestionExecutor") ExecutorService ingestionExecutor,
             @Value("${vidingest.ingestion.concurrency:4}") int ingestionConcurrency
     ) {
@@ -78,6 +80,7 @@ public class PipelineService {
         this.pipelinePhaseRegistry = pipelinePhaseRegistry;
         this.pipelineErrorClassifier = pipelineErrorClassifier;
         this.pipelineMetrics = pipelineMetrics;
+        this.runItemLeaseService = runItemLeaseService;
         this.ingestionExecutor = ingestionExecutor;
         this.ingestionGate = new Semaphore(ingestionConcurrency);
     }
@@ -208,6 +211,14 @@ public class PipelineService {
             return;
         }
         inFlightItemIds.add(itemId);
+        // Claimed after the gate, so a queued item is never counted as running. Best-effort:
+        // losing the lease write costs us reap protection, not correctness, and failing the
+        // item here would be worse than proceeding without it.
+        try {
+            runItemLeaseService.acquire(itemId);
+        } catch (Exception e) {
+            log.warn("Could not acquire lease for item {}: {}", itemId, e.getMessage());
+        }
         // Started after the gate so elapsedMs stays execution time, not queue wait.
         long itemStartNs = System.nanoTime();
         try {
@@ -237,17 +248,28 @@ public class PipelineService {
             pipelineMetrics.incrementFailed(code);
         } finally {
             inFlightItemIds.remove(itemId);
+            try {
+                runItemLeaseService.release(itemId);
+            } catch (Exception e) {
+                log.warn("Could not release lease for item {}: {}", itemId, e.getMessage());
+            }
             ingestionGate.release();
             pipelineMetrics.refreshInflightGauge();
         }
     }
 
     /**
-     * Whether this JVM is currently executing phases for {@code itemId}. Items abandoned by a
-     * previous process are absent, which is exactly what the reconciler should reap.
+     * Whether this JVM is currently executing phases for {@code itemId}. Narrower than the
+     * lease — it says nothing about other instances — but it is the one answer that stays right
+     * even if the lease heartbeat has stalled, so the reconciler consults both.
      */
     public boolean isItemInFlight(UUID itemId) {
         return inFlightItemIds.contains(itemId);
+    }
+
+    /** The items this JVM is executing right now. Read by {@link RunItemLeaseHeartbeat}. */
+    public Set<UUID> inFlightItemIds() {
+        return Set.copyOf(inFlightItemIds);
     }
 
     private void executePhases(PipelinePhaseContext ctx) throws Exception {

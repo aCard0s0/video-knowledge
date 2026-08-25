@@ -5,3 +5,5 @@ databaseChangeLog:
       file: classpath:db/changelog/changesets/002-youtube-channels.sql
   - include:
       file: classpath:db/changelog/changesets/003-knowledge-extraction.sql
+  - include:
+      file: classpath:db/changelog/changesets/004-run-item-lease.sql

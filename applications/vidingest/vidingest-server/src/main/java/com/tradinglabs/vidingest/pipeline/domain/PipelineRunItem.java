@@ -59,6 +59,18 @@ public class PipelineRunItem {
     @Column(nullable = false)
     private Integer attempt;
 
+    /**
+     * Which process is currently executing this item, and until when. Renewed by a heartbeat
+     * while the work runs, so an expired lease means the owner died rather than that the item
+     * is slow — the distinction {@code phase_updated_at} cannot make, because it moves only on
+     * a phase transition and a single phase can legitimately run for hours.
+     */
+    @Column(name = "lease_owner", length = 160)
+    private String leaseOwner;
+
+    @Column(name = "lease_expires_at")
+    private LocalDateTime leaseExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

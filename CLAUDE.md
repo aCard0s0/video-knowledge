@@ -117,10 +117,20 @@ to `vidingestIngestionExecutor`, `RunLifecycleService`/`RunItemLifecycleService`
 writes no status — every `PipelineRun` status write goes through `RunAggregationService`),
 `RunAggregationService` rolls item status up to run status, `PipelineAuditService` records `PipelineRunItemEvent`s, and
 `StuckItemReconciler`/`ProgressPipelineRunReconciler` sweep abandoned work
-(`vidingest.reconciler.*`). `StuckItemReconciler` asks `PipelineService.isItemInFlight`
-before failing anything — `phase_updated_at` moves only on a phase *transition*, so a phase
-that legitimately runs for hours is otherwise indistinguishable from abandoned work, and
-failing a live item invites an operator retry that runs a second worker over the same video.
+(`vidingest.reconciler.*`).
+
+**Never fail a run item without checking it is actually dead.** `phase_updated_at` moves only
+on a phase *transition*, so a phase that legitimately runs for hours is indistinguishable from
+abandoned work by timestamp alone, and failing a live item invites an operator retry that runs
+a second worker over the same video. Two independent answers guard it, because they fail in
+opposite directions: `PipelineService.isItemInFlight` is blind to other instances but never
+wrong about this one, and the `lease_owner`/`lease_expires_at` columns on
+`vidingest_pipeline_run_items` see every instance but go stale if this process stops
+heartbeating. An item is reaped only when neither claims it. `RunItemLeaseService` owns the
+writes, `RunItemLeaseHeartbeat` renews them on a schedule that must stay well under
+`vidingest.lease.ttl`, and `ProgressPipelineRunReconciler` leaves a run alone entirely while
+any of its items holds a live lease. Lease renewal is scoped by owner, so a heartbeat can
+never extend a lease another instance took over.
 
 The executor is virtual-thread-per-task and stays unbounded so shutdown waits only for
 in-flight work; concurrency is capped by a `Semaphore` inside `PipelineService`
