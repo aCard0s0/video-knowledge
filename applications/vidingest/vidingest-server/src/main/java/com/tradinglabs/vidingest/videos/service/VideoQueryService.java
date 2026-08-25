@@ -55,6 +55,18 @@ public class VideoQueryService {
                 .orElseThrow(() -> new VideoNotFoundException(videoId));
     }
 
+    /**
+     * Existence check for endpoints that read a video's artifacts rather than the video row —
+     * they need the 404 but not the entity. Lets the artifact services depend on this service
+     * instead of each taking its own {@code VideoRepository}.
+     */
+    @Transactional(readOnly = true)
+    public void ensureExists(UUID videoId) {
+        if (!videoRepository.existsById(videoId)) {
+            throw new VideoNotFoundException(videoId);
+        }
+    }
+
     private static Pageable pageable(Integer page, Integer size) {
         int pageValue = page != null ? Math.max(0, page) : 0;
         int sizeValue = size != null ? Math.clamp(size, 1, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;

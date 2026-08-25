@@ -1,5 +1,6 @@
 package com.tradinglabs.vidingest.integration;
 
+import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
 import com.tradinglabs.vidingest.pipeline.repo.PipelineRunRepository;
 import com.tradinglabs.vidingest.search.repo.ContextChunkRepository;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
@@ -54,6 +55,9 @@ public abstract class BaseVidingestIntegrationTest {
     protected int port;
 
     @Autowired
+    protected MultimodalSegmentRepository multimodalSegmentRepository;
+
+    @Autowired
     protected ContextChunkRepository contextChunkRepository;
 
     @Autowired
@@ -76,6 +80,7 @@ public abstract class BaseVidingestIntegrationTest {
 
     @BeforeEach
     void cleanupDatabase() {
+        multimodalSegmentRepository.deleteAllInBatch();
         contextChunkRepository.deleteAllInBatch();
         transcriptionSegmentRepository.deleteAllInBatch();
         transcriptionRepository.deleteAllInBatch();

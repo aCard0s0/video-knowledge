@@ -33,8 +33,19 @@ public class SemanticKnowledgeSearchService {
     private final VideoSearchConfig searchConfig;
     private final QueryEmbeddingProvider queryEmbeddingProvider;
 
+    /** Default when the caller does not ask for a specific limit. */
+    private static final int DEFAULT_LIMIT = 10;
+
+    /** Hard cap. A knowledge search is a pgvector scan; an unbounded limit is a footgun. */
+    private static final int MAX_LIMIT = 50;
+
+    /**
+     * @param limit caller's requested hit count, or {@code null} for {@value #DEFAULT_LIMIT}.
+     *              Clamped to [1, {@value #MAX_LIMIT}] here — the cap belongs with the query it
+     *              bounds, not restated in every caller.
+     */
     @Transactional(readOnly = true)
-    public List<SearchKnowledgeHit> searchKnowledge(String query, KnowledgeUnitType typeFilter, int limit)
+    public List<SearchKnowledgeHit> searchKnowledge(String query, KnowledgeUnitType typeFilter, Integer limit)
             throws IOException {
         if (!searchConfig.isSemanticEnabled()) {
             throw new SemanticSearchUnavailableException(
@@ -47,7 +58,7 @@ public class SemanticKnowledgeSearchService {
                 .orElseThrow(() -> new SemanticSearchUnavailableException(
                         "No query embedding provider is configured. Implement QueryEmbeddingProvider to enable search."));
 
-        int normalizedLimit = Math.max(1, Math.min(limit, 50));
+        int normalizedLimit = limit == null ? DEFAULT_LIMIT : Math.clamp(limit, 1, MAX_LIMIT);
         String pgVector = toPgVectorLiteral(queryEmbedding);
         String typeName = typeFilter != null ? typeFilter.name() : null;
 
