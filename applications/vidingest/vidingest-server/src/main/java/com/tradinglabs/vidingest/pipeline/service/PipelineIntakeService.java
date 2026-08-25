@@ -3,7 +3,7 @@ package com.tradinglabs.vidingest.pipeline.service;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse.ItemResult;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse.ItemStatus;
-import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.util.VideoUrlValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Gateway for batch pipeline-run creation. Validates URLs, deduplicates, then delegates to
@@ -29,11 +30,7 @@ public class PipelineIntakeService {
 
     private final PipelineService pipelineService;
 
-    /**
-     * Full-flag intake. Used by callers that have been updated to pass the enrichment skip
-     * flags introduced in M1 (REST, MCP, channel command service, CLI).
-     */
-    public CreatePipelineRunResponse intake(List<String> rawUrls, PipelineSkipFlags flags) {
+    public CreatePipelineRunResponse intake(List<String> rawUrls, Set<PipelineRunPhase> skipPhases) {
         if (rawUrls == null || rawUrls.isEmpty()) {
             return new CreatePipelineRunResponse(null, List.of(new ItemResult(
                     null,
@@ -70,7 +67,7 @@ public class PipelineIntakeService {
 
         PipelineService.BatchEnqueueResult result = pipelineService.enqueuePipelineRunBatch(
                 List.copyOf(uniqueUrls),
-                flags
+                skipPhases
         );
         for (PipelineService.EnqueuedItem accepted : result.items()) {
             Integer idx = acceptedIndexByUrl.get(accepted.url());

@@ -141,7 +141,7 @@ Repository: `com.tradinglabs.vidingest.youtube.repo.YoutubeChannelVideoRepositor
 
 ### `vidingest_transcriptions` (Transcription)
 
-Stores transcription output for a video. Populated when the ingestion pipeline runs the transcription phase (skipTranscription=false).
+Stores transcription output for a video. Populated when the ingestion pipeline runs the TRANSCRIBE phase (it is not named in the run's `skipPhases`).
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|

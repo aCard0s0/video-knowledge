@@ -12,9 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.EnumSet;
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -53,20 +51,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class VideoPhaseRunnerService {
-
-    /**
-     * Phases reachable without a pipeline run. Everything before TRANSCRIBE consumes the source
-     * URL rather than the persisted video row.
-     */
-    private static final Set<PipelineRunPhase> RERUNNABLE = EnumSet.of(
-            PipelineRunPhase.TRANSCRIBE,
-            PipelineRunPhase.DIARIZE,
-            PipelineRunPhase.FRAME_SAMPLE,
-            PipelineRunPhase.OCR,
-            PipelineRunPhase.FUSE,
-            PipelineRunPhase.KNOWLEDGE,
-            PipelineRunPhase.CONTEXT
-    );
 
     private final VideoQueryService videoQueryService;
     private final VideoRepository videoRepository;
@@ -126,7 +110,7 @@ public class VideoPhaseRunnerService {
         } catch (IllegalArgumentException e) {
             throw unsupported(raw);
         }
-        if (!RERUNNABLE.contains(phase)) {
+        if (!phase.isOptional()) {
             throw unsupported(raw);
         }
         return phase;
@@ -134,7 +118,7 @@ public class VideoPhaseRunnerService {
 
     private static IllegalArgumentException unsupported(String raw) {
         return new IllegalArgumentException("Unsupported phase: " + raw + ". Allowed: "
-                + RERUNNABLE.stream().map(Enum::name).collect(Collectors.joining(", ")));
+                + PipelineRunPhase.optionalPhases().stream().map(Enum::name).collect(Collectors.joining(", ")));
     }
 
     private static long elapsedMs(long startNs) {

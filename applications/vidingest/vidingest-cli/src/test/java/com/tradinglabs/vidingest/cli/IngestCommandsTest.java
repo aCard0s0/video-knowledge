@@ -21,18 +21,8 @@ class IngestCommandsTest {
         VidingestClientProperties properties = mock(VidingestClientProperties.class);
         IngestCommands commands = new IngestCommands(client, properties);
 
-        // M1: ingest gained skipContext + four enrichment skip flags (defaulting to true).
-        // Blank URLs still short-circuit before any client call regardless of flag values.
-        String out = commands.ingest(
-                "  ", null,
-                /* skipTranscription */ false,
-                /* skipContext        */ false,
-                /* skipDiarize        */ true,
-                /* skipFrames         */ true,
-                /* skipOcr            */ true,
-                /* skipKnowledge      */ true,
-                /* dryRun             */ false
-        );
+        // Blank URLs short-circuit before any client call, whatever the opt-out list says.
+        String out = commands.ingest("  ", null, "DIARIZE,FRAME_SAMPLE,OCR,KNOWLEDGE", /* dryRun */ false);
 
         assertThat(out).contains("ERROR [Validation]");
         verifyNoInteractions(client);

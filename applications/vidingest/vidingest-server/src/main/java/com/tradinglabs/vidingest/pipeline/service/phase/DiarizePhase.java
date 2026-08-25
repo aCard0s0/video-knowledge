@@ -15,10 +15,10 @@ import org.springframework.stereotype.Component;
  * <p>{@link #applies(PipelinePhaseContext)} gates on:
  * <ul>
  *   <li>{@code vidingest.diarization.enabled} (operator master switch)</li>
- *   <li>{@code !ctx.skipDiarize} (per-run opt-out from REST/MCP/CLI)</li>
- *   <li>{@code !ctx.skipTranscription} — there is nothing useful to tag if the
- *       transcription phase was skipped, so we skip diarization too rather than burning
- *       sidecar time on audio with no transcript to attach speakers to</li>
+ *   <li>the run's own opt-out ({@code skipPhases} naming DIARIZE)</li>
+ *   <li>TRANSCRIBE not being skipped — there is nothing useful to tag if the transcription
+ *       phase did not run, so we skip diarization too rather than burning sidecar time on
+ *       audio with no transcript to attach speakers to</li>
  * </ul>
  */
 @Component
@@ -37,8 +37,8 @@ public final class DiarizePhase implements PipelinePhase {
     @Override
     public boolean applies(PipelinePhaseContext ctx) {
         return diarizationConfig.isEnabled()
-                && !ctx.isSkipDiarize()
-                && !ctx.isSkipTranscription();
+                && !ctx.skipped(PipelineRunPhase.DIARIZE)
+                && !ctx.skipped(PipelineRunPhase.TRANSCRIBE);
     }
 
     @Override

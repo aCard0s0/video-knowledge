@@ -82,8 +82,7 @@ Request:
 ```json
 {
   "youtubeVideoIds": ["dQw4w9WgXcQ"],
-  "skipTranscription": false,
-  "skipContext": false
+  "skipPhases": ["DIARIZE", "FRAME_SAMPLE", "OCR", "KNOWLEDGE"]
 }
 ```
 

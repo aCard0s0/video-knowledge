@@ -14,14 +14,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>Unlike the other enrichment phases, fusion is pure-Java and defaults to <b>enabled</b>:
  * the cost is negligible, and downstream phases (M6 KNOWLEDGE, M7 CONTEXT) want a uniform
- * input regardless of which upstream extractors actually ran. The gating is therefore:
- * <ul>
- *   <li>{@code vidingest.fusion.enabled} (operator master switch, default true)</li>
- * </ul>
- *
- * <p>There is no per-run {@code skipFuse} flag — fusion is fast enough that a separate
- * REST/MCP/CLI knob would just be noise. To skip it entirely, operators flip the master
- * switch off in config.
+ * input regardless of which upstream extractors actually ran. It gates on
+ * {@code vidingest.fusion.enabled} (operator master switch, default true) and, like every
+ * optional phase, on the run's own opt-out set.
  */
 @Component
 @RequiredArgsConstructor
@@ -38,7 +33,7 @@ public final class FusePhase implements PipelinePhase {
 
     @Override
     public boolean applies(PipelinePhaseContext ctx) {
-        return fusionConfig.isEnabled();
+        return fusionConfig.isEnabled() && !ctx.skipped(PipelineRunPhase.FUSE);
     }
 
     @Override

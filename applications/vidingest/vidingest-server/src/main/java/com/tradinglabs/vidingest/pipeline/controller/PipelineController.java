@@ -11,11 +11,11 @@ import com.tradinglabs.vidingest.api.pipeline.RetryRunRequest;
 import com.tradinglabs.vidingest.pipeline.service.PipelineAuditQueryService;
 import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
 import com.tradinglabs.vidingest.pipeline.service.PipelineService;
-import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
 import com.tradinglabs.vidingest.pipeline.service.RunDetailsMapper;
 import com.tradinglabs.vidingest.pipeline.service.RunLiveSummaryService;
 import com.tradinglabs.vidingest.pipeline.service.RunQueryService;
 import com.tradinglabs.vidingest.pipeline.service.RunSummaryPageService;
+import com.tradinglabs.vidingest.pipeline.util.SkipPhasesParser;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -48,16 +48,7 @@ public class PipelineController {
     @Operation(summary = "Create a pipeline run", description = "Starts one asynchronous pipeline run containing one run item per accepted URL.")
     public ResponseEntity<CreatePipelineRunResponse> create(@Valid @RequestBody CreatePipelineRunRequest request) {
         CreatePipelineRunResponse response = pipelineIntakeService.intake(
-                request.urls(),
-                new PipelineSkipFlags(
-                        request.skipTranscription(),
-                        request.skipContext(),
-                        request.skipDiarize(),
-                        request.skipFrames(),
-                        request.skipOcr(),
-                        request.skipKnowledge()
-                )
-        );
+                request.urls(), SkipPhasesParser.parse(request.skipPhases()));
         HttpStatus status = response.runId() != null ? HttpStatus.ACCEPTED : HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(response);
     }
@@ -85,17 +76,8 @@ public class PipelineController {
             description = "Resets the run state and retries all FAILED run items asynchronously using the same run id."
     )
     public CreatePipelineRunResponse retry(@PathVariable UUID runId, @Valid @RequestBody RetryRunRequest request) {
-        log.info("REST retry run: {} (skipTranscription={}, skipContext={}, skipDiarize={}, skipFrames={}, skipOcr={}, skipKnowledge={})",
-                runId, request.skipTranscription(), request.skipContext(),
-                request.skipDiarize(), request.skipFrames(), request.skipOcr(), request.skipKnowledge());
-        return pipelineService.enqueueRetryBatch(runId, new PipelineSkipFlags(
-                request.skipTranscription(),
-                request.skipContext(),
-                request.skipDiarize(),
-                request.skipFrames(),
-                request.skipOcr(),
-                request.skipKnowledge()
-        ));
+        log.info("REST retry run: {} (skipPhases={})", runId, request.skipPhases());
+        return pipelineService.enqueueRetryBatch(runId, SkipPhasesParser.parse(request.skipPhases()));
     }
 
     @PostMapping("/{runId}/items/{itemId}/retry")
@@ -106,17 +88,8 @@ public class PipelineController {
             @PathVariable UUID itemId,
             @Valid @RequestBody RetryRunRequest request
     ) {
-        log.info("REST retry run item: runId={} itemId={} (skipTranscription={}, skipContext={}, skipDiarize={}, skipFrames={}, skipOcr={}, skipKnowledge={})",
-                runId, itemId, request.skipTranscription(), request.skipContext(),
-                request.skipDiarize(), request.skipFrames(), request.skipOcr(), request.skipKnowledge());
-        return pipelineService.enqueueRetryItem(runId, itemId, new PipelineSkipFlags(
-                request.skipTranscription(),
-                request.skipContext(),
-                request.skipDiarize(),
-                request.skipFrames(),
-                request.skipOcr(),
-                request.skipKnowledge()
-        ));
+        log.info("REST retry run item: runId={} itemId={} (skipPhases={})", runId, itemId, request.skipPhases());
+        return pipelineService.enqueueRetryItem(runId, itemId, SkipPhasesParser.parse(request.skipPhases()));
     }
 
     @GetMapping("/{runId}")

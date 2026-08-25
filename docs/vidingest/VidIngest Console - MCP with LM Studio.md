@@ -93,10 +93,9 @@ service name instead of `localhost`:
 
 Parameters:
 - `urls` (List<String>, required): Video URLs (YouTube, Vimeo, or any yt-dlp-supported platform)
-- `skipTranscription` (boolean, required): Skip the transcription phase
-- `skipContext` (boolean, required): Skip the context generation phase
+- `skipPhases` (Set<String>, optional): Optional phases to leave out of this run — `TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`, `OCR`, `FUSE`, `KNOWLEDGE`, `CONTEXT`. Empty or omitted runs everything the deployment has enabled.
 
-If `skipTranscription=false`, VidIngest calls Whisper (`/asr?output=json`), persists transcription rows, and writes transcript sidecars next to the downloaded video file under `package/vidingest/videos/...`.
+Unless `TRANSCRIBE` is in `skipPhases`, VidIngest calls Whisper (`/asr?output=json`), persists transcription rows, and writes transcript sidecars next to the downloaded video file under `package/vidingest/videos/...`.
 
 Returns:
 
@@ -168,8 +167,7 @@ Returns: Array of `{ chunkId, videoId, chunkIndex, snippet, videoTitle, channelN
 
 Parameters:
 - `pipelineId` (String, required): Failed pipeline run UUID (run id)
-- `skipTranscription` (boolean, required): Skip transcription during retry
-- `skipContext` (boolean, required): Skip context generation during retry
+- `skipPhases` (Set<String>, optional): Same semantics as `createPipelineRuns`
 
 Returns:
 
@@ -199,7 +197,7 @@ Returns:
 
 By default, `vidingest-server` enables semantic search and uses **Ollama embeddings** on `http://localhost:11434`.
 
-- To disable semantic search (and therefore skip context generation during ingestion): set `vidingest.search.semantic-enabled=false` or pass `skipContext=true`.
+- To disable semantic search (and therefore skip context generation during ingestion): set `vidingest.search.semantic-enabled=false` or include `CONTEXT` in `skipPhases`.
 - To switch embedding providers (e.g., LM Studio OpenAI-compatible): set `vidingest.search.embeddings.provider=openai-compatible` and configure `vidingest.search.embeddings.base-url`.
 
 ## Spring AI MCP client wiring
@@ -235,10 +233,11 @@ as the original nine — no separate tool group.
 | `getMultimodalTimeline`| `videoId`, `fromSeconds` (optional), `toSeconds` (optional) | Fused per-window rows; both bounds null = whole video. |
 | `getOcrResults`        | `videoId` (UUID) | OCR detections grouped by parent frame, ordered by frame timestamp. |
 
-`createPipelineRuns` and `retryPipelineRun` also gained four new boolean parameters
-(`skipDiarize`, `skipFrames`, `skipOcr`, `skipKnowledge`) — default to `true` to preserve
-the existing call shape; flip individual ones to `false` to opt in to the corresponding
-M2–M6 phase for that run.
+`createPipelineRuns` and `retryPipelineRun` take a single `skipPhases` list naming the
+optional phases to leave out of the run (`TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`, `OCR`,
+`FUSE`, `KNOWLEDGE`, `CONTEXT`). Omit it or pass an empty list to run everything the
+deployment has enabled; naming a mandatory phase is rejected. This replaced six positional
+booleans, so calls written against the older tool signature need updating.
 
 See [Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md) for the
 underlying pipeline phases and configuration.

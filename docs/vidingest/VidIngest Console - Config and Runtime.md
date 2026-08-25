@@ -165,7 +165,7 @@ When running VidIngest via the platform Docker stack (`SPRING_PROFILES_ACTIVE=do
 Notes:
 
 - `VIDINGEST_OLLAMA_BASE_URL` must be reachable **from inside the container**; use `http://ollama:11434` for the docker stack.
-- Semantic search results depend on context-chunk generation during ingestion; ingest with `skipTranscription=false` and `skipContext=false`.
+- Semantic search results depend on context-chunk generation during ingestion; ingest without `TRANSCRIBE` or `CONTEXT` in `skipPhases`.
 - For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`.
 
 #### Troubleshooting (semantic search)

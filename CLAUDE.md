@@ -90,19 +90,32 @@ constructor injection:
 METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE → OCR → FUSE → KNOWLEDGE → CONTEXT
 ```
 
-Adding a phase means touching all four: the `PipelineRunPhase` enum, the sealed
-`permits` list, the registry constructor, and `PipelineService.PipelineSkipFlags`.
+Adding a phase means touching five: the `PipelineRunPhase` enum (add the constant, and
+list it in `isOptional()` if it can be skipped), the new `XPhase` class, the sealed
+`permits` list, the registry constructor, and a config class for its
+`vidingest.<phase>.enabled` toggle. Nothing else — the per-run opt-out is a
+`Set<PipelineRunPhase>`, so the REST records, MCP tools and CLI options do not change per
+phase. That used to be six positional booleans threaded through 15 files.
 
-Each phase gates itself via `applies(ctx)` — driven by a `vidingest.<phase>.enabled`
-property and the per-run skip flags. `PipelineSkipFlags.defaults()` skips DIARIZE,
-FRAME_SAMPLE, OCR and KNOWLEDGE, and most of those properties default to `false`; the
-enrichment phases are opt-in per deployment, so a default local run only does
+Each phase gates itself via `applies(ctx)`. The default implementation on `PipelinePhase`
+is `!ctx.skipped(phase())`, so a phase overrides it only to add a
+`vidingest.<phase>.enabled` check or an upstream dependency (OCR needs FRAME_SAMPLE,
+DIARIZE needs TRANSCRIBE). Most of those properties default to `false`: the enrichment
+phases are opt-in per deployment, so a default local run only does
 metadata → download → persist → transcribe → fuse → context.
+
+`PipelineRunPhase.isOptional()` is the single answer to both "can a run skip this?" and
+"can the rerun endpoint re-execute this?" — the same set either way, because an optional
+phase consumes the persisted video row while METADATA/DOWNLOAD/PERSIST consume the URL.
+`SkipPhasesParser` turns the wire strings into the enum and 400s on anything mandatory or
+unknown; the API module cannot import the enum, since the server depends on the API and
+not the reverse.
 
 Run state is split across services on purpose: `PipelineService` orchestrates and submits
 to `vidingestIngestionExecutor`, `RunLifecycleService`/`RunItemLifecycleService` own the
-`PipelineRun`/`PipelineRunItem` rows, `RunAggregationService` rolls item status up to run
-status, `PipelineAuditService` records `PipelineRunItemEvent`s, and
+`PipelineRun`/`PipelineRunItem` rows (`RunLifecycleService` creates and resets runs but
+writes no status — every `PipelineRun` status write goes through `RunAggregationService`),
+`RunAggregationService` rolls item status up to run status, `PipelineAuditService` records `PipelineRunItemEvent`s, and
 `StuckItemReconciler`/`ProgressPipelineRunReconciler` sweep abandoned work
 (`vidingest.reconciler.*`). `StuckItemReconciler` asks `PipelineService.isItemInFlight`
 before failing anything — `phase_updated_at` moves only on a phase *transition*, so a phase

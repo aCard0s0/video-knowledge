@@ -9,6 +9,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +20,7 @@ import static org.mockito.Mockito.verify;
 
 /**
  * Gating + delegation tests for {@link KnowledgePhase}. Two knobs must be open: the
- * config master switch and the per-run {@code skipKnowledge} flag. The phase is
+ * config master switch and the run's own opt-out. The phase is
  * deliberately independent of upstream skip flags — the fusion phase produces an empty
  * segment set when transcripts/OCR/diarization are all absent, and the LLM call on an
  * empty input is a fast no-op.
@@ -83,16 +85,16 @@ class KnowledgePhaseTest {
     }
 
     private static PipelinePhaseContext ctx(boolean skipKnowledge) {
+        Set<PipelineRunPhase> skip = EnumSet.of(
+                PipelineRunPhase.DIARIZE, PipelineRunPhase.FRAME_SAMPLE, PipelineRunPhase.OCR);
+        if (skipKnowledge) {
+            skip.add(PipelineRunPhase.KNOWLEDGE);
+        }
         return new PipelinePhaseContext(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "https://example.com/v",
-                /* skipTranscription */ false,
-                /* skipContext       */ false,
-                /* skipDiarize       */ true,
-                /* skipFrames        */ true,
-                /* skipOcr           */ true,
-                skipKnowledge
+                skip
         );
     }
 }

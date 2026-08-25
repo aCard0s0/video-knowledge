@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -122,8 +123,7 @@ class PipelineConcurrencyGateTest {
                 pipelineRunItemRepository, pipelinePhaseRegistry, pipelineErrorClassifier,
                 pipelineMetrics, executor, PERMITS);
 
-        service.enqueuePipelineRunBatch(urls, new PipelineService.PipelineSkipFlags(
-                false, false, true, true, true, true));
+        service.enqueuePipelineRunBatch(urls, Set.of());
 
         // The permits get handed out...
         assertThat(firstBatchAdmitted.await(5, TimeUnit.SECONDS))

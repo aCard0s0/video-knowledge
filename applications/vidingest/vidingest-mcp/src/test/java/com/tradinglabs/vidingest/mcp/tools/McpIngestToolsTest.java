@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Set;
 import java.util.List;
 import java.util.UUID;
 
@@ -100,14 +101,13 @@ class McpIngestToolsTest {
     @Test
     void retryPipelineRunDelegatesToClient() {
         UUID runId = UUID.fromString("73d1d901-0f69-4327-875c-6bb46cd80f00");
-        when(client.retryPipeline(runId, new RetryRunRequest(false, false, true, true, true, true)))
+        when(client.retryPipeline(runId, new RetryRunRequest(Set.of("DIARIZE", "FRAME_SAMPLE", "OCR", "KNOWLEDGE"))))
                 .thenReturn(new CreatePipelineRunResponse(runId.toString(), List.of()));
 
         McpIngestTools tools = new McpIngestTools(client);
 
         CreatePipelineRunResponse result = tools.retryPipelineRun(
-                runId.toString(), false, false, true, true, true, true
-        );
+                runId.toString(), Set.of("DIARIZE", "FRAME_SAMPLE", "OCR", "KNOWLEDGE"));
         assertThat(result.runId()).isEqualTo(runId.toString());
     }
 

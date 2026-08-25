@@ -27,6 +27,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -34,27 +35,25 @@ import java.util.UUID;
 @Slf4j
 public class McpIngestTools {
 
+    private static final String SKIP_PHASES_DOC =
+            "Optional phases to skip for this run: TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, "
+            + "KNOWLEDGE, CONTEXT. Empty or omitted runs every phase the deployment has enabled. "
+            + "The enrichment phases (DIARIZE/FRAME_SAMPLE/OCR/KNOWLEDGE) are also gated by "
+            + "deployment config, so skipping them is only needed to opt out of an enabled one.";
+
     private static final int DEFAULT_PAGE_SIZE = 200;
     private static final int MAX_ITEMS = 5_000;
 
     private final VidingestClient client;
 
     @McpTool(description = "Create one pipeline run containing one run-item per accepted URL. "
-            + "The skipDiarize/skipFrames/skipOcr/skipKnowledge flags gate the M1 multi-modal "
-            + "enrichment phases; in M1 these phases are no-ops regardless of flag value, so "
-            + "pass true (the default) unless you're explicitly opting in to a later milestone.")
+            + "skipPhases names the optional phases this run opts out of; omit it or pass an "
+            + "empty list to run everything the deployment has enabled.")
     public CreatePipelineRunResponse createPipelineRuns(
             @McpToolParam(description = "List of video URLs (YouTube, Vimeo, or any yt-dlp-supported platform)") List<String> urls,
-            @McpToolParam(description = "Skip the transcription phase (true/false)") boolean skipTranscription,
-            @McpToolParam(description = "Skip the context generation phase (true/false)") boolean skipContext,
-            @McpToolParam(description = "Skip the speaker-diarization phase (true/false). M1: no-op; default true.") boolean skipDiarize,
-            @McpToolParam(description = "Skip the frame-sampling phase (true/false). M1: no-op; default true.") boolean skipFrames,
-            @McpToolParam(description = "Skip the OCR phase (true/false). M1: no-op; default true.") boolean skipOcr,
-            @McpToolParam(description = "Skip the LLM knowledge-extraction phase (true/false). M1: no-op; default true.") boolean skipKnowledge
+            @McpToolParam(description = SKIP_PHASES_DOC) Set<String> skipPhases
     ) {
-        return client.createPipelineRun(new CreatePipelineRunRequest(
-                urls, skipTranscription, skipContext, skipDiarize, skipFrames, skipOcr, skipKnowledge
-        ));
+        return client.createPipelineRun(new CreatePipelineRunRequest(urls, skipPhases));
     }
 
     @McpTool(description = "Download a video to disk without database persistence. "
@@ -154,22 +153,13 @@ public class McpIngestTools {
     }
 
     @McpTool(description = "Retry a failed pipeline run by UUID. "
-            + "Same skip-flag semantics as createPipelineRuns: the M1 enrichment phases are "
-            + "no-ops regardless, so pass true (the default) for skipDiarize/skipFrames/skipOcr/skipKnowledge "
-            + "unless you're opting in to a later milestone.")
+            + "Same skipPhases semantics as createPipelineRuns.")
     public CreatePipelineRunResponse retryPipelineRun(
             @McpToolParam(description = "Pipeline run UUID") String pipelineId,
-            @McpToolParam(description = "Skip transcription phase during retry") boolean skipTranscription,
-            @McpToolParam(description = "Skip context generation phase during retry") boolean skipContext,
-            @McpToolParam(description = "Skip the speaker-diarization phase. M1: no-op; default true.") boolean skipDiarize,
-            @McpToolParam(description = "Skip the frame-sampling phase. M1: no-op; default true.") boolean skipFrames,
-            @McpToolParam(description = "Skip the OCR phase. M1: no-op; default true.") boolean skipOcr,
-            @McpToolParam(description = "Skip the LLM knowledge-extraction phase. M1: no-op; default true.") boolean skipKnowledge
+            @McpToolParam(description = SKIP_PHASES_DOC) Set<String> skipPhases
     ) {
         log.info("MCP: Retrying failed pipeline run {}", pipelineId);
-        return client.retryPipeline(UUID.fromString(pipelineId), new RetryRunRequest(
-                skipTranscription, skipContext, skipDiarize, skipFrames, skipOcr, skipKnowledge
-        ));
+        return client.retryPipeline(UUID.fromString(pipelineId), new RetryRunRequest(skipPhases));
     }
 
     // ---------------------------------------------------------------------------

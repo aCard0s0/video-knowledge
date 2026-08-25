@@ -27,9 +27,13 @@ import org.springframework.shell.standard.ShellOption;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Spring Shell commands for VidIngest CLI (remote-only).
@@ -40,19 +44,34 @@ import java.util.UUID;
 @Slf4j
 public class IngestCommands {
 
+    private static final String SKIP_PHASES_HELP =
+            "Comma-separated optional phases to skip: TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, "
+            + "FUSE, KNOWLEDGE, CONTEXT. Pass an empty string to run every enabled phase.";
+
+    /**
+     * The enrichment phases stay opt-in from the CLI, matching what the six boolean flags
+     * defaulted to before they collapsed into one option.
+     */
+    private static final String DEFAULT_SKIP_PHASES = "DIARIZE,FRAME_SAMPLE,OCR,KNOWLEDGE";
+
     private final VidingestClient client;
     private final VidingestClientProperties properties;
+
+    private static Set<String> parseSkipPhases(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
 
     @ShellMethod(key = "ingest", value = "Download and ingest a video from URL")
     public String ingest(
             @ShellOption(help = "Video URL") String url,
             @ShellOption(help = "Config file path", defaultValue = ShellOption.NULL) String config,
-            @ShellOption(help = "Skip transcription", defaultValue = "false") boolean skipTranscription,
-            @ShellOption(help = "Skip context generation", defaultValue = "false") boolean skipContext,
-            @ShellOption(help = "Skip speaker diarization phase (M1: no-op; default true)", defaultValue = "true") boolean skipDiarize,
-            @ShellOption(help = "Skip frame sampling phase (M1: no-op; default true)", defaultValue = "true") boolean skipFrames,
-            @ShellOption(help = "Skip OCR phase (M1: no-op; default true)", defaultValue = "true") boolean skipOcr,
-            @ShellOption(help = "Skip LLM knowledge-extraction phase (M1: no-op; default true)", defaultValue = "true") boolean skipKnowledge,
+            @ShellOption(help = SKIP_PHASES_HELP, defaultValue = DEFAULT_SKIP_PHASES) String skipPhases,
             @ShellOption(help = "Dry run (validate only)", defaultValue = "false") boolean dryRun) {
 
         try {
@@ -68,9 +87,9 @@ public class IngestCommands {
 
             log.info("Starting ingestion pipeline for: {}", url);
 
-            CreatePipelineRunResponse response = client.createPipelineRun(new CreatePipelineRunRequest(
-                    List.of(url), skipTranscription, skipContext, skipDiarize, skipFrames, skipOcr, skipKnowledge
-            ));
+            Set<String> skipped = parseSkipPhases(skipPhases);
+            CreatePipelineRunResponse response = client.createPipelineRun(
+                    new CreatePipelineRunRequest(List.of(url), skipped));
             if (response.items() == null || response.items().isEmpty()) {
                 return "ERROR [Ingest]: Server returned empty pipeline response";
             }
@@ -88,8 +107,8 @@ public class IngestCommands {
                 sb.append("Pipeline run ID: ").append(response.runId()).append("\n");
             }
             sb.append("Items: ").append(accepted).append(" accepted, ").append(rejected).append(" rejected\n");
-            if (skipTranscription) {
-                sb.append("(Transcription skipped)\n");
+            if (!skipped.isEmpty()) {
+                sb.append("(Skipped: ").append(String.join(", ", skipped)).append(")\n");
             }
             sb.append("Tip: use `pipelines` to watch progress, and `retry` for failed runs.");
             return sb.toString();
@@ -129,12 +148,7 @@ public class IngestCommands {
             log.info("Creating one pipeline run for {} URLs from file: {}", validUrls.size(), file);
             CreatePipelineRunResponse response = client.createPipelineRun(new CreatePipelineRunRequest(
                     validUrls,
-                    false,
-                    false,
-                    true,
-                    true,
-                    true,
-                    true
+                    parseSkipPhases(DEFAULT_SKIP_PHASES)
             ));
 
             long accepted = response.items() != null
@@ -357,17 +371,11 @@ public class IngestCommands {
     @ShellMethod(key = "retry", value = "Retry a failed pipeline run by UUID")
     public String retry(
             @ShellOption(help = "Pipeline UUID") String pipelineId,
-            @ShellOption(help = "Skip transcription", defaultValue = "false") boolean skipTranscription,
-            @ShellOption(help = "Skip context generation", defaultValue = "false") boolean skipContext,
-            @ShellOption(help = "Skip speaker diarization phase (M1: no-op; default true)", defaultValue = "true") boolean skipDiarize,
-            @ShellOption(help = "Skip frame sampling phase (M1: no-op; default true)", defaultValue = "true") boolean skipFrames,
-            @ShellOption(help = "Skip OCR phase (M1: no-op; default true)", defaultValue = "true") boolean skipOcr,
-            @ShellOption(help = "Skip LLM knowledge-extraction phase (M1: no-op; default true)", defaultValue = "true") boolean skipKnowledge) {
+            @ShellOption(help = SKIP_PHASES_HELP, defaultValue = DEFAULT_SKIP_PHASES) String skipPhases) {
         try {
             UUID uuid = UUID.fromString(pipelineId);
             CreatePipelineRunResponse result = client.retryPipeline(uuid, new RetryRunRequest(
-                    skipTranscription, skipContext, skipDiarize, skipFrames, skipOcr, skipKnowledge
-            ));
+                    parseSkipPhases(skipPhases)));
             if (result.items() == null || result.items().isEmpty()) {
                 return "ERROR [Retry]: Server returned empty retry response";
             }

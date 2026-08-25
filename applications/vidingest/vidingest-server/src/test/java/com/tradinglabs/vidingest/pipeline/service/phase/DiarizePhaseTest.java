@@ -9,6 +9,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,8 +20,8 @@ import static org.mockito.Mockito.verify;
 
 /**
  * Exercises the gating logic of {@link DiarizePhase} — the most-skipped phase by default.
- * Three knobs must all be open for it to run: config master switch, per-run skipDiarize
- * flag, and the implicit skipTranscription guard (no transcript = nothing to tag).
+ * Three knobs must all be open for it to run: the config master switch, the run's own
+ * opt-out, and the implicit TRANSCRIBE guard (no transcript = nothing to tag).
  */
 @ExtendWith(MockitoExtension.class)
 class DiarizePhaseTest {
@@ -88,16 +90,19 @@ class DiarizePhaseTest {
     }
 
     private static PipelinePhaseContext ctx(boolean skipTranscription, boolean skipDiarize) {
+        Set<PipelineRunPhase> skip = EnumSet.of(
+                PipelineRunPhase.FRAME_SAMPLE, PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE);
+        if (skipTranscription) {
+            skip.add(PipelineRunPhase.TRANSCRIBE);
+        }
+        if (skipDiarize) {
+            skip.add(PipelineRunPhase.DIARIZE);
+        }
         return new PipelinePhaseContext(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "https://example.com/v",
-                skipTranscription,
-                /* skipContext   */ false,
-                skipDiarize,
-                /* skipFrames    */ true,
-                /* skipOcr       */ true,
-                /* skipKnowledge */ true
+                skip
         );
     }
 }

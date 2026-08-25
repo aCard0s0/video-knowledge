@@ -21,5 +21,24 @@ public enum PipelineRunPhase {
     FUSE,
     KNOWLEDGE,
     CONTEXT,
-    DONE
+    DONE;
+
+    /**
+     * Whether this phase can be turned off for a single run, and equivalently whether it can be
+     * re-run on its own against an already-ingested video. Both questions have the same answer
+     * because they have the same cause: an optional phase consumes the persisted video row,
+     * while METADATA/DOWNLOAD/PERSIST consume the source URL and the run cannot start without
+     * them. CREATED and DONE are run markers, not phases.
+     */
+    public boolean isOptional() {
+        return switch (this) {
+            case TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT -> true;
+            case CREATED, METADATA, DOWNLOAD, PERSIST, DONE -> false;
+        };
+    }
+
+    /** The optional phases, in pipeline order. */
+    public static java.util.List<PipelineRunPhase> optionalPhases() {
+        return java.util.Arrays.stream(values()).filter(PipelineRunPhase::isOptional).toList();
+    }
 }

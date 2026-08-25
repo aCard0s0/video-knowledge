@@ -4,6 +4,7 @@ import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineErrorCode;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRun;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunRetryNotAllowedException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunItemNotFoundException;
@@ -87,21 +88,7 @@ public class PipelineService {
     public record BatchEnqueueResult(UUID runId, List<EnqueuedItem> items) {
     }
 
-    /**
-     * Bundles the enrichment skip flags so signatures don't multiply as more phases land.
-     */
-    public record PipelineSkipFlags(
-            boolean skipTranscription,
-            boolean skipContext,
-            boolean skipDiarize,
-            boolean skipFrames,
-            boolean skipOcr,
-            boolean skipKnowledge
-    ) {    }
-
-    // --- Full-flag entry points (used by intake + retry from M1 onwards) ----------------------
-
-    public BatchEnqueueResult enqueuePipelineRunBatch(List<String> urls, PipelineSkipFlags flags) {
+    public BatchEnqueueResult enqueuePipelineRunBatch(List<String> urls, Set<PipelineRunPhase> skipPhases) {
         if (urls == null || urls.isEmpty()) {
             throw new IllegalArgumentException("urls must not be empty");
         }
@@ -110,11 +97,11 @@ public class PipelineService {
         PipelineRun run = runLifecycle.createPipelineRun(previewUrl);
         List<PipelineRunItem> items = runItemLifecycleService.createItems(run.getId(), urls);
 
-        log.info("Pipeline run started: runId={}, items={}, urls={}, skipFlags={}",
-                run.getId(), items.size(), urls.size(), flags);
+        log.info("Pipeline run started: runId={}, items={}, urls={}, skipPhases={}",
+                run.getId(), items.size(), urls.size(), skipPhases);
 
         for (var item : items) {
-            enqueueItem(run.getId(), item.getId(), item.getUrl(), flags);
+            enqueueItem(run.getId(), item.getId(), item.getUrl(), skipPhases);
         }
         pipelineMetrics.incrementCreated(items.size());
         pipelineMetrics.refreshInflightGauge();
@@ -125,7 +112,7 @@ public class PipelineService {
         return new BatchEnqueueResult(run.getId(), enqueued);
     }
 
-    public CreatePipelineRunResponse enqueueRetryBatch(UUID runId, PipelineSkipFlags flags) {
+    public CreatePipelineRunResponse enqueueRetryBatch(UUID runId, Set<PipelineRunPhase> skipPhases) {
         List<PipelineRunItem> items = runItemLifecycleService.listItems(runId);
         if (items.isEmpty()) {
             PipelineRun run = runLifecycle.prepareRetry(runId);
@@ -141,7 +128,7 @@ public class PipelineService {
 
             var created = runItemLifecycleService.createItems(runId, List.of(url));
             var item = created.getFirst();
-            enqueueItem(runId, item.getId(), url, flags);
+            enqueueItem(runId, item.getId(), url, skipPhases);
             return new CreatePipelineRunResponse(runId.toString(), List.of(new CreatePipelineRunResponse.ItemResult(
                     url,
                     CreatePipelineRunResponse.ItemStatus.ACCEPTED,
@@ -164,7 +151,7 @@ public class PipelineService {
                     }
 
                     runItemLifecycleService.prepareRetry(itemId);
-                    enqueueItem(runId, itemId, i.getUrl(), flags);
+                    enqueueItem(runId, itemId, i.getUrl(), skipPhases);
                     return new CreatePipelineRunResponse.ItemResult(i.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemIdStr, null);
                 })
                 .toList();
@@ -172,7 +159,7 @@ public class PipelineService {
         return new CreatePipelineRunResponse(runId.toString(), results);
     }
 
-    public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, PipelineSkipFlags flags) {
+    public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, Set<PipelineRunPhase> skipPhases) {
         PipelineRun run = runLifecycle.getPipelineRun(runId);
 
         PipelineRunItem item = pipelineRunItemRepository.findByIdAndPipelineRun_Id(itemId, runId)
@@ -191,16 +178,16 @@ public class PipelineService {
 
         runLifecycle.prepareRetry(runId);
         runItemLifecycleService.prepareRetry(itemId);
-        enqueueItem(runId, itemId, item.getUrl(), flags);
+        enqueueItem(runId, itemId, item.getUrl(), skipPhases);
         return new CreatePipelineRunResponse(runId.toString(), List.of(
                 new CreatePipelineRunResponse.ItemResult(item.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemIdStr, null)
         ));
     }
 
-    private void enqueueItem(UUID runId, UUID itemId, String videoUrl, PipelineSkipFlags flags) {
+    private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
         ingestionExecutor.submit(() -> {
             try {
-                runPipelineRunItem(runId, itemId, videoUrl, flags);
+                runPipelineRunItem(runId, itemId, videoUrl, skipPhases);
             } catch (Throwable t) {
                 // runPipelineRunItem handles its own failures, but the recovery path can throw
                 // too (markFailed hits getReferenceById on a row that may be gone). The Future
@@ -211,18 +198,8 @@ public class PipelineService {
         });
     }
 
-    private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, PipelineSkipFlags flags) {
-        PipelinePhaseContext ctx = new PipelinePhaseContext(
-                runId,
-                itemId,
-                videoUrl,
-                flags.skipTranscription(),
-                flags.skipContext(),
-                flags.skipDiarize(),
-                flags.skipFrames(),
-                flags.skipOcr(),
-                flags.skipKnowledge()
-        );
+    private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
+        PipelinePhaseContext ctx = new PipelinePhaseContext(runId, itemId, videoUrl, skipPhases);
         try {
             ingestionGate.acquire();
         } catch (InterruptedException e) {
