@@ -5,6 +5,7 @@ import com.tradinglabs.vidingest.api.youtube.CreateYoutubeChannelRequest;
 import com.tradinglabs.vidingest.api.youtube.YoutubeChannelSummary;
 import com.tradinglabs.vidingest.api.youtube.YoutubeChannelVideoSummary;
 import com.tradinglabs.vidingest.api.common.PageResponse;
+import com.tradinglabs.vidingest.commons.ConflictException;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
 import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
 import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
@@ -55,7 +56,7 @@ public class YoutubeChannelCommandService {
     public YoutubeChannelSummary createChannel(CreateYoutubeChannelRequest request) {
         String normalizedUrl = normalizeChannelUrl(request.url());
         youtubeChannelRepository.findByChannelUrl(normalizedUrl).ifPresent(existing -> {
-            throw new IllegalStateException("YouTube channel already exists for url: " + normalizedUrl);
+            throw new ConflictException("YouTube channel already exists for url: " + normalizedUrl);
         });
 
         YoutubeChannel channel = YoutubeChannel.builder()
@@ -96,7 +97,7 @@ public class YoutubeChannelCommandService {
         YoutubeChannel ch = youtubeChannelRepository.findById(channelId)
                 .orElseThrow(() -> new YoutubeChannelNotFoundException(channelId));
         if (ch.getStatus() == YoutubeChannelStatus.DISABLED) {
-            throw new IllegalStateException("Channel is disabled: " + channelId);
+            throw new ConflictException("Channel is disabled: " + channelId);
         }
 
         ch.setStatus(YoutubeChannelStatus.SYNCING);

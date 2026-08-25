@@ -1,13 +1,16 @@
 package com.tradinglabs.vidingest.videos.service;
 
 import com.tradinglabs.vidingest.api.videos.RunVideoPhaseResult;
+import com.tradinglabs.vidingest.commons.PhaseFailureException;
 import com.tradinglabs.vidingest.config.FrameSamplingConfig;
 import com.tradinglabs.vidingest.config.FusionConfig;
 import com.tradinglabs.vidingest.config.OcrConfig;
 import com.tradinglabs.vidingest.core.frames.domain.VideoFrame;
 import com.tradinglabs.vidingest.core.frames.service.FrameSamplingService;
 import com.tradinglabs.vidingest.core.fusion.service.SegmentFusionService;
+import com.tradinglabs.vidingest.core.ocr.service.OcrFailureException;
 import com.tradinglabs.vidingest.core.ocr.service.OcrService;
+import com.tradinglabs.vidingest.core.transcription.service.TranscriptionFailureException;
 import com.tradinglabs.vidingest.core.transcription.service.TranscriptionService;
 import com.tradinglabs.vidingest.pipeline.service.phase.FrameSamplePhase;
 import com.tradinglabs.vidingest.pipeline.service.phase.FusePhase;
@@ -85,20 +88,19 @@ class VideoPhaseRunnerServiceTest {
     }
 
     @Test
-    void runsThePhaseFromTheRegistryAndReportsItsRowCount() {
+    void runsThePhaseFromTheRegistryAndReportsItsRowCount() throws Exception {
         register(new OcrPhase(ocrService, new OcrConfig()));
         when(ocrService.ocrAllFrames(video)).thenReturn(42);
 
         RunVideoPhaseResult result = runner.runPhase(videoId, "ocr");
 
-        assertThat(result.status()).isEqualTo("OK");
         assertThat(result.phase()).isEqualTo("OCR");
         assertThat(result.rowsAffected()).isEqualTo(42);
-        assertThat(result.message()).isNull();
+        assertThat(result.videoId()).isEqualTo(videoId.toString());
     }
 
     @Test
-    void runsThePhaseEvenWhenItsDeploymentToggleIsOff() {
+    void runsThePhaseEvenWhenItsDeploymentToggleIsOff() throws Exception {
         // The endpoint is the operator escape hatch — "re-OCR after a paddleocr upgrade" —
         // so it bypasses applies() and the vidingest.<phase>.enabled toggle behind it.
         OcrConfig disabled = new OcrConfig();
@@ -106,11 +108,11 @@ class VideoPhaseRunnerServiceTest {
         register(new OcrPhase(ocrService, disabled));
         when(ocrService.ocrAllFrames(video)).thenReturn(1);
 
-        assertThat(runner.runPhase(videoId, "ocr").status()).isEqualTo("OK");
+        assertThat(runner.runPhase(videoId, "ocr").rowsAffected()).isEqualTo(1);
     }
 
     @Test
-    void restoresTheStatusAPhaseMovedOnSuccess() {
+    void restoresTheStatusAPhaseMovedOnSuccess() throws Exception {
         // TranscribePhase / ContextPhase flip the video into a working status and rely on
         // PipelineService to finalise it. A rerun has no run to finalise.
         register(new TranscribePhase(transcriptionService, videoRepository));
@@ -118,13 +120,12 @@ class VideoPhaseRunnerServiceTest {
 
         RunVideoPhaseResult result = runner.runPhase(videoId, "transcribe");
 
-        assertThat(result.status()).isEqualTo("OK");
         assertThat(result.rowsAffected()).isNull();
         assertThat(video.getStatus()).isEqualTo(VideoStatus.COMPLETED);
     }
 
     @Test
-    void leavesTheStatusAloneWhenThePhaseDidNotTouchIt() {
+    void leavesTheStatusAloneWhenThePhaseDidNotTouchIt() throws Exception {
         register(new FusePhase(segmentFusionService, new FusionConfig()));
         when(segmentFusionService.fuse(video)).thenReturn(List.of());
 
@@ -136,18 +137,42 @@ class VideoPhaseRunnerServiceTest {
     }
 
     @Test
+    void propagatesPhaseFailuresInsteadOfBuryingThemInTheBody() {
+        // The handler turns any PhaseFailureException into a 502 ProblemDetail. Swallowing it
+        // into a 200 body was the old behaviour and left clients unable to see a failure.
+        register(new TranscribePhase(transcriptionService, videoRepository));
+        when(videoRepository.save(video)).thenReturn(video);
+        doThrow(new TranscriptionFailureException("whisper unreachable"))
+                .when(transcriptionService).transcribe(video);
+
+        assertThatThrownBy(() -> runner.runPhase(videoId, "transcribe"))
+                .isInstanceOf(PhaseFailureException.class)
+                .hasMessage("whisper unreachable");
+    }
+
+    @Test
     void keepsTheFailedStatusAPhaseSetWhenItThrows() {
         register(new TranscribePhase(transcriptionService, videoRepository));
         when(videoRepository.save(video)).thenReturn(video);
-        doThrow(new IllegalStateException("whisper unreachable"))
+        doThrow(new TranscriptionFailureException("whisper unreachable"))
                 .when(transcriptionService).transcribe(video);
 
-        RunVideoPhaseResult result = runner.runPhase(videoId, "transcribe");
-
-        assertThat(result.status()).isEqualTo("ERROR");
-        assertThat(result.message()).isEqualTo("whisper unreachable");
-        assertThat(result.rowsAffected()).isNull();
+        assertThatThrownBy(() -> runner.runPhase(videoId, "transcribe"))
+                .isInstanceOf(TranscriptionFailureException.class);
         assertThat(video.getStatus()).isEqualTo(VideoStatus.FAILED);
+    }
+
+    @Test
+    void doesNotRestoreTheStatusWhenThePhaseFailed() {
+        // A phase that fails without touching the status leaves it alone; the runner must not
+        // "restore" anything on the failure path.
+        register(new OcrPhase(ocrService, new OcrConfig()));
+        doThrow(new OcrFailureException("paddleocr down")).when(ocrService).ocrAllFrames(video);
+
+        assertThatThrownBy(() -> runner.runPhase(videoId, "ocr"))
+                .isInstanceOf(OcrFailureException.class);
+        assertThat(video.getStatus()).isEqualTo(VideoStatus.COMPLETED);
+        verify(videoRepository, never()).save(any());
     }
 
     @Test
@@ -174,7 +199,7 @@ class VideoPhaseRunnerServiceTest {
     }
 
     @Test
-    void acceptsHyphenatedAndLowercasePhaseNames() {
+    void acceptsHyphenatedAndLowercasePhaseNames() throws Exception {
         register(new FrameSamplePhase(frameSamplingService, new FrameSamplingConfig()));
         when(frameSamplingService.sampleFrames(video)).thenReturn(List.of(new VideoFrame(), new VideoFrame(), new VideoFrame()));
 

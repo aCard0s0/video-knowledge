@@ -1,6 +1,8 @@
 package com.tradinglabs.vidingest.core.transcription.service;
 
-public class TranscriptionFailureException extends RuntimeException {
+import com.tradinglabs.vidingest.commons.PhaseFailureException;
+
+public class TranscriptionFailureException extends PhaseFailureException {
 
     public TranscriptionFailureException(String message) {
         super(message);

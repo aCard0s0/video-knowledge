@@ -15,6 +15,8 @@
   - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/service/phase/PipelinePhaseRegistry.java` (`byPhase`)
   - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/service/phase/PipelinePhaseContext.java` (`forRerun`)
   - `applications/vidingest/vidingest-api/src/main/java/com/tradinglabs/vidingest/api/videos/RunVideoPhaseResult.java`
+  - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/commons/VidingestApiExceptionHandler.java`
+  - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/commons/PhaseFailureException.java`
   - `applications/vidingest/vidingest-api/src/main/java/com/tradinglabs/vidingest/api/paths/VidIngestApiPaths.java` (`VIDEO_PHASE_RUN`)
 - Path constant: `VIDEO_PHASE_RUN = /api/v1/videos/{videoId}/phases/{phase}/run`
 
@@ -61,12 +63,12 @@ the video URL (not the video row), so trigger a full pipeline run via
 
 `RunVideoPhaseResult`:
 
+Returned on success only:
+
 ```json
 {
   "videoId": "29161251-874a-44b4-b875-1b9e230727ab",
   "phase": "OCR",
-  "status": "OK",
-  "message": null,
   "elapsedMs": 138469,
   "rowsAffected": 1972
 }
@@ -74,13 +76,34 @@ the video URL (not the video row), so trigger a full pipeline run via
 
 | Field          | Meaning |
 |----------------|---------|
-| `status`       | `OK` on success, `ERROR` on failure |
-| `message`      | failure detail when `status=ERROR`; `null` on success |
 | `elapsedMs`    | wall-clock milliseconds spent running the phase |
 | `rowsAffected` | phase-specific count (frames / OCR rows / segments / units / chunks). `null` for `TRANSCRIBE` + `DIARIZE` |
 
-Note: the endpoint always returns HTTP 200 even on phase failure — failures live in the
-JSON `status` field. Only validation problems (bad phase name, missing video) raise HTTP 400/404.
+## Failures
+
+A phase that fails propagates and is rendered as an RFC 7807 `ProblemDetail`, the same as
+every other endpoint — there is no `status:"ERROR"` body and no 200-on-failure:
+
+| Cause | Status | `title` |
+|-------|--------|---------|
+| Upstream tool or sidecar did not deliver (whisper, pyannote, ffmpeg, paddleocr, ollama) | `502` | `Upstream failure` |
+| Unusable or non-rerunnable phase name | `400` | `Bad request` |
+| Unknown `videoId` | `404` | `Not found` |
+| Guard rail refused the work (e.g. chunk cap exceeded) | `409` | `Conflict` |
+| Anything else | `500` | `Internal error` |
+
+The 502 arm matches `PhaseFailureException`, the supertype of every phase's
+`*FailureException`, so a phase added later is mapped correctly without touching the handler.
+
+```json
+{
+  "type": "about:blank",
+  "title": "Upstream failure",
+  "status": 502,
+  "detail": "paddleocr-server unreachable",
+  "instance": "/api/v1/videos/29161251-874a-44b4-b875-1b9e230727ab/phases/OCR/run"
+}
+```
 
 ## Wire example
 
@@ -89,10 +112,10 @@ VID=29161251-874a-44b4-b875-1b9e230727ab
 HOST=http://localhost:8051/vidingest
 
 curl -sX POST "$HOST/api/v1/videos/$VID/phases/FUSE/run"
-# {"videoId":"...","phase":"FUSE","status":"OK","elapsedMs":59,"rowsAffected":29}
+# {"videoId":"...","phase":"FUSE","elapsedMs":59,"rowsAffected":29}
 
 curl -sX POST "$HOST/api/v1/videos/$VID/phases/KNOWLEDGE/run"
-# {"videoId":"...","phase":"KNOWLEDGE","status":"OK","elapsedMs":851378,"rowsAffected":10}
+# {"videoId":"...","phase":"KNOWLEDGE","elapsedMs":851378,"rowsAffected":10}
 ```
 
 ## Architecture
@@ -143,6 +166,11 @@ from REST entrypoints that lack an ambient transaction. See "Gotchas" below.
 
 - **Synchronous.** Whisper / pyannote / qwen14b can take minutes. Use long client timeouts.
   The UI disables the matching button while the call is in-flight.
+- **Failures are HTTP failures.** Until Aug 2026 this endpoint answered `200` with
+  `{"status":"ERROR","message":...}`, so clients that only check the status code read a failed
+  rerun as a success. It now returns `502`/`500` with a ProblemDetail body, and
+  `RunVideoPhaseResult` no longer carries `status` or `message`. Callers that branched on
+  `status == "ERROR"` must branch on the HTTP status instead.
 - **No new pipeline run.** Per-phase rerun does NOT create a `vidingest_pipeline_runs` row or
   audit events. If you need that, use the full pipeline retry endpoints
   (`POST /api/v1/pipelines/{runId}/retry`).
@@ -194,11 +222,13 @@ Quick end-to-end sweep (single 12-min video, all phases):
 VID=<video-uuid>
 for phase in FUSE FRAME_SAMPLE OCR CONTEXT TRANSCRIBE DIARIZE KNOWLEDGE; do
   echo "=== $phase ==="
-  curl -sX POST "http://localhost:8051/vidingest/api/v1/videos/$VID/phases/$phase/run" | jq
+  curl -sw ' HTTP %{http_code}\n' -X POST \
+    "http://localhost:8051/vidingest/api/v1/videos/$VID/phases/$phase/run" | jq
 done
 ```
 
-Expected: every entry returns `status:"OK"` with non-negative `elapsedMs`.
+Expected: every entry returns `HTTP 200` with non-negative `elapsedMs`. A `502` names the
+sidecar that did not answer in `detail`.
 
 DB sanity:
 
