@@ -15,7 +15,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
@@ -36,6 +36,7 @@ public class TranscriptionService {
     private final TranscriptionRepository transcriptionRepository;
     private final TranscriptionSegmentRepository transcriptionSegmentRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionOperations transactionOperations;
 
     private Path scratchDir;
 
@@ -117,8 +118,15 @@ public class TranscriptionService {
                     result.text() != null ? result.text().length() : 0
             );
 
-            Transcription transcription = upsertTranscription(video.getId(), video);
-            persistSegmentsAndFinalize(transcription.getId(), result);
+            // One transaction over the whole replace. Split across two commits, a failure
+            // after the wipe left the row with full_text=null and zero segments — an hour of
+            // Whisper time destroyed with no way back but re-transcribing. ffmpeg and the
+            // Whisper POST above stay outside it, as does writeTranscriptFiles below.
+            Transcription transcription = transactionOperations.execute(status -> {
+                Transcription t = upsertTranscription(video.getId(), video);
+                persistSegmentsAndFinalize(t.getId(), result);
+                return t;
+            });
             try {
                 writeTranscriptFiles(outDir, baseName, result);
             } catch (IOException e) {
@@ -171,8 +179,7 @@ public class TranscriptionService {
         }
     }
 
-    @Transactional
-    protected Transcription upsertTranscription(UUID videoId, Video video) {
+    private Transcription upsertTranscription(UUID videoId, Video video) {
         Transcription transcription = transcriptionRepository.findByVideoId(videoId)
                 .orElseGet(() -> Transcription.builder()
                         .video(video)
@@ -190,8 +197,7 @@ public class TranscriptionService {
         return saved;
     }
 
-    @Transactional
-    protected void persistSegmentsAndFinalize(UUID transcriptionId, WhisperAsrResult result) {
+    private void persistSegmentsAndFinalize(UUID transcriptionId, WhisperAsrResult result) {
         Transcription transcription = transcriptionRepository.findById(transcriptionId).orElseThrow(() ->
                 new TranscriptionFailureException("Transcription not found: " + transcriptionId));
 
