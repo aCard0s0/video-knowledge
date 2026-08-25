@@ -88,7 +88,7 @@ class PipelinesApiControllerWebMvcTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(
-                        org.hamcrest.Matchers.containsString("unsupported phase: DOWNLOAD")));
+                        org.hamcrest.Matchers.containsString("Unsupported phase: DOWNLOAD")));
 
         verifyNoInteractions(pipelineIntakeService);
     }

@@ -43,7 +43,7 @@ class SkipPhasesParserTest {
             assertThatThrownBy(() -> SkipPhasesParser.parse(Set.of(phase.name())))
                     .as("%s must not be skippable", phase)
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("unsupported phase");
+                    .hasMessageContaining("Unsupported phase");
         }
     }
 

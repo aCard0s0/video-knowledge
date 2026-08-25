@@ -20,6 +20,7 @@ import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -267,9 +268,31 @@ public class PipelineService {
         return inFlightItemIds.contains(itemId);
     }
 
-    /** The items this JVM is executing right now. Read by {@link RunItemLeaseHeartbeat}. */
-    public Set<UUID> inFlightItemIds() {
-        return Set.copyOf(inFlightItemIds);
+    /**
+     * Keeps this instance's leases alive while it is executing items. Lives here because this is
+     * where both halves already are — the in-flight set and the lease service. The interval must
+     * stay well below {@code vidingest.lease.ttl}; the defaults leave a 5x margin, so several
+     * consecutive misses are needed before live work looks abandoned.
+     */
+    @Scheduled(fixedDelayString = "${vidingest.lease.heartbeatMs:120000}",
+            initialDelayString = "${vidingest.lease.heartbeatMs:120000}")
+    public void renewLeases() {
+        Set<UUID> inFlight = Set.copyOf(inFlightItemIds);
+        if (inFlight.isEmpty()) {
+            return;
+        }
+        try {
+            int renewed = runItemLeaseService.renew(inFlight);
+            if (renewed < inFlight.size()) {
+                // Someone else owns an item we think we are running, or the row is gone. Worth
+                // seeing: it is the shape a split brain or a premature reap would take.
+                log.warn("Lease heartbeat renewed {} of {} in-flight items", renewed, inFlight.size());
+            }
+        } catch (Exception e) {
+            // A heartbeat failure must not kill the scheduler thread; the next tick retries and
+            // the TTL margin covers several misses.
+            log.error("Lease heartbeat failed: {}", e.getMessage(), e);
+        }
     }
 
     private void executePhases(PipelinePhaseContext ctx) throws Exception {

@@ -12,7 +12,6 @@ ALTER TABLE vidingest_pipeline_run_items
     ADD COLUMN lease_owner      VARCHAR(160),
     ADD COLUMN lease_expires_at TIMESTAMPTZ;
 
--- Supports the reconciler sweep: WHERE status = 'IN_PROGRESS' AND phase_updated_at < ?
--- then filtering on lease_expires_at, and the heartbeat's renew-by-id-and-owner update.
-CREATE INDEX idx_vidingest_pipeline_run_items_lease_expires_at
-    ON vidingest_pipeline_run_items (lease_expires_at);
+-- No index on the lease columns: every query that reads them is already served. The reconciler
+-- sweep leads with (status, phase_updated_at), the run-level check leads with pipeline_run_id,
+-- and acquire/renew/release go by primary key.

@@ -33,8 +33,8 @@ wrote it. Four of `RunLifecycleService`'s five `mark*` methods had no callers at
   `RunVideoPreview.PREVIEW_ORDER`.
 - `markFailed` moves to `RunAggregationService`; the other four `mark*` and five more
   zero-caller members deleted.
-- `lease_owner`/`lease_expires_at` on run items (`RunItemLeaseService`,
-  `RunItemLeaseHeartbeat`), so reconcilers can tell a live item from an abandoned one across
+- `lease_owner`/`lease_expires_at` on run items (`RunItemLeaseService`, heartbeated from
+  `PipelineService`), so reconcilers can tell a live item from an abandoned one across
   instances rather than only within this JVM.
 
 ## Decisions
@@ -82,8 +82,9 @@ wrote it. Four of `RunLifecycleService`'s five `mark*` methods had no callers at
   retry already refuses anything not FAILED. The lease closes the path that made a live item
   *look* FAILED, which is where the hole actually was.
 - **Lease owner is `pid@host`, not a generated UUID.** It survives nothing, which is the point:
-  a restarted process must not inherit its predecessor's claims. Deployments where pid and host
-  can collide set `vidingest.lease.owner`.
+  a restarted process must not inherit its predecessor's claims. No override property — Docker
+  and k8s both hand out distinct hostnames, so the collision it would guard against needs
+  identical pid *and* host.
 
 ## What live verification changed
 
@@ -106,6 +107,30 @@ found three things it structurally could not:
 A fourth thing was learned rather than fixed: Spring Boot 4 binds request bodies with Jackson 3,
 so the Jackson 2 `ObjectMapper` bean in `JacksonConfig` does not govern the REST edge. The first
 attempt at the strictness fix went into that bean and did nothing.
+
+## What the over-engineering pass cut
+
+A `/ponytail-review` over this branch's own diff found ~70 lines that did not need to exist:
+
+- **`RunItemLeaseHeartbeat` was a class built to break a cycle that did not exist.** Its javadoc
+  claimed scheduling on either collaborator would make them depend on each other;
+  `RunItemLeaseService` never referenced `PipelineService`, which already injects the lease
+  service and owns the in-flight set. The schedule is now a method on `PipelineService`.
+- **`VideoPhaseRunnerService` re-implemented `SkipPhasesParser`** — same normalisation, same
+  `isOptional()` check, same "Allowed:" message. Deleting `RERUNNABLE` removed the duplicated
+  *set* and left the duplicated *parse*. Both now go through `SkipPhasesParser.parseOptional`,
+  whose message lost its `skipPhases`-specific wording so it reads correctly from both callers.
+- **An index on `lease_expires_at` no query uses.** The reconciler sweep leads with
+  `(status, phase_updated_at)`, the run-level check with `pipeline_run_id`, and
+  acquire/renew/release go by primary key.
+- **`vidingest.lease.owner`**, an override nothing sets, guarding a collision that needs
+  identical pid *and* hostname.
+- **Two of four conditions in `PipelinePhaseContext.skipped` were dead** — the parser guarantees
+  only optional phases enter the set, and every constructor passes a non-null one.
+
+`RunItemLeaseService.owner()` survived the pass: the review called it heartbeat-only, but
+`RunItemLeaseIntegrationTest` uses it to assert the row is stamped with *this* instance's
+identity, which is the contract.
 
 ## Follow-ups
 

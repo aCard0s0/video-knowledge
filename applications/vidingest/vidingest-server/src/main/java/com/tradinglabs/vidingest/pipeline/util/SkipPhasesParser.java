@@ -19,6 +19,9 @@ import java.util.stream.Collectors;
  * {@link IllegalArgumentException}, which the API exception handler renders as a 400
  * {@code ProblemDetail}. That is deliberate: unlike a bad URL, which rejects one item of a
  * batch, an unparseable opt-out list makes the whole request meaningless.
+ *
+ * <p>{@link #parseOptional} is also what the per-phase rerun endpoint uses to read its
+ * {@code {phase}} path variable — same normalisation, same allowed set, same message.
  */
 public final class SkipPhasesParser {
 
@@ -34,12 +37,13 @@ public final class SkipPhasesParser {
             if (name == null || name.isBlank()) {
                 continue;
             }
-            parsed.add(parseOne(name.trim()));
+            parsed.add(parseOptional(name.trim()));
         }
         return parsed;
     }
 
-    private static PipelineRunPhase parseOne(String name) {
+    /** One phase name to the enum, rejecting anything unknown or mandatory. */
+    public static PipelineRunPhase parseOptional(String name) {
         PipelineRunPhase phase;
         try {
             phase = PipelineRunPhase.valueOf(name.toUpperCase(Locale.ROOT).replace('-', '_'));
@@ -53,8 +57,7 @@ public final class SkipPhasesParser {
     }
 
     private static IllegalArgumentException unsupported(String name) {
-        return new IllegalArgumentException("skipPhases contains an unsupported phase: " + name
-                + ". Allowed: " + PipelineRunPhase.optionalPhases().stream()
-                        .map(Enum::name).collect(Collectors.joining(", ")));
+        return new IllegalArgumentException("Unsupported phase: " + name + ". Allowed: "
+                + PipelineRunPhase.optionalPhases().stream().map(Enum::name).collect(Collectors.joining(", ")));
     }
 }

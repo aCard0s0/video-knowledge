@@ -36,24 +36,17 @@ public class RunItemLeaseService {
 
     public RunItemLeaseService(
             PipelineRunItemRepository runItemRepository,
-            @Value("${vidingest.lease.owner:}") String configuredOwner,
             @Value("${vidingest.lease.ttl:PT10M}") Duration ttl
     ) {
         this.runItemRepository = runItemRepository;
-        this.owner = (configuredOwner == null || configuredOwner.isBlank()) ? defaultOwner() : configuredOwner.trim();
+        // pid@host: unique per running process, and it deliberately does not survive a restart —
+        // a new process must not inherit its predecessor's claims.
+        this.owner = ManagementFactory.getRuntimeMXBean().getName();
         this.ttl = ttl;
         log.info("Run-item lease owner={} ttl={}", this.owner, ttl);
     }
 
-    /**
-     * {@code pid@host}, which is unique per running process on a host and stable for its
-     * lifetime. Deployments that can collide on it (identical pid in separate containers on the
-     * same host name) should set {@code vidingest.lease.owner} explicitly.
-     */
-    private static String defaultOwner() {
-        return ManagementFactory.getRuntimeMXBean().getName();
-    }
-
+    /** This instance's lease identity. */
     public String owner() {
         return owner;
     }
@@ -64,9 +57,6 @@ public class RunItemLeaseService {
 
     /** Extends only the leases this instance still owns; returns how many were renewed. */
     public int renew(Collection<UUID> itemIds) {
-        if (itemIds == null || itemIds.isEmpty()) {
-            return 0;
-        }
         return runItemRepository.renewLeases(itemIds, owner, LocalDateTime.now().plus(ttl));
     }
 

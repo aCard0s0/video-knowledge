@@ -48,7 +48,7 @@ public class PipelinePhaseContext {
 
     /** Whether this run opted out of {@code phase}. Non-optional phases can never be skipped. */
     public boolean skipped(PipelineRunPhase phase) {
-        return phase != null && phase.isOptional() && skipPhases != null && skipPhases.contains(phase);
+        return skipPhases.contains(phase);
     }
 
     /**

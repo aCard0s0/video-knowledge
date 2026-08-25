@@ -127,7 +127,7 @@ opposite directions: `PipelineService.isItemInFlight` is blind to other instance
 wrong about this one, and the `lease_owner`/`lease_expires_at` columns on
 `vidingest_pipeline_run_items` see every instance but go stale if this process stops
 heartbeating. An item is reaped only when neither claims it. `RunItemLeaseService` owns the
-writes, `RunItemLeaseHeartbeat` renews them on a schedule that must stay well under
+writes, `PipelineService.renewLeases` heartbeats them on a schedule that must stay well under
 `vidingest.lease.ttl`, and `ProgressPipelineRunReconciler` leaves a run alone entirely while
 any of its items holds a live lease. Lease renewal is scoped by owner, so a heartbeat can
 never extend a lease another instance took over.
