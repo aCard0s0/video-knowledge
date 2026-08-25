@@ -253,6 +253,47 @@ class OcrServiceTest {
         inOrder.verify(ocrResultRepository).saveAll(any());
     }
 
+    /**
+     * The prior rows are wiped before the sidecar loop, so "no frame was readable" must fail
+     * loudly. It used to return 0 with an HTTP 200 — every OCR row for the video destroyed and
+     * nothing reporting it — because a missing JPG counted as a skip rather than a failure.
+     */
+    @Test
+    void allFramesMissingTheirJpgPropagatesAsHardFailure() {
+        Video video = video();
+        VideoFrame f1 = frame(video, tmp.resolve("gone-1.jpg"), 0);   // never created
+        VideoFrame f2 = frame(video, tmp.resolve("gone-2.jpg"), 1);   // never created
+        when(videoFrameRepository.findByVideo_IdOrderByTimestampSecondsAsc(video.getId()))
+                .thenReturn(List.of(f1, f2));
+
+        assertThatThrownBy(() -> service.ocrAllFrames(video))
+                .isInstanceOf(OcrFailureException.class)
+                .hasMessageContaining("OCR failed for every frame")
+                .hasMessageContaining("missingJpgs=2");
+
+        verify(paddleOcrClient, never()).ocr(any());
+        verify(ocrResultRepository, never()).saveAll(any());
+    }
+
+    /** The other side of that guard: no on-screen text is a legitimate zero, not a failure. */
+    @Test
+    void blankVideoWithNoOnScreenTextCompletesWithZeroRows() throws Exception {
+        Video video = video();
+        Path jpg1 = writeFakeJpg(tmp.resolve("0001.jpg"));
+        Path jpg2 = writeFakeJpg(tmp.resolve("0002.jpg"));
+
+        VideoFrame f1 = frame(video, jpg1, 0);
+        VideoFrame f2 = frame(video, jpg2, 1);
+        when(videoFrameRepository.findByVideo_IdOrderByTimestampSecondsAsc(video.getId()))
+                .thenReturn(List.of(f1, f2));
+        when(paddleOcrClient.ocr(any())).thenReturn(new OcrPageResult(List.of()));
+
+        assertThat(service.ocrAllFrames(video)).isZero();
+
+        verify(paddleOcrClient, times(2)).ocr(any());
+        verify(ocrResultRepository, never()).saveAll(any());
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static ArgumentCaptor<List<OcrResult>> listCaptor() {
         return ArgumentCaptor.forClass((Class) List.class);

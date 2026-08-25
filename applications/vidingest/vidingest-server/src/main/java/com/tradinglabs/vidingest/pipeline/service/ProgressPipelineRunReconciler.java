@@ -15,6 +15,7 @@ public class ProgressPipelineRunReconciler {
 
     private final RunLifecycleService lifecycleService;
     private final RunQueryService queryService;
+    private final RunAggregationService runAggregationService;
 
     @EventListener(ApplicationReadyEvent.class)
     void reconcileInProgressPipelineRuns() {
@@ -23,8 +24,24 @@ public class ProgressPipelineRunReconciler {
             return;
         }
 
-        log.warn("Found {} pipeline runs stuck IN_PROGRESS; marking as FAILED", stuck.size());
+        log.warn("Found {} pipeline runs IN_PROGRESS at startup; re-deriving status from their items", stuck.size());
         for (var run : stuck) {
+            // Re-derive before condemning it. A run whose items all reached a terminal status
+            // is IN_PROGRESS only because the aggregation lost a race, and marking that FAILED
+            // is the bug rather than the fix — so this also self-heals rows stranded before
+            // the run-row lock landed.
+            RunStatus derived;
+            try {
+                derived = runAggregationService.refreshRunState(run.getId());
+            } catch (Exception e) {
+                log.error("Could not re-derive status for pipeline run {}: {}", run.getId(), e.getMessage(), e);
+                continue;
+            }
+            if (derived != RunStatus.IN_PROGRESS) {
+                log.info("Pipeline run {} re-derived from its items as {}", run.getId(), derived);
+                continue;
+            }
+
             lifecycleService.markFailed(
                     run.getId(),
                     PipelineErrorCode.UNEXPECTED,
@@ -32,4 +49,3 @@ public class ProgressPipelineRunReconciler {
         }
     }
 }
-

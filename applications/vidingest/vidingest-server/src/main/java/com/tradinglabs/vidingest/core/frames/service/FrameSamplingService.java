@@ -8,7 +8,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +44,7 @@ public class FrameSamplingService {
 
     private final FrameSamplingConfig frameSamplingConfig;
     private final VideoFrameRepository videoFrameRepository;
+    private final TransactionOperations transactionOperations;
 
     /**
      * Full sample-and-persist flow for {@code video}. Returns the persisted frames in
@@ -91,16 +92,21 @@ public class FrameSamplingService {
         return persistAndReturn(video, frames);
     }
 
-    @Transactional
-    protected List<VideoFrame> persistAndReturn(Video video, List<VideoFrame> frames) {
-        // Wipe prior rows so re-runs converge; ON DELETE CASCADE on FK doesn't help us
-        // here because we're not deleting the video itself.
-        videoFrameRepository.deleteByVideo_Id(video.getId());
-        videoFrameRepository.flush();
-        if (frames.isEmpty()) {
-            return List.of();
-        }
-        return videoFrameRepository.saveAll(frames);
+    /**
+     * Wipe-then-repopulate in one transaction, so a re-run can never leave the video with its
+     * old frame rows deleted and its new ones unwritten. ffmpeg has already finished by the
+     * time we get here, so the connection is held only for the two statements.
+     */
+    private List<VideoFrame> persistAndReturn(Video video, List<VideoFrame> frames) {
+        return transactionOperations.execute(status -> {
+            // ON DELETE CASCADE on the FK doesn't help here — we're not deleting the video.
+            videoFrameRepository.deleteByVideo_Id(video.getId());
+            videoFrameRepository.flush();
+            if (frames.isEmpty()) {
+                return List.of();
+            }
+            return videoFrameRepository.saveAll(frames);
+        });
     }
 
     /**

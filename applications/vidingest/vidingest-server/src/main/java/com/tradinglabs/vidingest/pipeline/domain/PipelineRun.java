@@ -6,6 +6,7 @@ import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -13,6 +14,10 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "vidingest_pipeline_runs")
+// Without this Hibernate emits a static full-column UPDATE, so a writer that only touches
+// `phase` also rewrites `status` from whatever it read at transaction start — enough to
+// clobber a terminal status another thread committed in between. See RunAggregationService.
+@DynamicUpdate
 @Getter
 @Setter
 @NoArgsConstructor

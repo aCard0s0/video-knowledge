@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -54,7 +55,8 @@ class ContextChunkGenerationServiceTest {
                 transcriptionRepository,
                 contextChunkRepository,
                 embeddingsClient,
-                multimodalSegmentRepository
+                multimodalSegmentRepository,
+                TransactionOperations.withoutTransaction()
         );
         // saveAll just echoes whatever was passed in; declared lenient so tests that wipe
         // and return 0 (no saveAll call) don't fail Mockito's strict-stubbing check.
@@ -185,7 +187,7 @@ class ContextChunkGenerationServiceTest {
     }
 
     @Test
-    void regenerateForReplacesPriorChunksAtomically() throws IOException {
+    void regenerateForDeletesPriorChunksThenSaves() throws IOException {
         Video video = video();
         when(multimodalSegmentRepository.findByVideo_IdOrderBySegmentIndexAsc(video.getId()))
                 .thenReturn(List.of(segment("text", null)));

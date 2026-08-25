@@ -18,11 +18,13 @@ import com.tradinglabs.vidingest.videos.repo.VideoRepository;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Semaphore;
 
 @Service
 @Slf4j
@@ -38,6 +40,14 @@ public class PipelineService {
     private final PipelineMetrics pipelineMetrics;
     private final ExecutorService ingestionExecutor;
 
+    /**
+     * Caps how many run items execute phases at once. The executor itself stays unbounded
+     * (virtual-thread-per-task) so shutdown still waits only for in-flight work rather than
+     * draining a queue; the gate is what keeps 100 concurrent yt-dlp/ffmpeg/whisper jobs
+     * from swamping the box and the connection pool.
+     */
+    private final Semaphore ingestionGate;
+
     public PipelineService(
             VideoRepository videoRepository,
             RunLifecycleService runLifecycle,
@@ -47,7 +57,8 @@ public class PipelineService {
             PipelinePhaseRegistry pipelinePhaseRegistry,
             PipelineErrorClassifier pipelineErrorClassifier,
             PipelineMetrics pipelineMetrics,
-            @Qualifier("vidingestIngestionExecutor") ExecutorService ingestionExecutor
+            @Qualifier("vidingestIngestionExecutor") ExecutorService ingestionExecutor,
+            @Value("${vidingest.ingestion.concurrency:4}") int ingestionConcurrency
     ) {
         this.videoRepository = videoRepository;
         this.runLifecycle = runLifecycle;
@@ -58,6 +69,7 @@ public class PipelineService {
         this.pipelineErrorClassifier = pipelineErrorClassifier;
         this.pipelineMetrics = pipelineMetrics;
         this.ingestionExecutor = ingestionExecutor;
+        this.ingestionGate = new Semaphore(ingestionConcurrency);
     }
 
     public record EnqueuedItem(String url, UUID itemId) {
@@ -181,7 +193,17 @@ public class PipelineService {
     }
 
     private void enqueueItem(UUID runId, UUID itemId, String videoUrl, PipelineSkipFlags flags) {
-        ingestionExecutor.submit(() -> runPipelineRunItem(runId, itemId, videoUrl, flags));
+        ingestionExecutor.submit(() -> {
+            try {
+                runPipelineRunItem(runId, itemId, videoUrl, flags);
+            } catch (Throwable t) {
+                // runPipelineRunItem handles its own failures, but the recovery path can throw
+                // too (markFailed hits getReferenceById on a row that may be gone). The Future
+                // is discarded, so without this the cause never reaches the log and the item is
+                // left for StuckItemReconciler to reap an hour later with no explanation.
+                log.error("Pipeline run {} item {} died outside its own error handling", runId, itemId, t);
+            }
+        });
     }
 
     private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, PipelineSkipFlags flags) {
@@ -196,6 +218,14 @@ public class PipelineService {
                 flags.skipOcr(),
                 flags.skipKnowledge()
         );
+        try {
+            ingestionGate.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted waiting for an ingestion slot: runId={}, itemId={}", runId, itemId);
+            return;
+        }
+        // Started after the gate so elapsedMs stays execution time, not queue wait.
         long itemStartNs = System.nanoTime();
         try {
             executePhases(ctx);
@@ -223,6 +253,7 @@ public class PipelineService {
             runAggregationService.refreshRunState(runId);
             pipelineMetrics.incrementFailed(code);
         } finally {
+            ingestionGate.release();
             pipelineMetrics.refreshInflightGauge();
         }
     }

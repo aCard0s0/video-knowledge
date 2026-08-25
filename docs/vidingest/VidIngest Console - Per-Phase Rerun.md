@@ -135,17 +135,30 @@ Diagram:
 
 ## Idempotency contract
 
-Every phase service wipes its own prior rows for the video before re-populating:
+Every phase service wipes its own prior rows for the video before re-populating. Whether the
+wipe and the repopulate share a transaction is a per-phase decision, and the split ones are
+split on purpose:
 
-| Phase         | Bulk-delete used                                        |
-|---------------|---------------------------------------------------------|
-| TRANSCRIBE    | `TranscriptionSegmentRepository.deleteByTranscriptionId` (then re-persists segments) |
-| DIARIZE       | `SpeakerRepository.deleteByVideo_Id` + clears `speaker_id` on segments |
-| FRAME_SAMPLE  | `VideoFrameRepository.deleteByVideo_Id` (cascades to ocr rows + removes JPGs) |
-| OCR           | `OcrResultRepository.deleteByVideoId` |
-| FUSE          | `MultimodalSegmentRepository.deleteByVideo_Id` |
-| KNOWLEDGE     | `KnowledgeUnitRepository.deleteByVideo_Id` |
-| CONTEXT       | `ContextChunkRepository.deleteByVideoId` |
+| Phase         | Bulk-delete used                                        | Wipe + repopulate |
+|---------------|---------------------------------------------------------|-------------------|
+| TRANSCRIBE    | `TranscriptionSegmentRepository.deleteByTranscriptionId` (then re-persists segments) | **atomic** |
+| DIARIZE       | `SpeakerRepository.deleteByVideo_Id` + clears `speaker_id` on segments | **atomic** |
+| FRAME_SAMPLE  | `VideoFrameRepository.deleteByVideo_Id` (cascades to ocr rows + removes JPGs) | **atomic** |
+| OCR           | `OcrResultRepository.deleteByVideoId` | separate — see below |
+| FUSE          | `MultimodalSegmentRepository.deleteByVideo_Id` | **atomic** |
+| KNOWLEDGE     | `KnowledgeUnitRepository.deleteByVideo_Id` | separate — see below |
+| CONTEXT       | `ContextChunkRepository.deleteByVideoId` | **atomic** |
+
+The five atomic phases do all their slow work first — ffmpeg and the sidecar have already
+returned, or fusion is pure Java — so `TransactionOperations` wraps just the two statements
+and a failure can never leave a video with its old rows gone and its new ones unwritten.
+
+`OCR` and `KNOWLEDGE` deliberately keep the wipe and the persist in separate transactions:
+each wipes *before* a minutes-long loop (PaddleOCR per frame, the LLM per batch) and persists
+after, and one transaction over that would hold a pooled connection for the whole loop. The
+trade is stated in the code — empty rows plus a FAILED run beat stale rows interleaved with
+fresh ones — and the phase fails loudly when nothing was produced rather than reporting a
+successful zero.
 
 All `deleteBy*` repos use explicit `@Modifying @Transactional @Query` so they run cleanly
 from REST entrypoints that lack an ambient transaction. See "Gotchas" below.
@@ -186,11 +199,18 @@ from REST entrypoints that lack an ambient transaction. See "Gotchas" below.
   the video looking `COMPLETED`.
 - **Phase prerequisites.** Calling a phase without its inputs is a no-op or a soft-fail.
   Example: `FUSE` on a video with no transcription returns 0 segments; `OCR` on a video
-  with no frames returns 0 rows.
-- **Transactional self-invocation.** `protected @Transactional` methods called via `this.`
-  inside the same service get their proxy bypassed. All bulk-delete repo methods carry
-  `@Modifying @Transactional @Query` so they self-bootstrap a transaction (fix landed
-  May 2026 — see [Audit log](#repo-bulk-delete-audit) below).
+  with no frames returns 0 rows. The exception is `OCR` when *no* frame was readable — every
+  frame either failed the sidecar or has lost its JPG. That throws, because the prior rows
+  are already wiped by then and returning 0 would destroy them silently.
+- **Transactional self-invocation.** `@Transactional` on a `protected`, self-invoked method
+  does nothing, twice over: `AnnotationTransactionAttributeSource` is `publicMethodsOnly`, so
+  a non-public method never gets a transaction attribute, and `this.` calls bypass the proxy
+  anyway. Six services carried such annotations. Putting `@Modifying @Transactional` on the
+  bulk-delete repo methods (May 2026) made each *delete* atomic but left delete-then-insert
+  split across two commits; Aug 2026 removed the inert annotations and gave the five phases
+  above a real transaction via an injected `TransactionOperations` around the DB block only.
+  When you need a transaction inside a method that also does process or HTTP work, inject
+  `TransactionOperations` and wrap the narrow part — never annotate the driver.
 
 ## Repo bulk-delete audit
 
@@ -204,7 +224,7 @@ All `deleteBy*` methods used by phase services are now explicit `@Modifying @Tra
 | `SpeakerRepository`                       | `deleteByVideo_Id`           | |
 | `KnowledgeUnitRepository`                 | `deleteByVideo_Id`           | Also avoids pgvector array-delimiter SELECT path |
 | `TranscriptionSegmentRepository`          | `deleteByTranscriptionId`    | |
-| `ContextChunkRepository`                  | `deleteByVideoId`            | Caller (`regenerateFor`) is `@Transactional public` — kept derived |
+| `ContextChunkRepository`                  | `deleteByVideoId`            | Aug 2026: was the only one without `@Transactional`, relying on `regenerateFor` to supply it — which had to go, because that boundary also spanned the blocking embeddings call |
 
 ## OpenAPI
 

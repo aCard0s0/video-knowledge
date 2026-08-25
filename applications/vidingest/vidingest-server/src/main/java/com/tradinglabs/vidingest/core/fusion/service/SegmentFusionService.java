@@ -15,7 +15,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -56,6 +56,7 @@ public class SegmentFusionService {
     private final VideoFrameRepository videoFrameRepository;
     private final OcrResultRepository ocrResultRepository;
     private final MultimodalSegmentRepository multimodalSegmentRepository;
+    private final TransactionOperations transactionOperations;
 
     /**
      * Fuse-and-persist for one video. Returns the persisted segments in {@code segmentIndex}
@@ -141,15 +142,22 @@ public class SegmentFusionService {
         return persistAndReturn(video, segments);
     }
 
-    @Transactional
-    protected List<MultimodalSegment> persistAndReturn(Video video, List<MultimodalSegment> segments) {
-        // Wipe prior rows so re-runs converge. Bulk delete keeps it cheap.
-        multimodalSegmentRepository.deleteByVideo_Id(video.getId());
-        multimodalSegmentRepository.flush();
-        if (segments.isEmpty()) {
-            return List.of();
-        }
-        return multimodalSegmentRepository.saveAll(segments);
+    /**
+     * Wipe-then-repopulate in one transaction, so a re-run can never leave the video with its
+     * old segments deleted and its new ones unwritten. All the slow work is already done by
+     * the time we get here — fusion is pure Java — so the connection is held only for the two
+     * statements.
+     */
+    private List<MultimodalSegment> persistAndReturn(Video video, List<MultimodalSegment> segments) {
+        return transactionOperations.execute(status -> {
+            // Bulk delete keeps the wipe cheap.
+            multimodalSegmentRepository.deleteByVideo_Id(video.getId());
+            multimodalSegmentRepository.flush();
+            if (segments.isEmpty()) {
+                return List.of();
+            }
+            return multimodalSegmentRepository.saveAll(segments);
+        });
     }
 
     /**

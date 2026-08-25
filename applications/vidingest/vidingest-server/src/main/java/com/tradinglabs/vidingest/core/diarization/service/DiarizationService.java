@@ -16,7 +16,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -55,6 +55,7 @@ public class DiarizationService {
     private final SpeakerRepository speakerRepository;
     private final TranscriptionRepository transcriptionRepository;
     private final TranscriptionSegmentRepository transcriptionSegmentRepository;
+    private final TransactionOperations transactionOperations;
 
     private Path scratchDir;
 
@@ -127,7 +128,8 @@ public class DiarizationService {
             log.info("Diarization sidecar returned: videoId={}, segments={}, speakers={}",
                     video.getId(), result.segments().size(), result.speakers().size());
 
-            persistAndAssign(video, transcription.getId(), result);
+            transactionOperations.executeWithoutResult(
+                    status -> persistAndAssign(video, transcription.getId(), result));
             return result;
         } finally {
             bestEffortDelete(audioFile);
@@ -136,9 +138,15 @@ public class DiarizationService {
 
     /**
      * Persists Speaker rows (replacing any prior diarization for this video) and writes
-     * {@code transcription_segments.speaker_id} via time-overlap. Runs in one transaction.
+     * {@code transcription_segments.speaker_id} via time-overlap.
+     *
+     * <p>Callers must supply the transaction — {@link #diarize} wraps this in one. It used to
+     * claim a transaction it never had (the annotation sat on a self-invoked protected
+     * method, which Spring ignores), so the speaker wipe committed on its own and its
+     * {@code ON DELETE SET NULL} FK cleared every {@code speaker_id}; a failure before the
+     * segment write below left the video permanently unlabelled. The ambient transaction also
+     * keeps the segments managed, so the write is dirty-checking rather than a merge per row.
      */
-    @Transactional
     protected void persistAndAssign(Video video, UUID transcriptionId, DiarizationResult result) {
         // Clear out previous diarization output so re-runs converge cleanly.
         // The ON DELETE SET NULL FK on transcription_segments.speaker_id ensures we don't

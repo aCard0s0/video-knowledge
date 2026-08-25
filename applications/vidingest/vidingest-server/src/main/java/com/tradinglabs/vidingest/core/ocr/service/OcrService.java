@@ -12,7 +12,6 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,10 +25,13 @@ import java.util.UUID;
  * {@link OcrResult} rows. Idempotent — re-running deletes prior OCR for the video so we
  * converge to the latest sidecar output.
  *
- * <p>Failure semantics: a single frame failing the sidecar call is logged and skipped (we
- * don't want one bad JPG to fail an otherwise good video). If <i>every</i> frame fails
- * we propagate {@link OcrFailureException} so the run is marked FAILED rather than
- * silently completing with zero results.
+ * <p>Failure semantics: a single frame failing the sidecar call, or having lost its JPG, is
+ * logged and skipped (we don't want one bad frame to fail an otherwise good video). If
+ * <i>no</i> frame was readable — every one either failed the sidecar or has no file left on
+ * disk — we propagate {@link OcrFailureException} so the run is marked FAILED rather than
+ * silently completing with zero results after having wiped the prior ones. A frame that
+ * OCR'd fine but held too little text is not a failure: a video with no on-screen text
+ * legitimately produces zero rows.
  */
 @Service
 @RequiredArgsConstructor
@@ -73,6 +75,9 @@ public class OcrService {
         int framesWithText = 0;
         int framesSkipped = 0;
         int framesFailed = 0;
+        // Tracked apart from framesSkipped: a frame whose JPG is gone is upstream artifact
+        // loss, not "this frame had no text", and only the former should fail the phase.
+        int framesMissing = 0;
         int totalLinesKept = 0;
         int cap = ocrConfig.getMaxResultsPerVideo();
 
@@ -86,7 +91,7 @@ public class OcrService {
             Path imagePath = framePath(frame);
             if (imagePath == null || !Files.exists(imagePath)) {
                 log.warn("OCR skipping frame: file missing. frameId={}, path={}", frame.getId(), frame.getFilePath());
-                framesSkipped++;
+                framesMissing++;
                 continue;
             }
 
@@ -121,30 +126,38 @@ public class OcrService {
             framesWithText++;
         }
 
-        // If literally every frame failed the sidecar call, that's a hard failure — surface
-        // it so the pipeline run is marked FAILED rather than silently completing empty.
-        if (framesFailed > 0 && framesFailed == frames.size()) {
+        // We already wiped this video's prior rows above. If not one frame was even readable
+        // — each either failed the sidecar or had no JPG left on disk — then completing with
+        // rows=0 would silently destroy every OCR result for the video and still report
+        // success. A frame that OCR'd fine but held too little text is NOT a failure: a video
+        // with no on-screen text legitimately produces zero rows, which is all framesSkipped
+        // means now.
+        if (framesFailed + framesMissing == frames.size()) {
             throw new OcrFailureException(
-                    "OCR failed for every frame (count=" + framesFailed + ") — sidecar likely unreachable or broken"
+                    "OCR failed for every frame (sidecarFailures=" + framesFailed
+                            + ", missingJpgs=" + framesMissing + ", frames=" + frames.size()
+                            + ") — sidecar unreachable, or the frames were removed from disk"
             );
         }
 
         persist(pending);
 
-        log.info("OCR complete: videoId={}, framesTotal={}, framesWithText={}, framesSkipped={}, framesFailed={}, rowsPersisted={}",
-                video.getId(), frames.size(), framesWithText, framesSkipped, framesFailed, totalLinesKept);
+        log.info("OCR complete: videoId={}, framesTotal={}, framesWithText={}, framesSkipped={}, framesMissing={}, framesFailed={}, rowsPersisted={}",
+                video.getId(), frames.size(), framesWithText, framesSkipped, framesMissing, framesFailed, totalLinesKept);
         return totalLinesKept;
     }
 
-    @Transactional
-    protected int wipePriorResults(UUID videoId) {
+    // Not transactional, and deliberately so: the wipe commits before the sidecar loop and
+    // the persist after it, because wrapping both would hold a pooled connection for the
+    // minutes that loop takes. The repository's bulk delete carries its own @Transactional
+    // and saveAll supplies its own, so each half is atomic on its own.
+    private int wipePriorResults(UUID videoId) {
         int n = ocrResultRepository.deleteByVideoId(videoId);
         ocrResultRepository.flush();
         return n;
     }
 
-    @Transactional
-    protected void persist(List<OcrResult> rows) {
+    private void persist(List<OcrResult> rows) {
         if (rows.isEmpty()) {
             return;
         }
