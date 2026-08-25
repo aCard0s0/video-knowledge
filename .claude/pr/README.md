@@ -43,6 +43,7 @@ required field — append `· **Merge commit**: <sha>` only when writing one up 
 
 | PR | Date | Summary |
 |----|------|---------|
+| [#7](pr-007-reconciler-liveness-and-fanout-bounds.md) | 2026-08-25 | Reconciler stops failing live items; ffmpeg staged so a failure keeps the previous frames; youtube sync fan-out bounded |
 | [#6](pr-006-claude-md-and-pr-log.md) | 2026-08-25 | CLAUDE.md gains the transaction and run-status landmines; this PR log established |
 | [#5](pr-005-vidingest-defect-review.md) | 2026-08-25 | Five defects: non-atomic wipe-then-repopulate, silent OCR loss, lost run-status updates, connection held across the embeddings call, diarize N+1 |
 | [#4](pr-004-controllers-delegate-to-services.md) | 2026-08-25 | Three controllers reaching for repositories directly moved behind four new query services |

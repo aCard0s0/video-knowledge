@@ -54,7 +54,8 @@ The server has no `spring-shell` dependency; the interactive shell lives only in
 | Property | Default | Description |
 |----------|---------|-------------|
 | `vidingest.ingestion.concurrency` | `4` | How many run items execute phases at once |
-| `vidingest.reconciler.itemStaleAfter` | `PT1H` | An `IN_PROGRESS` item untouched for longer is failed |
+| `vidingest.youtube.sync.concurrency` | `4` | Channels synced at once within a tick (each runs yt-dlp) |
+| `vidingest.reconciler.itemStaleAfter` | `PT1H` | An `IN_PROGRESS` item untouched for longer is failed — unless this JVM is still running it |
 | `vidingest.reconciler.intervalMs` | `300000` | Stuck-item sweep interval |
 | `vidingest.reconciler.initialDelayMs` | `60000` | Delay before the first sweep |
 
@@ -424,16 +425,24 @@ already holds `FOR KEY SHARE` on the run row through its FK, which a plain `UPDA
 
 | Component | Trigger | What it does |
 |-----------|---------|--------------|
-| `StuckItemReconciler` | `@Scheduled`, every `vidingest.reconciler.intervalMs` | Fails items IN_PROGRESS whose `phase_updated_at` is older than `itemStaleAfter`, then re-derives their run |
+| `StuckItemReconciler` | `@Scheduled`, every `vidingest.reconciler.intervalMs` | Fails items IN_PROGRESS whose `phase_updated_at` is older than `itemStaleAfter` **and** which this JVM is not currently running, then re-derives their run |
 | `ProgressPipelineRunReconciler` | `ApplicationReadyEvent` | Re-derives every IN_PROGRESS run from its items; only fails the ones still genuinely in progress |
 
 `ProgressPipelineRunReconciler` re-derives first on purpose: a run left IN_PROGRESS by a lost
 aggregation update has all its items COMPLETED, and failing that run is the bug rather than the
 fix. It therefore also self-heals rows stranded before the lock landed.
 
-Note that `itemStaleAfter` defaults to one hour while a long TRANSCRIBE or KNOWLEDGE phase can
-legitimately exceed that on CPU. Raise it on deployments that ingest long videos, or the
-reconciler will fail work that is still running.
+`StuckItemReconciler` asks `PipelineService.isItemInFlight` before failing anything, and that
+check — not `itemStaleAfter` — is what makes it safe. `phase_updated_at` moves only on a phase
+*transition*, so a phase that legitimately runs for hours (KNOWLEDGE and DIARIZE both do on a
+long video) is indistinguishable by timestamp from abandoned work. Failing a live item is not
+cosmetic: the worker later flips it back to COMPLETED, and an operator who sees FAILED and
+retries gets a second worker wipe-and-repopulating the same video alongside the first.
+
+Items abandoned by a *previous* process are absent from that set, which is exactly the work the
+reconciler exists to reap. `itemStaleAfter` therefore no longer bounds how long a healthy phase
+may run, and the `PT1H` default is safe to leave alone. The set is per-JVM: a multi-instance
+deployment would need a shared lease instead.
 
 ## Related pages
 
