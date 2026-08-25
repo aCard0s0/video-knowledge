@@ -1,27 +1,29 @@
 package com.tradinglabs.vidingest.videos.service;
 
 import com.tradinglabs.vidingest.api.videos.RunVideoPhaseResult;
-import com.tradinglabs.vidingest.core.diarization.service.DiarizationService;
-import com.tradinglabs.vidingest.core.frames.service.FrameSamplingService;
-import com.tradinglabs.vidingest.core.fusion.service.SegmentFusionService;
-import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionService;
-import com.tradinglabs.vidingest.core.ocr.service.OcrService;
-import com.tradinglabs.vidingest.core.transcription.service.TranscriptionService;
-import com.tradinglabs.vidingest.search.service.embedding.ContextChunkGenerationService;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
+import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhase;
+import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhaseContext;
+import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhaseRegistry;
 import com.tradinglabs.vidingest.videos.domain.Video;
+import com.tradinglabs.vidingest.videos.domain.VideoStatus;
+import com.tradinglabs.vidingest.videos.repo.VideoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
+import java.util.EnumSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * Dispatches per-phase reruns for a video that has already been ingested. The phase service
- * methods themselves are idempotent (each one wipes prior rows for the video before
- * re-populating), so this service is a thin router with timing and error normalisation.
+ * Dispatches per-phase reruns for a video that has already been ingested. Phases are looked up
+ * in {@link PipelinePhaseRegistry} and executed through the same {@link PipelinePhase}
+ * implementations the pipeline itself runs, so a rerun and an in-pipeline run cannot drift
+ * apart. The phase services are idempotent (each wipes prior rows for the video before
+ * re-populating), so this service adds only timing, status handling and error normalisation.
  *
  * <p>Phases supported here are those whose inputs are derivable from already-persisted state:
  * <ul>
@@ -35,76 +37,104 @@ import java.util.UUID;
  * </ul>
  * {@code METADATA}, {@code DOWNLOAD}, {@code PERSIST} are intentionally excluded — those
  * consume the video URL, not the video row, so the full pipeline run is the right tool.
+ *
+ * <p>{@code PipelinePhase.applies(ctx)} is deliberately <em>not</em> consulted: it mixes the
+ * per-run skip flags (meaningless for a rerun) with the {@code vidingest.<phase>.enabled}
+ * deployment toggles. This endpoint is the operator escape hatch — "re-OCR after a
+ * paddleocr-server upgrade" — so it forces the phase regardless of the toggle, matching the
+ * behaviour it has always had.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class VideoPhaseRunnerService {
 
+    /**
+     * Phases reachable without a pipeline run. Everything before TRANSCRIBE consumes the source
+     * URL rather than the persisted video row.
+     */
+    private static final Set<PipelineRunPhase> RERUNNABLE = EnumSet.of(
+            PipelineRunPhase.TRANSCRIBE,
+            PipelineRunPhase.DIARIZE,
+            PipelineRunPhase.FRAME_SAMPLE,
+            PipelineRunPhase.OCR,
+            PipelineRunPhase.FUSE,
+            PipelineRunPhase.KNOWLEDGE,
+            PipelineRunPhase.CONTEXT
+    );
+
     private final VideoQueryService videoQueryService;
-    private final TranscriptionService transcriptionService;
-    private final DiarizationService diarizationService;
-    private final FrameSamplingService frameSamplingService;
-    private final OcrService ocrService;
-    private final SegmentFusionService segmentFusionService;
-    private final KnowledgeExtractionService knowledgeExtractionService;
-    private final ContextChunkGenerationService contextChunkGenerationService;
+    private final VideoRepository videoRepository;
+    private final PipelinePhaseRegistry pipelinePhaseRegistry;
 
     public RunVideoPhaseResult runPhase(UUID videoId, String phaseRaw) {
-        String phase = normalisePhase(phaseRaw);
+        PipelineRunPhase phase = parsePhase(phaseRaw);
+        PipelinePhase impl = pipelinePhaseRegistry.byPhase(phase)
+                .orElseThrow(() -> new IllegalArgumentException("No implementation registered for phase: " + phase));
+
         Video video = videoQueryService.getById(videoId);
+        VideoStatus statusBefore = video.getStatus();
+        PipelinePhaseContext ctx = PipelinePhaseContext.forRerun(video);
 
         long startNs = System.nanoTime();
         try {
-            Integer rows = switch (phase) {
-                case "TRANSCRIBE" -> {
-                    transcriptionService.transcribe(video);
-                    yield null;
-                }
-                case "DIARIZE" -> {
-                    diarizationService.diarize(video);
-                    yield null;
-                }
-                case "FRAME_SAMPLE" -> frameSamplingService.sampleFrames(video).size();
-                case "OCR" -> ocrService.ocrAllFrames(video);
-                case "FUSE" -> segmentFusionService.fuse(video).size();
-                case "KNOWLEDGE" -> knowledgeExtractionService.extractKnowledge(video);
-                case "CONTEXT" -> {
-                    try {
-                        yield contextChunkGenerationService.regenerateFor(video);
-                    } catch (java.io.IOException ioe) {
-                        // Wrap the checked IOException so the surrounding catch can format it
-                        throw new RuntimeException(ioe);
-                    }
-                }
-                default -> throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Unsupported phase: " + phaseRaw + ". Allowed: "
-                                + "TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT"
-                );
-            };
-            long ms = (System.nanoTime() - startNs) / 1_000_000;
+            impl.execute(ctx);
+            // Phases flip the video into a working status (TRANSCRIBING / PROCESSING) and leave
+            // the finalisation to PipelineService, which a single-phase rerun does not go
+            // through. Put the video back where it was so a rerun does not park it mid-flight.
+            restoreStatus(ctx.getVideo(), statusBefore);
+
+            long ms = elapsedMs(startNs);
             log.info("Per-phase rerun OK: videoId={} phase={} elapsedMs={} rows={}",
-                    videoId, phase, ms, rows);
+                    videoId, phase, ms, ctx.getRowsAffected());
             return new RunVideoPhaseResult(
-                    videoId.toString(), phase, "OK", null, ms, rows
+                    videoId.toString(), phase.name(), "OK", null, ms, ctx.getRowsAffected()
             );
-        } catch (ResponseStatusException e) {
-            throw e;
         } catch (Exception e) {
-            long ms = (System.nanoTime() - startNs) / 1_000_000;
+            long ms = elapsedMs(startNs);
             log.warn("Per-phase rerun FAILED: videoId={} phase={} elapsedMs={} error={}",
                     videoId, phase, ms, e.getMessage());
             return new RunVideoPhaseResult(
-                    videoId.toString(), phase, "ERROR", e.getMessage(), ms, null
+                    videoId.toString(), phase.name(), "ERROR", e.getMessage(), ms, null
             );
         }
     }
 
-    private static String normalisePhase(String raw) {
-        if (raw == null || raw.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phase path variable is required");
+    /**
+     * Only writes when the phase actually moved the status, so a rerun of a phase that does not
+     * touch the video row stays a pure read for the videos table.
+     */
+    private void restoreStatus(Video video, VideoStatus statusBefore) {
+        if (video == null || video.getStatus() == statusBefore) {
+            return;
         }
-        return raw.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+        video.setStatus(statusBefore);
+        videoRepository.save(video);
+    }
+
+    private static PipelineRunPhase parsePhase(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("phase path variable is required");
+        }
+        String normalised = raw.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+        PipelineRunPhase phase;
+        try {
+            phase = PipelineRunPhase.valueOf(normalised);
+        } catch (IllegalArgumentException e) {
+            throw unsupported(raw);
+        }
+        if (!RERUNNABLE.contains(phase)) {
+            throw unsupported(raw);
+        }
+        return phase;
+    }
+
+    private static IllegalArgumentException unsupported(String raw) {
+        return new IllegalArgumentException("Unsupported phase: " + raw + ". Allowed: "
+                + RERUNNABLE.stream().map(Enum::name).collect(Collectors.joining(", ")));
+    }
+
+    private static long elapsedMs(long startNs) {
+        return (System.nanoTime() - startNs) / 1_000_000;
     }
 }

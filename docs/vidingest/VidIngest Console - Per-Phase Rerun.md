@@ -1,7 +1,7 @@
 # VidIngest Console — Per-Phase Rerun
 
 **Owner**: TradingLabs Platform
-**Last reviewed**: 2026-05-22
+**Last reviewed**: 2026-08-25
 **Status**: stable
 
 **Applies to**:
@@ -12,6 +12,8 @@
 - Code:
   - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/videos/controller/VideoPhaseController.java`
   - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/videos/service/VideoPhaseRunnerService.java`
+  - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/service/phase/PipelinePhaseRegistry.java` (`byPhase`)
+  - `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/service/phase/PipelinePhaseContext.java` (`forRerun`)
   - `applications/vidingest/vidingest-api/src/main/java/com/tradinglabs/vidingest/api/videos/RunVideoPhaseResult.java`
   - `applications/vidingest/vidingest-api/src/main/java/com/tradinglabs/vidingest/api/paths/VidIngestApiPaths.java` (`VIDEO_PHASE_RUN`)
 - Path constant: `VIDEO_PHASE_RUN = /api/v1/videos/{videoId}/phases/{phase}/run`
@@ -95,6 +97,15 @@ curl -sX POST "$HOST/api/v1/videos/$VID/phases/KNOWLEDGE/run"
 
 ## Architecture
 
+`VideoPhaseRunnerService` does not know which service implements a phase. It resolves the
+phase name to a `PipelineRunPhase`, looks the implementation up in `PipelinePhaseRegistry`,
+and calls `PipelinePhase.execute(ctx)` with a `PipelinePhaseContext.forRerun(video)` — the
+same objects the pipeline itself runs, so a rerun and an in-pipeline run cannot drift apart.
+Adding a phase to the pipeline makes it reachable here with no change to this service; only
+the `RERUNNABLE` set gates which phases the endpoint accepts.
+
+`PipelinePhase.applies(ctx)` is deliberately **not** consulted — see "Gotchas".
+
 Diagram:
 - SVG render: `./diagrams/svg/vidingest-per-phase-rerun.svg`
 - Mermaid source: `./diagrams/mermaid/vidingest-per-phase-rerun.mmd`
@@ -135,6 +146,16 @@ from REST entrypoints that lack an ambient transaction. See "Gotchas" below.
 - **No new pipeline run.** Per-phase rerun does NOT create a `vidingest_pipeline_runs` row or
   audit events. If you need that, use the full pipeline retry endpoints
   (`POST /api/v1/pipelines/{runId}/retry`).
+- **Deployment toggles are bypassed.** The phase runs even when its
+  `vidingest.<phase>.enabled` property is `false`. This endpoint is the operator escape hatch
+  ("re-OCR after a paddleocr-server upgrade"), so it calls `execute()` directly rather than
+  going through `applies(ctx)`, which also mixes in per-run skip flags that mean nothing for
+  a rerun. A phase whose sidecar is genuinely absent fails visibly with `status:"ERROR"`.
+- **Video status.** `TRANSCRIBE` and `CONTEXT` move `vidingest_videos.status` while they run
+  (`TRANSCRIBING` / `PROCESSING`) and leave finalisation to `PipelineService`, which a rerun
+  does not go through. The runner therefore restores the status the video had before the
+  call. On failure the phase's own `FAILED` status stands — a failed rerun no longer leaves
+  the video looking `COMPLETED`.
 - **Phase prerequisites.** Calling a phase without its inputs is a no-op or a soft-fail.
   Example: `FUSE` on a video with no transcription returns 0 segments; `OCR` on a video
   with no frames returns 0 rows.

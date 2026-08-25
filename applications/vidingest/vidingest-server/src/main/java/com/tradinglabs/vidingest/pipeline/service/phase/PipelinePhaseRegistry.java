@@ -1,8 +1,12 @@
 package com.tradinglabs.vidingest.pipeline.service.phase;
 
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import org.springframework.stereotype.Component;
 
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Registry that defines the canonical execution order of the pipeline phases.
@@ -19,6 +23,7 @@ import java.util.List;
 public class PipelinePhaseRegistry {
 
     private final List<PipelinePhase> orderedPhases;
+    private final Map<PipelineRunPhase, PipelinePhase> byPhase;
 
     public PipelinePhaseRegistry(
             MetadataPhase metadataPhase,
@@ -44,9 +49,23 @@ public class PipelinePhaseRegistry {
                 knowledgePhase,
                 contextPhase
         );
+
+        Map<PipelineRunPhase, PipelinePhase> index = new EnumMap<>(PipelineRunPhase.class);
+        for (PipelinePhase phase : this.orderedPhases) {
+            index.put(phase.phase(), phase);
+        }
+        this.byPhase = index;
     }
 
     public List<PipelinePhase> phases() {
         return orderedPhases;
+    }
+
+    /**
+     * Look up the implementation for a phase. Empty for enum constants that are run markers
+     * rather than phases ({@code CREATED}, {@code DONE}).
+     */
+    public Optional<PipelinePhase> byPhase(PipelineRunPhase phase) {
+        return Optional.ofNullable(byPhase.get(phase));
     }
 }

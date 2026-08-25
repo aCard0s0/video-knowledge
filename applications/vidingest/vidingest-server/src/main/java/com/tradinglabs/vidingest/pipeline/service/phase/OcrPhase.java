@@ -48,6 +48,6 @@ public final class OcrPhase implements PipelinePhase {
                     ctx.getRunId(), ctx.getItemId());
             return;
         }
-        ocrService.ocrAllFrames(video);
+        ctx.setRowsAffected(ocrService.ocrAllFrames(video));
     }
 }
