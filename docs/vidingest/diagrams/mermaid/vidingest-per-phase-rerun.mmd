@@ -1,0 +1,59 @@
+flowchart LR
+    classDef api fill:#065f46,stroke:#10b981,color:#fff
+    classDef svc fill:#92400e,stroke:#f59e0b,color:#fff
+    classDef sidecar fill:#7c2d12,stroke:#fb923c,color:#fff
+    classDef db fill:#581c87,stroke:#a855f7,color:#fff
+
+    subgraph backend [vidingest-server]
+        CTRL["VideoPhaseController\nPOST /api/v1/videos/{id}/phases/{phase}/run"]:::api
+        ROUTER["VideoPhaseRunnerService\n(switch on phase)"]:::svc
+        TS["TranscriptionService.transcribe"]:::svc
+        DS["DiarizationService.diarize"]:::svc
+        FS["FrameSamplingService.sampleFrames"]:::svc
+        OS["OcrService.ocrAllFrames"]:::svc
+        SF["SegmentFusionService.fuse"]:::svc
+        KS["KnowledgeExtractionService.extractKnowledge"]:::svc
+        CS["ContextChunkGenerationService.regenerateFor"]:::svc
+    end
+
+    subgraph sidecars [Sidecars]
+        WH["whisper:9000"]:::sidecar
+        DZ["diarize-asr:9001"]:::sidecar
+        PO["paddleocr-server:8002"]:::sidecar
+        OL["ollama:11434"]:::sidecar
+    end
+
+    subgraph storage [Postgres - vidingest_*]
+        TR["transcriptions + segments"]:::db
+        SP["speakers"]:::db
+        FR["video_frames + JPGs on disk"]:::db
+        OR["ocr_results"]:::db
+        MM["multimodal_segments"]:::db
+        KU["knowledge_units"]:::db
+        CC["context_chunks"]:::db
+    end
+
+    CALLER(["REST caller\nPOST .../phases/{phase}/run"]):::api --> CTRL
+    CTRL --> ROUTER
+    ROUTER -->|TRANSCRIBE| TS
+    ROUTER -->|DIARIZE| DS
+    ROUTER -->|FRAME_SAMPLE| FS
+    ROUTER -->|OCR| OS
+    ROUTER -->|FUSE| SF
+    ROUTER -->|KNOWLEDGE| KS
+    ROUTER -->|CONTEXT| CS
+
+    TS --> WH
+    TS --> TR
+    DS --> DZ
+    DS --> SP
+    FS --> FR
+    OS --> PO
+    OS --> OR
+    SF --> MM
+    KS --> OL
+    KS --> KU
+    CS --> OL
+    CS --> CC
+
+    ROUTER -.->|RunVideoPhaseResult: status, elapsedMs, rowsAffected| CALLER

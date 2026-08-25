@@ -1,0 +1,89 @@
+### Variables
+@vidingestHost = localhost
+@vidingestPort = 8051
+@vidingestBase = http://{{vidingestHost}}:{{vidingestPort}}/vidingest
+@vidingestMcpPort = 8055
+@vidingestMcpBase = http://{{vidingestHost}}:{{vidingestMcpPort}}/vidingest
+
+@videoUrl = https://www.youtube.com/shorts/JgOklCLhpPo
+@videoId = 00000000-0000-0000-0000-000000000000
+@pipelineId = 00000000-0000-0000-0000-000000000000
+
+### Swagger / OpenAPI
+# {{vidingestBase}}/swagger-ui/index.html
+# {{vidingestBase}}/swagger-ui.html
+GET {{vidingestBase}}/v3/api-docs
+
+### Readiness
+GET {{vidingestBase}}/api/v1/health/ready
+
+### MCP SSE transport (smoke)
+GET {{vidingestMcpBase}}/sse
+Accept: text/event-stream
+
+### Download to DB (sync)
+POST {{vidingestBase}}/api/v1/videos/download
+Content-Type: application/json
+
+{
+  "url": "{{videoUrl}}",
+  "diskOnly": false,
+  "progress": false
+}
+
+### Download to disk only
+POST {{vidingestBase}}/api/v1/videos/download
+Content-Type: application/json
+
+{
+  "url": "{{videoUrl}}",
+  "diskOnly": true,
+  "progress": false
+}
+
+### List videos (paged)
+GET {{vidingestBase}}/api/v1/videos?status=ALL&page=0&size=25
+
+### Get video
+GET {{vidingestBase}}/api/v1/videos/{{videoId}}
+
+### Delete video
+DELETE {{vidingestBase}}/api/v1/videos/{{videoId}}
+
+### Create pipeline run (async)
+POST {{vidingestBase}}/api/v1/pipelines
+Content-Type: application/json
+
+{
+  "urls": ["{{videoUrl}}"],
+  "skipTranscription": false,
+  "skipContext": false
+}
+
+### List pipeline runs (paged)
+GET {{vidingestBase}}/api/v1/pipelines?status=ALL&page=0&size=25
+
+### Get pipeline run
+GET {{vidingestBase}}/api/v1/pipelines/{{pipelineId}}
+
+### Retry pipeline run (async)
+POST {{vidingestBase}}/api/v1/pipelines/{{pipelineId}}/retry
+Content-Type: application/json
+
+{
+  "skipTranscription": false,
+  "skipContext": false
+}
+
+### Retry a single failed run item (async)
+POST {{vidingestBase}}/api/v1/pipelines/{{pipelineId}}/items/{{itemId}}/retry
+Content-Type: application/json
+
+{
+  "skipTranscription": false,
+  "skipContext": false
+}
+
+### Search (409/503 unless semantic is enabled + provider exists)
+GET {{vidingestBase}}/api/v1/search?query=hello&limit=5
+

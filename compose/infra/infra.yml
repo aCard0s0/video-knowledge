@@ -1,0 +1,138 @@
+services:
+  timescaledb:
+    image: 'timescale/timescaledb-ha:pg17'
+    command:
+      - postgres
+      - -c
+      - max_connections=400
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=16MB
+    environment:
+      - 'POSTGRES_DB=tradingPlatformDB'
+      - 'POSTGRES_USER=dealer'
+      - 'POSTGRES_PASSWORD=dev_dealer'
+      - 'TIMESCALEDB_TELEMETRY=off'
+    labels:
+      - "org.springframework.boot.service-connection=postgres"
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${TIMESCALEDB_PORT:-3030}:5432'
+    volumes:
+      - timescaledb_data:/home/postgres/pgdata/data
+    mem_limit: 2G
+    mem_reservation: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dealer -d tradingPlatformDB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-knowledge
+
+  ollama:
+    image: 'ollama/ollama:0.12.7-rc0'
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${OLLAMA_PORT:-11434}:11434'
+    labels:
+      - "org.springframework.boot.service-connection=ollama"
+    environment:
+      # Store pulled models on the shared persistent volume.
+      - OLLAMA_MODELS=/models/ollama
+      # Keep loaded models in RAM for 30s after last use, then unload. Knowledge extraction
+      # (chat model) and search/knowledge embedding alternate; the combined RAM (e.g.
+      # qwen2.5:14b ~9 GB + embed ~3.6 GB = 12.6 GB) won't fit in the Docker VM headroom,
+      # so a short keep-alive lets ollama swap cleanly instead of OOMing.
+      - OLLAMA_KEEP_ALIVE=30s
+    volumes:
+      - ollama_data:/root/.ollama
+      - ai_models:/models
+    networks:
+      - video-knowledge
+    mem_limit: 16G
+    mem_reservation: 4G
+
+  whisper:
+    # Whisper ASR webservice (speech-to-text).
+    image: 'onerahmet/openai-whisper-asr-webservice:v1.9.1'
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${WHISPER_PORT:-9000}:9000'
+    environment:
+      - ASR_ENGINE=faster_whisper
+      - ASR_MODEL=small
+      # Persist models to avoid re-downloading on each container start.
+      - ASR_MODEL_PATH=/models/whisper
+    volumes:
+      - ai_models:/models
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9000/docs"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - video-knowledge
+    mem_limit: 4G
+    mem_reservation: 1G
+
+  paddleocr-server:
+    # PaddleOCR sidecar (optional — VidIngest OCR, disabled by default). Receives one JPG per
+    # request via multipart upload and returns line-level detections with confidence scores.
+    build:
+      # Build context resolves relative to the project directory (cwd of `docker compose`).
+      # Tradey always runs from the repo root, so the sidecar lives at compose/infra/paddleocr-server.
+      context: compose/infra/paddleocr-server
+      dockerfile: Dockerfile
+    image: video-knowledge/paddleocr-server:${VK_IMAGE_TAG:-latest}
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${PADDLEOCR_PORT:-8002}:8002'
+    environment:
+      - OCR_DEFAULT_LANG=${OCR_DEFAULT_LANG:-en}
+      - PORT=8002
+      - LOG_LEVEL=${PADDLEOCR_LOG_LEVEL:-INFO}
+    volumes:
+      - ai_models:/models
+      # Read-only mount of the shared vidingest data volume (forward-compatible with read-by-path).
+      - vidingest_data:/data/videos:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - video-knowledge
+    mem_limit: 3G
+    mem_reservation: 1G
+    restart: unless-stopped
+
+  diarize-asr:
+    # Speaker-diarization sidecar wrapping pyannote.audio 3.x (optional — disabled by default).
+    # Requires HUGGINGFACE_TOKEN — pyannote/speaker-diarization-3.1 is a gated model. Accept
+    # the EULA on huggingface.co and set the token in the host environment (.env or shell).
+    build:
+      context: compose/infra/diarize-asr
+      dockerfile: Dockerfile
+    image: video-knowledge/diarize-asr:${VK_IMAGE_TAG:-latest}
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${DIARIZE_ASR_PORT:-9001}:9001'
+    environment:
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - DIARIZATION_PIPELINE=${DIARIZATION_PIPELINE:-pyannote/speaker-diarization-3.1}
+      - PORT=9001
+      - LOG_LEVEL=${DIARIZE_ASR_LOG_LEVEL:-INFO}
+    volumes:
+      - ai_models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - video-knowledge
+    mem_limit: 4G
+    mem_reservation: 1G
+    restart: unless-stopped

@@ -1,0 +1,84 @@
+x-java-build-args: &java_build_args
+  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:25-jdk-alpine}
+  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:25-jre-alpine}
+  MAVEN_VERSION: ${MAVEN_VERSION:-3.9.11}
+  APP_UID: ${APP_UID:-1000}
+  APP_GID: ${APP_GID:-1000}
+  GIT_COMMIT: ${VK_GIT_COMMIT:-unknown}
+  GIT_BRANCH: ${VK_GIT_BRANCH:-unknown}
+  GIT_COMMIT_TIME: ${VK_GIT_COMMIT_TIME:-unknown}
+
+services:
+  vidingest:
+    build:
+      context: .
+      dockerfile: applications/vidingest/vidingest-server/Dockerfile
+      args:
+        <<: *java_build_args
+    image: video-knowledge/vidingest:${VK_IMAGE_TAG:-latest}
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${VIDINGEST_PORT:-8051}:${VIDINGEST_PORT:-8051}'
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      LOG_DIR: /app/logs
+      SERVER_PORT: ${VIDINGEST_PORT:-8051}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://timescaledb:5432/tradingPlatformDB
+      SPRING_DATASOURCE_USERNAME: dealer
+      SPRING_DATASOURCE_PASSWORD: dev_dealer
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${VK_HIKARI_MAX_POOL_SIZE:-10}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${VK_HIKARI_MIN_IDLE:-1}
+      # Semantic search + embeddings (ollama by default)
+      VIDINGEST_SEARCH_SEMANTIC_ENABLED: ${VIDINGEST_SEARCH_SEMANTIC_ENABLED:-true}
+      VIDINGEST_EMBEDDINGS_PROVIDER: ${VIDINGEST_EMBEDDINGS_PROVIDER:-ollama}
+      VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS: ${VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS:-1536}
+      VIDINGEST_EMBEDDINGS_BASE_URL: ${VIDINGEST_EMBEDDINGS_BASE_URL:-}
+      VIDINGEST_EMBEDDINGS_MODEL: ${VIDINGEST_EMBEDDINGS_MODEL:-text-embedding-3-small}
+      VIDINGEST_EMBEDDINGS_API_KEY: ${VIDINGEST_EMBEDDINGS_API_KEY:-}
+      VIDINGEST_EMBEDDINGS_TIMEOUT: ${VIDINGEST_EMBEDDINGS_TIMEOUT:-180s}
+      VIDINGEST_OLLAMA_BASE_URL: ${VIDINGEST_OLLAMA_BASE_URL:-http://ollama:11434}
+      VIDINGEST_OLLAMA_EMBED_MODEL: ${VIDINGEST_OLLAMA_EMBED_MODEL:-rjmalagon/gte-qwen2-1.5b-instruct-embed-f16}
+      VIDINGEST_OLLAMA_TIMEOUT: ${VIDINGEST_OLLAMA_TIMEOUT:-180s}
+      VIDINGEST_OLLAMA_TRUNCATE: ${VIDINGEST_OLLAMA_TRUNCATE:-true}
+      # Speaker diarization (optional). Flip enabled + start the diarize-asr sidecar (needs
+      # HUGGINGFACE_TOKEN) to opt in. Intentionally NOT a depends_on so vidingest starts without it.
+      VIDINGEST_DIARIZATION_ENABLED: ${VIDINGEST_DIARIZATION_ENABLED:-false}
+      VIDINGEST_DIARIZATION_BASE_URL: ${VIDINGEST_DIARIZATION_BASE_URL:-http://diarize-asr:9001}
+      VIDINGEST_DIARIZATION_MAX_SPEAKERS: ${VIDINGEST_DIARIZATION_MAX_SPEAKERS:-8}
+      VIDINGEST_DIARIZATION_MIN_OVERLAP_SECONDS: ${VIDINGEST_DIARIZATION_MIN_OVERLAP_SECONDS:-0.25}
+      # Frame sampling (optional, pure-Java + ffmpeg — no sidecar).
+      VIDINGEST_FRAMES_ENABLED: ${VIDINGEST_FRAMES_ENABLED:-false}
+      VIDINGEST_FRAMES_INTERVAL_SECONDS: ${VIDINGEST_FRAMES_INTERVAL_SECONDS:-10}
+      VIDINGEST_FRAMES_SCENE_CHANGE_THRESHOLD: ${VIDINGEST_FRAMES_SCENE_CHANGE_THRESHOLD:-0.35}
+      VIDINGEST_FRAMES_MAX_PER_VIDEO: ${VIDINGEST_FRAMES_MAX_PER_VIDEO:-600}
+      # OCR (optional). Requires the paddleocr-server sidecar. NOT a hard depends_on.
+      VIDINGEST_OCR_ENABLED: ${VIDINGEST_OCR_ENABLED:-false}
+      VIDINGEST_OCR_BASE_URL: ${VIDINGEST_OCR_BASE_URL:-http://paddleocr-server:8002}
+      VIDINGEST_OCR_LANGUAGES: ${VIDINGEST_OCR_LANGUAGES:-en}
+      VIDINGEST_OCR_MIN_CONFIDENCE: ${VIDINGEST_OCR_MIN_CONFIDENCE:-0.5}
+      VIDINGEST_OCR_MAX_RESULTS_PER_VIDEO: ${VIDINGEST_OCR_MAX_RESULTS_PER_VIDEO:-10000}
+      # Knowledge extraction (optional). Uses ollama for chat + embeddings; pull the chat model first.
+      VIDINGEST_KNOWLEDGE_ENABLED: ${VIDINGEST_KNOWLEDGE_ENABLED:-false}
+      VIDINGEST_KNOWLEDGE_PROVIDER: ${VIDINGEST_KNOWLEDGE_PROVIDER:-ollama}
+      VIDINGEST_KNOWLEDGE_CHAT_MODEL: ${VIDINGEST_KNOWLEDGE_CHAT_MODEL:-qwen2.5:14b-instruct}
+      VIDINGEST_KNOWLEDGE_BASE_URL: ${VIDINGEST_KNOWLEDGE_BASE_URL:-http://ollama:11434}
+      VIDINGEST_KNOWLEDGE_TEMPERATURE: ${VIDINGEST_KNOWLEDGE_TEMPERATURE:-0.2}
+      VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS: ${VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS:-4096}
+      VIDINGEST_KNOWLEDGE_MAX_INPUT_CHARS_PER_BATCH: ${VIDINGEST_KNOWLEDGE_MAX_INPUT_CHARS_PER_BATCH:-16000}
+      VIDINGEST_KNOWLEDGE_MAX_UNITS_PER_VIDEO: ${VIDINGEST_KNOWLEDGE_MAX_UNITS_PER_VIDEO:-300}
+      VIDINGEST_KNOWLEDGE_MIN_SALIENCE: ${VIDINGEST_KNOWLEDGE_MIN_SALIENCE:-0.2}
+      VIDINGEST_KNOWLEDGE_EMBED_CONTENT: ${VIDINGEST_KNOWLEDGE_EMBED_CONTENT:-true}
+    volumes:
+      - app_logs:/app/logs
+      - vidingest_data:/data/videos
+    networks:
+      - video-knowledge
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      whisper:
+        condition: service_healthy
+    mem_limit: 768M
+    mem_reservation: 256M
+    restart: "no"

@@ -1,0 +1,33 @@
+# Java / Maven
+target/
+*.class
+!.mvn/wrapper/maven-wrapper.jar
+
+# Local databases / runtime data
+data/
+*.db
+
+# IDEs and editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.project
+.classpath
+.settings/
+
+# Obsidian workspace state (keep the notes, drop the local UI state)
+docs/.obsidian/workspace.json
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+**/.env
+
+# Runtime output (video storage + logs resolved by ProjectPathResolver)
+package/

@@ -1,0 +1,117 @@
+package com.tradinglabs.vidingest.config;
+
+import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+import java.time.Duration;
+import java.util.List;
+
+/**
+ * Configuration for the LLM-driven knowledge-extraction phase (M6).
+ *
+ * <p>{@code KnowledgeExtractionService} reads {@code vidingest_multimodal_segments} (M5),
+ * batches them under {@link #maxInputCharsPerBatch}, prompts a chat LLM (Ollama by default)
+ * to emit a JSON array of typed knowledge units, embeds each unit's content via the
+ * existing {@code EmbeddingsClient}, and persists with the ivfflat index for fast semantic
+ * search (M8).
+ *
+ * <p>Provider is selected by {@link #provider}. Today the only impl is {@code ollama}; the
+ * design leaves room for {@code openai} / {@code anthropic} swap-ins as a future
+ * improvement (zero code change in calling code).
+ *
+ * <p>Defaults to {@code enabled = false} because the LLM call is the most expensive thing
+ * in the pipeline — operators opt in once Ollama (or a cloud provider) is wired up and
+ * has the configured chat model available.
+ */
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "vidingest.knowledge")
+public class KnowledgeExtractionConfig {
+
+    /**
+     * Master switch. When false the {@code KnowledgePhase} short-circuits regardless of the
+     * per-run {@code skipKnowledge} flag.
+     */
+    private boolean enabled = false;
+
+    /**
+     * LLM provider selector. Supported values: {@code ollama}. Other providers reserved for
+     * future M9+ milestones.
+     */
+    private String provider = "ollama";
+
+    /**
+     * Chat-model name passed to the provider. Default targets a model with strong
+     * instruction following + JSON-mode support; bump for higher-quality extraction on
+     * better hardware.
+     */
+    private String chatModel = "qwen2.5:14b-instruct";
+
+    /**
+     * Provider base URL. Defaults to the Ollama service that the existing embeddings
+     * client also uses — both consume the same daemon, just different models.
+     */
+    private String baseUrl = "http://localhost:11434";
+
+    private Duration connectTimeout = Duration.ofSeconds(5);
+
+    /**
+     * Large LLM calls are slow on CPU (tens of seconds to minutes for long inputs); use a
+     * generous default and tune downward on GPU hosts.
+     */
+    private Duration readTimeout = Duration.ofMinutes(10);
+
+    /**
+     * Sampling temperature. Low values (0.0–0.3) yield more deterministic structured
+     * output — essential when we mandate strict JSON.
+     */
+    private double temperature = 0.2;
+
+    /**
+     * Max tokens to generate per LLM call. Caps the output budget so a single rogue
+     * response can't blow through the read timeout.
+     */
+    private int maxOutputTokens = 4096;
+
+    /**
+     * Per-batch input cap (characters). Roughly 4 chars ≈ 1 token, so 16k chars ≈ 4k token
+     * input budget. Segments are appended until adding another would exceed this, then a
+     * new batch starts. Independent batches share no LLM context.
+     */
+    private int maxInputCharsPerBatch = 16_000;
+
+    /**
+     * Knowledge unit types the LLM should produce. Order is documentary only; output rows
+     * are not sorted on this. An empty list = "extract all supported types".
+     */
+    private List<KnowledgeUnitType> types = List.of(
+            KnowledgeUnitType.ENTITY,
+            KnowledgeUnitType.TOPIC,
+            KnowledgeUnitType.SUMMARY,
+            KnowledgeUnitType.CLAIM
+    );
+
+    /**
+     * Hard cap on persisted rows per video. Truncates the tail of the accumulated drafts
+     * across all batches once exceeded — defensive against a chatty model.
+     */
+    private int maxUnitsPerVideo = 300;
+
+    /**
+     * When true, every persisted {@code KnowledgeUnit.content} is embedded via the existing
+     * {@code EmbeddingsClient} so the M8 {@code searchKnowledge} MCP tool can do pgvector
+     * lookups. Disable to skip the embed cost (e.g. when running offline against an LLM
+     * but no embedding model).
+     */
+    private boolean embedContent = true;
+
+    /**
+     * Minimum salience score (0–1) the LLM-emitted unit must meet to be persisted. Filters
+     * out junky low-confidence "facts" before they pollute the table.
+     */
+    private double minSalience = 0.2;
+}

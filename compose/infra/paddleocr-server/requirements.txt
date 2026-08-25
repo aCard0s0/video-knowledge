@@ -1,0 +1,11 @@
+# paddleocr-server — pinned dependencies. Keep narrow enough to keep OCR output stable
+# across rebuilds but allow patch upgrades. Bump deliberately when upgrading models.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+Pillow==11.0.0
+numpy==1.26.4
+# PaddleOCR depends on paddlepaddle; pin both. CPU-only build by default — for GPU, swap
+# `paddlepaddle` for `paddlepaddle-gpu` and rebuild on a CUDA base image.
+paddlepaddle==2.6.2
+paddleocr==2.9.1

@@ -1,0 +1,27 @@
+flowchart TD
+    Start["User runs command"]
+
+    Start --> ExtractMeta["extractMetadata(url)\nyt-dlp --dump-json --no-download"]
+    ExtractMeta --> ParseJSON["cleanJsonOutput + ObjectMapper\nparse yt-dlp JSON"]
+
+    ParseJSON --> ModeCheck{Disk-only?}
+
+    ModeCheck -->|Yes| DiskDownload["downloadVideoToDisk(url, metadata)\nChannel folder structure"]
+    DiskDownload --> RenameFile["Rename: YYYYMMDD.title.ext"]
+    RenameFile --> SaveMetaJSON["saveMetadataToDisk\nYYYYMMDD.title.metadata.json"]
+    SaveMetaJSON --> DiskDone["Return file paths"]
+
+    ModeCheck -->|No| DBDownload["downloadVideo(url, videoId)\nyt-dlp to videoPath"]
+    DBDownload --> FindFile["FileSystemHelper.findFileByPrefix\nLocate actual downloaded file"]
+    FindFile --> ProcessMeta["MetadataService.processMetadata\nMap JSON to Video entity"]
+    ProcessMeta --> SaveDB["videoRepository.save\nPersist to PostgreSQL"]
+    SaveDB --> DBDone["Return Video entity"]
+
+    subgraph ytdlp [yt-dlp Execution]
+        BuildCmd["YtDlpCommandBuilder\nbuildDownloadCommand"]
+        ExecCmd["YtDlpExecutor.executeDownload\nApache Commons Exec"]
+        BuildCmd --> ExecCmd
+    end
+
+    DiskDownload -.-> BuildCmd
+    DBDownload -.-> BuildCmd

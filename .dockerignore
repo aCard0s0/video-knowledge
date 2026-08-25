@@ -1,0 +1,8 @@
+**/target
+.git
+.idea
+.vscode
+docs
+*.md
+.DS_Store
+data

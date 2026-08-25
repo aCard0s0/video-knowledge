@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Common Logback Configuration for com.tradinglabs Applications
+
+    This file defines shared appenders and loggers that all applications use.
+    Applications should include this file and set the APP_NAME property before including.
+
+    Usage in application's logback-spring.xml:
+        <property name="APP_NAME" value="your-app-name"/>
+        <include resource="logback-common.xml"/>
+-->
+<included>
+    <!-- LOG_BASE_DIR can be provided via env var or -DLOG_BASE_DIR -->
+    <property name="LOG_BASE_DIR" value="${LOG_BASE_DIR:-${user.dir}/package/logs}"/>
+    <!-- Allow explicit LOG_DIR override (useful for container shared-volume logging) -->
+    <property name="LOG_DIR" value="${LOG_DIR:-${LOG_BASE_DIR}/${APP_NAME}}"/>
+    <!-- ============================================ -->
+    <!-- Appender Definitions                         -->
+    <!-- ============================================ -->
+
+    <!-- Console: human-readable format -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %c{1.} - %m%n}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Plain text file appender (non-colored file pattern) -->
+    <appender name="PLAIN_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <immediateFlush>true</immediateFlush>
+        <file>${LOG_DIR}/${APP_NAME}.log</file>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN:-%d{yyyy-MM-dd'T'HH:mm:ss.SSSX} %5p ${PID:- } --- [%15.15t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archived/${APP_NAME}.%d{yyyy-MM-dd_HH}.log.gz</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="com.tradinglabs.common.logging.FixedIntervalTimeBasedFileNamingAndTriggeringPolicy">
+                <intervalHours>6</intervalHours>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>120</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- JSON file appender with 6-hour rotation -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <immediateFlush>true</immediateFlush>
+        <file>${LOG_DIR}/${APP_NAME}.json</file>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSX</timestampPattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archived/${APP_NAME}.%d{yyyy-MM-dd_HH}.json.gz</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="com.tradinglabs.common.logging.FixedIntervalTimeBasedFileNamingAndTriggeringPolicy">
+                <intervalHours>6</intervalHours>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>56</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- Error Log File Appender (Errors only) -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <immediateFlush>true</immediateFlush>
+        <file>${LOG_DIR}/${APP_NAME}-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN:-%d{yyyy-MM-dd'T'HH:mm:ss.SSSX} %5p ${PID:- } --- [%15.15t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archived/${APP_NAME}-error.%d{yyyy-MM-dd_HH}.log.gz</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="com.tradinglabs.common.logging.FixedIntervalTimeBasedFileNamingAndTriggeringPolicy">
+                <intervalHours>6</intervalHours>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>360</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ============================================ -->
+    <!-- Turbo Filters (run before level checks)      -->
+    <!-- ============================================ -->
+
+    <!--
+        Throttle OpenTelemetry HTTP exporter noise. When the OTel collector / lgtm sidecar
+        isn't running, the agent logs a multi-line `UnknownHostException: lgtm` every few
+        seconds, flooding the console and platform.log. The filter:
+          - DENIES every event whose logger name starts with `io.opentelemetry.exporter`
+          - Emits ONE concise WARN summary on `tradinglabs.throttled.otel-exporter`
+            every 30 minutes, including the suppressed-event count for that window.
+
+        Override per-app by re-declaring the turbo filter with different attrs.
+    -->
+    <turboFilter class="com.tradinglabs.common.logging.throttle.RateLimitedLoggerFilter">
+        <loggerPrefix>io.opentelemetry.exporter</loggerPrefix>
+        <intervalMinutes>30</intervalMinutes>
+        <summaryLoggerName>tradinglabs.throttled.otel-exporter</summaryLoggerName>
+        <summaryMessage>OTel exporter unreachable; suppressed {} log events in the last {} min (likely lgtm / OTel collector sidecar not running).</summaryMessage>
+    </turboFilter>
+
+    <!-- ============================================ -->
+    <!-- Common Logger Configuration                  -->
+    <!-- ============================================ -->
+
+    <!-- Hibernate SQL Logging (default to WARN, apps can override) -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN"/>
+
+</included>

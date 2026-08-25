@@ -1,0 +1,48 @@
+x-java-build-args: &java_build_args
+  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:25-jdk-alpine}
+  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:25-jre-alpine}
+  MAVEN_VERSION: ${MAVEN_VERSION:-3.9.11}
+  APP_UID: ${APP_UID:-1000}
+  APP_GID: ${APP_GID:-1000}
+
+services:
+  vidingest-mcp:
+    build:
+      context: .
+      dockerfile: applications/vidingest/vidingest-mcp/Dockerfile
+      args:
+        <<: *java_build_args
+        APP_USER: ${SERVER_APP_USER:-spring}
+    image: video-knowledge/vidingest-mcp:${VK_IMAGE_TAG:-latest}
+    depends_on:
+      vidingest:
+        condition: service_healthy
+    mem_limit: 512M
+    mem_reservation: 256M
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - LOG_DIR=/app/logs
+      - SERVER_PORT=${VIDINGEST_MCP_PORT:-8055}
+      - VIDINGEST_SERVER_BASE_URL=http://vidingest:${VIDINGEST_PORT:-8051}/vidingest
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${VIDINGEST_MCP_PORT:-8055}:${VIDINGEST_MCP_PORT:-8055}'
+    volumes:
+      - app_logs:/app/logs
+    networks:
+      - video-knowledge
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /app/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${VIDINGEST_MCP_PORT:-8055}/vidingest/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

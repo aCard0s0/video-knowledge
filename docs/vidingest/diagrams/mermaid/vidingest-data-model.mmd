@@ -1,0 +1,80 @@
+erDiagram
+    vidingest_pipeline_runs ||--o{ vidingest_videos : "has"
+    vidingest_pipeline_runs ||--o{ vidingest_pipeline_run_items : "has"
+    vidingest_pipeline_run_items }o--|| vidingest_videos : "produces"
+    vidingest_videos ||--o{ vidingest_transcriptions : "has"
+    vidingest_transcriptions ||--o{ vidingest_transcription_segments : "has"
+    vidingest_videos ||--o{ vidingest_context_chunks : "has"
+
+    vidingest_pipeline_runs {
+        UUID id PK
+        VARCHAR status
+        VARCHAR phase
+        TIMESTAMP phase_updated_at
+        VARCHAR error_code
+        TEXT error
+        TEXT video_url
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+
+    vidingest_pipeline_run_items {
+        UUID id PK
+        UUID pipeline_run_id FK
+        TEXT url
+        VARCHAR status
+        VARCHAR phase
+        TIMESTAMP phase_updated_at
+        VARCHAR error_code
+        TEXT error
+        UUID video_id FK
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+
+    vidingest_videos {
+        UUID id PK
+        UUID pipeline_run_id FK
+        VARCHAR source
+        VARCHAR source_video_id UK
+        TEXT title
+        TEXT description
+        VARCHAR channel_name
+        INT duration_seconds
+        TIMESTAMP published_at
+        TIMESTAMP downloaded_at
+        TEXT file_path
+        JSONB metadata
+        VARCHAR status
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+
+    vidingest_transcriptions {
+        UUID id PK
+        UUID video_id FK
+        VARCHAR language
+        TEXT full_text
+        VARCHAR provider
+        VARCHAR status
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+
+    vidingest_transcription_segments {
+        UUID id PK
+        UUID transcription_id FK
+        FLOAT start_seconds
+        FLOAT end_seconds
+        TEXT text
+        TIMESTAMP created_at
+    }
+
+    vidingest_context_chunks {
+        UUID id PK
+        UUID video_id FK
+        INT chunk_index UK
+        TEXT content
+        VECTOR embedding
+        TIMESTAMP created_at
+    }

@@ -1,0 +1,299 @@
+package com.tradinglabs.vidingest.youtube.service;
+
+import com.tradinglabs.vidingest.api.youtube.CreatePipelineRunFromYoutubeVideosRequest;
+import com.tradinglabs.vidingest.api.youtube.CreateYoutubeChannelRequest;
+import com.tradinglabs.vidingest.api.youtube.YoutubeChannelSummary;
+import com.tradinglabs.vidingest.api.youtube.YoutubeChannelVideoSummary;
+import com.tradinglabs.vidingest.api.common.PageResponse;
+import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
+import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
+import com.tradinglabs.vidingest.pipeline.service.PipelineService.PipelineSkipFlags;
+import com.tradinglabs.vidingest.videos.repo.VideoRepository;
+import com.tradinglabs.vidingest.youtube.config.YoutubeSyncProperties;
+import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryResult;
+import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryService;
+import com.tradinglabs.vidingest.youtube.domain.YoutubeChannel;
+import com.tradinglabs.vidingest.youtube.domain.YoutubeChannelStatus;
+import com.tradinglabs.vidingest.youtube.domain.YoutubeChannelVideo;
+import com.tradinglabs.vidingest.youtube.exceptions.YoutubeChannelNotFoundException;
+import com.tradinglabs.vidingest.youtube.repo.YoutubeChannelRepository;
+import com.tradinglabs.vidingest.youtube.repo.YoutubeChannelVideoRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class YoutubeChannelCommandService {
+
+    private static final Sort DEFAULT_VIDEO_SORT = Sort.by(Sort.Direction.DESC, "publishedAt").and(Sort.by(Sort.Direction.DESC, "createdAt"));
+    private static final int DEFAULT_PAGE_SIZE = 50;
+    private static final int MAX_PAGE_SIZE = 200;
+
+    private final YoutubeChannelRepository youtubeChannelRepository;
+    private final YoutubeChannelVideoRepository youtubeChannelVideoRepository;
+    private final VideoRepository videoRepository;
+    private final YoutubeChannelDiscoveryService discoveryService;
+    private final PipelineIntakeService pipelineIntakeService;
+    private final YoutubeChannelMapper youtubeChannelMapper;
+    private final YoutubeSyncProperties youtubeSyncProperties;
+
+    @Transactional
+    public YoutubeChannelSummary createChannel(CreateYoutubeChannelRequest request) {
+        String normalizedUrl = normalizeChannelUrl(request.url());
+        youtubeChannelRepository.findByChannelUrl(normalizedUrl).ifPresent(existing -> {
+            throw new IllegalStateException("YouTube channel already exists for url: " + normalizedUrl);
+        });
+
+        YoutubeChannel channel = YoutubeChannel.builder()
+                .channelUrl(normalizedUrl)
+                .displayName(trimToNull(request.displayName()))
+                .status(YoutubeChannelStatus.NEW)
+                .build();
+        youtubeChannelRepository.save(channel);
+        return youtubeChannelMapper.toSummary(channel, 0L);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<YoutubeChannelSummary> listChannels(Integer page, Integer size) {
+        int pageValue = page != null ? Math.max(0, page) : 0;
+        int sizeValue = size != null ? Math.clamp(size, 1, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        var pageResult = youtubeChannelRepository.findAll(
+                PageRequest.of(pageValue, sizeValue, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+
+        var summaries = pageResult.getContent().stream()
+                .map(ch -> youtubeChannelMapper.toSummary(ch, youtubeChannelVideoRepository.countByChannel_Id(ch.getId())))
+                .toList();
+
+        return new PageResponse<>(summaries, pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public YoutubeChannelSummary getChannel(UUID channelId) {
+        YoutubeChannel ch = youtubeChannelRepository.findById(channelId)
+                .orElseThrow(() -> new YoutubeChannelNotFoundException(channelId));
+        long count = youtubeChannelVideoRepository.countByChannel_Id(channelId);
+        return youtubeChannelMapper.toSummary(ch, count);
+    }
+
+    @Transactional
+    public YoutubeChannelSummary syncChannel(UUID channelId) throws IOException {
+        YoutubeChannel ch = youtubeChannelRepository.findById(channelId)
+                .orElseThrow(() -> new YoutubeChannelNotFoundException(channelId));
+        if (ch.getStatus() == YoutubeChannelStatus.DISABLED) {
+            throw new IllegalStateException("Channel is disabled: " + channelId);
+        }
+
+        ch.setStatus(YoutubeChannelStatus.SYNCING);
+        ch.setLastSyncAttemptAt(LocalDateTime.now());
+        ch.setLastError(null);
+
+        try {
+            YoutubeChannelDiscoveryResult discovery = discoveryService.discover(
+                    ch.getChannelUrl(),
+                    youtubeSyncProperties.getPlaylistLimit(),
+                    youtubeSyncProperties.getTimeoutSeconds()
+            );
+
+            if (ch.getDisplayName() == null && discovery.channelName() != null) {
+                ch.setDisplayName(discovery.channelName());
+            }
+            ch.setMetadata(discovery.metadata());
+
+            upsertVideos(ch, discovery.videos());
+
+            ch.setStatus(YoutubeChannelStatus.READY);
+            ch.setLastSyncSuccessAt(LocalDateTime.now());
+            ch.setLastError(null);
+        } catch (IOException e) {
+            ch.setStatus(YoutubeChannelStatus.ERROR);
+            ch.setLastError(e.getMessage());
+            throw e;
+        } catch (RuntimeException e) {
+            ch.setStatus(YoutubeChannelStatus.ERROR);
+            ch.setLastError(e.getMessage());
+            throw e;
+        }
+
+        youtubeChannelRepository.save(ch);
+        return youtubeChannelMapper.toSummary(ch, youtubeChannelVideoRepository.countByChannel_Id(channelId));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<YoutubeChannelVideoSummary> listChannelVideos(UUID channelId, Integer page, Integer size) {
+        if (!youtubeChannelRepository.existsById(channelId)) {
+            throw new YoutubeChannelNotFoundException(channelId);
+        }
+
+        int pageValue = page != null ? Math.max(0, page) : 0;
+        int sizeValue = size != null ? Math.clamp(size, 1, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        var pageResult = youtubeChannelVideoRepository.findAllByChannel_Id(
+                channelId,
+                PageRequest.of(pageValue, sizeValue, DEFAULT_VIDEO_SORT)
+        );
+
+        var ids = pageResult.getContent().stream().map(YoutubeChannelVideo::getYoutubeVideoId).toList();
+        Set<String> ingested = ingestedYoutubeVideoIds(ids);
+
+        var items = pageResult.getContent().stream()
+                .map(v -> new YoutubeChannelVideoSummary(
+                        v.getId() != null ? v.getId().toString() : null,
+                        v.getYoutubeVideoId(),
+                        v.getTitle(),
+                        v.getPublishedAt(),
+                        v.getWatchUrl(),
+                        ingested.contains(v.getYoutubeVideoId())
+                ))
+                .toList();
+
+        return new PageResponse<>(items, pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());
+    }
+
+    public CreatePipelineRunResponse createPipelineRun(UUID channelId, CreatePipelineRunFromYoutubeVideosRequest request) {
+        if (!youtubeChannelRepository.existsById(channelId)) {
+            throw new YoutubeChannelNotFoundException(channelId);
+        }
+
+        List<String> youtubeVideoIds = request.youtubeVideoIds().stream()
+                .filter(id -> id != null && !id.isBlank())
+                .map(String::trim)
+                .toList();
+        if (youtubeVideoIds.isEmpty()) {
+            throw new IllegalArgumentException("youtubeVideoIds must not be empty");
+        }
+
+        var videos = youtubeChannelVideoRepository.findAllByChannel_IdAndYoutubeVideoIdIn(channelId, youtubeVideoIds);
+        Map<String, YoutubeChannelVideo> byId = new HashMap<>();
+        for (YoutubeChannelVideo v : videos) {
+            byId.put(v.getYoutubeVideoId(), v);
+        }
+
+        List<String> missing = youtubeVideoIds.stream()
+                .filter(id -> !byId.containsKey(id))
+                .distinct()
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Unknown youtubeVideoIds for channel: " + String.join(", ", missing));
+        }
+
+        List<String> urls = youtubeVideoIds.stream()
+                .map(id -> byId.get(id).getWatchUrl())
+                .toList();
+
+        // Pass through all skip flags so channel-driven runs honour the same enrichment
+        // toggles as direct user runs. Defaults (skip = true) keep the scheduler safe.
+        return pipelineIntakeService.intake(urls, new PipelineSkipFlags(
+                request.skipTranscription(),
+                request.skipContext(),
+                request.skipDiarize(),
+                request.skipFrames(),
+                request.skipOcr(),
+                request.skipKnowledge()
+        ));
+    }
+
+    private void upsertVideos(YoutubeChannel channel, List<YoutubeChannelDiscoveryResult.YoutubeVideoCandidate> discovered) {
+        if (discovered == null || discovered.isEmpty()) {
+            return;
+        }
+
+        List<String> ids = discovered.stream()
+                .map(YoutubeChannelDiscoveryResult.YoutubeVideoCandidate::youtubeVideoId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+
+        var existing = youtubeChannelVideoRepository.findAllByChannel_IdAndYoutubeVideoIdIn(channel.getId(), ids);
+        Map<String, YoutubeChannelVideo> existingById = new HashMap<>();
+        for (YoutubeChannelVideo v : existing) {
+            existingById.put(v.getYoutubeVideoId(), v);
+        }
+
+        var now = LocalDateTime.now();
+        List<YoutubeChannelVideo> toSave = new java.util.ArrayList<>(ids.size());
+        Set<String> processed = new HashSet<>(ids.size());
+
+        for (YoutubeChannelDiscoveryResult.YoutubeVideoCandidate c : discovered) {
+            if (c.youtubeVideoId() == null || c.youtubeVideoId().isBlank()) continue;
+            String id = c.youtubeVideoId().trim();
+            if (!processed.add(id)) {
+                continue;
+            }
+            YoutubeChannelVideo v = existingById.get(id);
+            if (v == null) {
+                v = YoutubeChannelVideo.builder()
+                        .channel(channel)
+                        .youtubeVideoId(id)
+                        .title(c.title())
+                        .publishedAt(c.publishedAt())
+                        .watchUrl(c.watchUrl())
+                        .metadata(c.metadata())
+                        .firstSeenAt(now)
+                        .lastSeenAt(now)
+                        .build();
+            } else {
+                v.setTitle(c.title());
+                v.setPublishedAt(c.publishedAt());
+                v.setWatchUrl(c.watchUrl());
+                v.setMetadata(c.metadata());
+                v.setLastSeenAt(now);
+            }
+            toSave.add(v);
+        }
+
+        youtubeChannelVideoRepository.saveAll(toSave);
+        log.info("YouTube channel sync upserted {} videos. channelId={}", toSave.size(), channel.getId());
+    }
+
+    private Set<String> ingestedYoutubeVideoIds(List<String> youtubeVideoIds) {
+        if (youtubeVideoIds == null || youtubeVideoIds.isEmpty()) {
+            return Set.of();
+        }
+        var videos = videoRepository.findBySourceAndSourceVideoIdIn("youtube", youtubeVideoIds);
+        Set<String> set = new HashSet<>(videos.size());
+        for (var v : videos) {
+            if (v.getSourceVideoId() != null) {
+                set.add(v.getSourceVideoId());
+            }
+        }
+        return Set.copyOf(set);
+    }
+
+    private static String normalizeChannelUrl(String url) {
+        if (url == null || url.isBlank()) {
+            throw new IllegalArgumentException("url must not be blank");
+        }
+        String trimmed = url.trim();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            throw new IllegalArgumentException("url must start with http:// or https://");
+        }
+        // Light normalization so duplicates collapse.
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String t = value.trim();
+        return t.isEmpty() ? null : t;
+    }
+}
+

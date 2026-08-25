@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - include:
+      file: classpath:db/changelog/changesets/001-core-pipeline.sql
+  - include:
+      file: classpath:db/changelog/changesets/002-youtube-channels.sql
+  - include:
+      file: classpath:db/changelog/changesets/003-knowledge-extraction.sql

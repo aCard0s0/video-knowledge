@@ -1,0 +1,30 @@
+x-java-build-args: &java_build_args
+  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:25-jdk-alpine}
+  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:25-jre-alpine}
+  MAVEN_VERSION: ${MAVEN_VERSION:-3.9.11}
+  APP_UID: ${APP_UID:-1000}
+  APP_GID: ${APP_GID:-1000}
+  APP_USER: ${CLI_APP_USER:-app}
+
+services:
+  vidingest-cli:
+    build:
+      context: .
+      dockerfile: applications/vidingest/vidingest-cli/Dockerfile
+      args: *java_build_args
+    image: video-knowledge/vidingest-cli:${VK_IMAGE_TAG:-latest}
+    entrypoint: ["sh", "-lc", "trap 'exit 0' TERM INT; while :; do sleep 3600; done"]
+    stdin_open: true
+    tty: true
+    depends_on:
+      vidingest:
+        condition: service_healthy
+    mem_limit: 512M
+    mem_reservation: 128M
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - VIDINGEST_SERVER_BASE_URL=http://vidingest:${VIDINGEST_PORT:-8051}/vidingest
+      - TERM=xterm-256color
+    networks:
+      - video-knowledge
+    restart: "no"

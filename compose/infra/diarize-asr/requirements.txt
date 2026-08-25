@@ -1,0 +1,17 @@
+# diarize-asr — pyannote.audio sidecar dependencies.
+# Pinned narrowly enough to keep diarization output stable across rebuilds without
+# blocking minor security patches. Bump deliberately when upgrading the pipeline.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+# pyannote.audio 3.x is required for the speaker-diarization-3.1 pipeline.
+pyannote.audio==3.3.2
+# Pin huggingface_hub<1.0 — pyannote.audio 3.3.2 calls hf_hub_download(use_auth_token=...),
+# which huggingface_hub 1.x removed in favour of the `token` kwarg.
+huggingface_hub==0.25.2
+# CPU-only torch by default — replace the index URL in the Dockerfile for CUDA builds.
+torch==2.5.1
+torchaudio==2.5.1
+# pyannote.audio 3.3.2 transitively imports matplotlib in its segmentation mixins but does
+# not declare it — pin explicitly so imports don't ModuleNotFoundError at first request.
+matplotlib==3.9.2

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.tradinglabs</groupId>
+        <artifactId>video-knowledge</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>libraries</artifactId>
+    <packaging>pom</packaging>
+    <name>Video Knowledge Libraries</name>
+    <description>Shared com.tradinglabs libraries for the vidingest reactor</description>
+
+    <modules>
+        <module>common-logging</module>
+        <module>common-http-client-core</module>
+        <module>common-web</module>
+        <module>common-observability-web</module>
+        <module>common-operation-logging-web</module>
+        <module>common-mcp-configs</module>
+        <module>common-operation-logging-mcp</module>
+    </modules>
+
+</project>

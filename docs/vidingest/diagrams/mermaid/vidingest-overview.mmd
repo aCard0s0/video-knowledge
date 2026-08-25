@@ -1,0 +1,49 @@
+flowchart TB
+    subgraph client [Client Layer]
+        IngestCommands["IngestCommands\n(vidingest-cli; Spring Shell)"]
+        VidingestClient["VidingestClient\n(vidingest-client; typed RestClient)"]
+    end
+
+    subgraph mcp [MCP Layer]
+        McpIngestTools["McpIngestTools\n(vidingest-mcp; MCP SSE for remote agents)"]
+    end
+
+    subgraph access [Access Layer server]
+        RestApi["REST API\n(Spring MVC controllers)"]
+    end
+
+    subgraph pipeline [Pipeline Layer]
+        PipelineService["PipelineService\n(pipeline run tracking, txn boundaries)"]
+    end
+
+    subgraph download [Download Layer]
+        VideoDownloadService["VideoDownloadService"]
+        MetadataService["MetadataService"]
+        YtDlpCommandBuilder["YtDlpCommandBuilder"]
+        YtDlpExecutor["YtDlpExecutor"]
+        MetadataExtractor["MetadataExtractor"]
+    end
+
+    subgraph external [External]
+        YtDlp["yt-dlp\n(subprocess)"]
+        PostgreSQL["PostgreSQL\n+ pgvector"]
+        FileSystem["File System\n(video storage)"]
+    end
+
+    IngestCommands --> VidingestClient
+    McpIngestTools --> VidingestClient
+    VidingestClient --> RestApi
+
+    RestApi --> PipelineService
+    PipelineService --> VideoDownloadService
+    PipelineService --> MetadataService
+
+    VideoDownloadService --> YtDlpCommandBuilder
+    VideoDownloadService --> YtDlpExecutor
+    VideoDownloadService --> MetadataExtractor
+    MetadataService --> MetadataExtractor
+
+    YtDlpExecutor --> YtDlp
+    MetadataService --> PostgreSQL
+    PipelineService --> PostgreSQL
+    VideoDownloadService --> FileSystem

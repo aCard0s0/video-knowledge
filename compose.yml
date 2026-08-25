@@ -1,0 +1,20 @@
+# Base compose file for VidIngest.
+#
+# Defines the shared network and named volumes. The actual services live in
+# split files, layered on top of this base by scripts/tradey.sh:
+#   - compose/infra/infra.yml   timescaledb, ollama, whisper, diarize-asr, paddleocr-server
+#   - compose/services.yml      vidingest       (REST server)
+#   - compose/cli.yml           vidingest-cli   (Spring Shell console)
+#   - compose/mcp.yml           vidingest-mcp   (MCP SSE server)
+services: {}
+
+networks:
+  video-knowledge:
+    name: video-knowledge
+
+volumes:
+  timescaledb_data:
+  ollama_data:
+  ai_models:
+  vidingest_data:
+  app_logs:
