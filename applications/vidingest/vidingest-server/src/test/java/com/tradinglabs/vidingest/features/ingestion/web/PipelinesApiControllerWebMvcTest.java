@@ -62,6 +62,24 @@ class PipelinesApiControllerWebMvcTest {
     private PipelineAuditQueryService pipelineAuditQueryService;
 
     @Test
+    void createRejectsABodyStillUsingTheOldBooleanFlags() throws Exception {
+        // The six skipTranscription/skipDiarize/... booleans became one skipPhases list. Jackson
+        // ignores unknown properties by default, which meant an un-updated client got a 202 and
+        // a run that executed every phase it had asked to skip — its intent silently discarded.
+        // spring.jackson.deserialization.fail-on-unknown-properties turns that into a 400.
+        mockMvc.perform(post("/api/v1/pipelines")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"urls":["https://example.com/video"],"skipTranscription":true,"skipContext":true}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        org.hamcrest.Matchers.containsString("skipTranscription")));
+
+        verifyNoInteractions(pipelineIntakeService);
+    }
+
+    @Test
     void createRejectsSkippingAMandatoryPhase() throws Exception {
         mockMvc.perform(post("/api/v1/pipelines")
                         .contentType(MediaType.APPLICATION_JSON)

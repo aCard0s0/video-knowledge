@@ -33,6 +33,9 @@ wrote it. Four of `RunLifecycleService`'s five `mark*` methods had no callers at
   `RunVideoPreview.PREVIEW_ORDER`.
 - `markFailed` moves to `RunAggregationService`; the other four `mark*` and five more
   zero-caller members deleted.
+- `lease_owner`/`lease_expires_at` on run items (`RunItemLeaseService`,
+  `RunItemLeaseHeartbeat`), so reconcilers can tell a live item from an abandoned one across
+  instances rather than only within this JVM.
 
 ## Decisions
 
@@ -55,6 +58,14 @@ wrote it. Four of `RunLifecycleService`'s five `mark*` methods had no callers at
   knob would be noise; with a set there is no separate knob to add.
 - **CLI keeps the old effective defaults** (`DIARIZE,FRAME_SAMPLE,OCR,KNOWLEDGE`) so a local
   `ingest` behaves as before.
+- **Both liveness answers are kept, neither is redundant.** The in-flight set cannot see other
+  instances but stays right if the lease heartbeat stalls; the lease sees every instance but goes
+  stale if it does. An item is reaped only when neither claims it.
+- **Lease renewal is scoped by owner**, so a heartbeat can never extend a lease another instance
+  took over.
+- **A single-instance restart now waits out the lease TTL** instead of failing IN_PROGRESS runs
+  immediately. From the reconciler's position a crashed owner and a live peer are genuinely
+  indistinguishable, and `StuckItemReconciler` resolves it once the lease lapses.
 
 ## Deliberately not done
 
@@ -67,7 +78,35 @@ wrote it. Four of `RunLifecycleService`'s five `mark*` methods had no callers at
   reference is `RunSummaryPageServiceTest` asserting it is *never* called, which is the #266
   tripwire. `findAllByPipelineRun_Id` did go — this PR removed its last caller.
 - **`PipelinePhaseContext` stays a mutable carrier.** No finding motivated changing it.
+- **No mutual exclusion at lease acquire.** Two workers on one item needs an operator retry, and
+  retry already refuses anything not FAILED. The lease closes the path that made a live item
+  *look* FAILED, which is where the hole actually was.
+- **Lease owner is `pid@host`, not a generated UUID.** It survives nothing, which is the point:
+  a restarted process must not inherit its predecessor's claims. Deployments where pid and host
+  can collide set `vidingest.lease.owner`.
+
+## What live verification changed
+
+The test suite covered the new shape and nothing else. Driving a real server, CLI and MCP client
+found three things it structurally could not:
+
+- **An old six-boolean body was silently accepted with its flags dropped** — a 202 and a run that
+  executed every phase the caller asked to skip. Jackson ignores unknown properties by default,
+  and every test sent the new shape, so nothing failed. Fixed by
+  `spring.jackson.deserialization.fail-on-unknown-properties=true` plus an
+  `HttpMessageNotReadableException` handler, since the advice's `Exception` catch-all would
+  otherwise have answered 500 to a malformed body. Strictness is global, deliberately: a field
+  the server does not understand should never look like it was applied.
+- **The CLI option is `--skipPhases`, not `--skip-phases`** as the docs claimed. Spring Shell
+  derives the name from the parameter, matching the CLI's existing `--dryRun`. `IngestCommandsTest`
+  calls the method directly, so option naming was never exercised.
+- **MCP marked `skipPhases` required** while its own description said it could be omitted. Fixed
+  with `@McpToolParam(required = false)`.
+
+A fourth thing was learned rather than fixed: Spring Boot 4 binds request bodies with Jackson 3,
+so the Jackson 2 `ObjectMapper` bean in `JacksonConfig` does not govern the REST edge. The first
+attempt at the strictness fix went into that bean and did nothing.
 
 ## Follow-ups
 
-- Still no CI. Nothing enforces the 344 tests but a local run.
+- Still no CI. Nothing enforces the 352 tests but a local run. Declined for now.

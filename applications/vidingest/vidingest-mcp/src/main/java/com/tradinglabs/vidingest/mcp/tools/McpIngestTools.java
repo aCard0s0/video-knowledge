@@ -51,7 +51,7 @@ public class McpIngestTools {
             + "empty list to run everything the deployment has enabled.")
     public CreatePipelineRunResponse createPipelineRuns(
             @McpToolParam(description = "List of video URLs (YouTube, Vimeo, or any yt-dlp-supported platform)") List<String> urls,
-            @McpToolParam(description = SKIP_PHASES_DOC) Set<String> skipPhases
+            @McpToolParam(description = SKIP_PHASES_DOC, required = false) Set<String> skipPhases
     ) {
         return client.createPipelineRun(new CreatePipelineRunRequest(urls, skipPhases));
     }
@@ -156,7 +156,7 @@ public class McpIngestTools {
             + "Same skipPhases semantics as createPipelineRuns.")
     public CreatePipelineRunResponse retryPipelineRun(
             @McpToolParam(description = "Pipeline run UUID") String pipelineId,
-            @McpToolParam(description = SKIP_PHASES_DOC) Set<String> skipPhases
+            @McpToolParam(description = SKIP_PHASES_DOC, required = false) Set<String> skipPhases
     ) {
         log.info("MCP: Retrying failed pipeline run {}", pipelineId);
         return client.retryPipeline(UUID.fromString(pipelineId), new RetryRunRequest(skipPhases));

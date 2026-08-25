@@ -37,14 +37,18 @@ METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE �
 | CONTEXT      | (M7-enhanced) | off (semantic-search-gated) | multimodal segments → transcript fallback | `vidingest_context_chunks` (richer content) | embeddings client |
 
 Per-run opt-outs travel as one `skipPhases` list naming the phases to skip, exposed on
-every entry point (REST `CreatePipelineRunRequest`, MCP `createPipelineRuns`, CLI `ingest
---skip-phases`). Any optional phase can be named — `TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`,
+every entry point (REST `CreatePipelineRunRequest`, MCP `createPipelineRuns`, CLI `ingest --skipPhases`). Any optional phase can be named — `TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`,
 `OCR`, `FUSE`, `KNOWLEDGE`, `CONTEXT` — and the choices are independent, so operators can
 run any subset (e.g. OCR-only without diarization). Naming a mandatory phase
 (`METADATA`/`DOWNLOAD`/`PERSIST`) is a 400: those consume the source URL, not the video row,
 so a run cannot start without them. The same predicate,
 [`PipelineRunPhase.isOptional()`](../../applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/domain/PipelineRunPhase.java),
 also decides which phases the per-phase rerun endpoint accepts.
+
+Request bodies are strict (`spring.jackson.deserialization.fail-on-unknown-properties`), so a
+client still sending the six `skipTranscription`/`skipDiarize`/... booleans this replaced gets a
+400 naming the property rather than a 202 and a run that quietly executed everything it asked
+to skip.
 
 ## Architecture
 

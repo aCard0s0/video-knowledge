@@ -237,7 +237,8 @@ as the original nine — no separate tool group.
 optional phases to leave out of the run (`TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`, `OCR`,
 `FUSE`, `KNOWLEDGE`, `CONTEXT`). Omit it or pass an empty list to run everything the
 deployment has enabled; naming a mandatory phase is rejected. This replaced six positional
-booleans, so calls written against the older tool signature need updating.
+booleans, so calls written against the older tool signature need updating — a request still
+carrying them is a 400 naming the offending property, not a silently ignored field.
 
 See [Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md) for the
 underlying pipeline phases and configuration.
