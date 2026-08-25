@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
@@ -28,6 +29,14 @@ public class YoutubeChannelSyncScheduler {
 
     private final ExecutorService youtubeSyncExecutor;
 
+    /**
+     * Caps concurrent yt-dlp playlist fetches. A tick submits one task per enabled channel and
+     * the executor is unbounded, so without this a 200-channel tenant forks 200 yt-dlp
+     * processes at once. Mirrors the gate in {@code PipelineService}; the executor stays
+     * virtual-thread-per-task so shutdown waits only for in-flight work.
+     */
+    private final Semaphore syncGate;
+
     public YoutubeChannelSyncScheduler(
             YoutubeSyncProperties properties,
             YoutubeChannelRepository youtubeChannelRepository,
@@ -38,6 +47,7 @@ public class YoutubeChannelSyncScheduler {
         this.youtubeChannelRepository = youtubeChannelRepository;
         this.youtubeChannels = youtubeChannels;
         this.youtubeSyncExecutor = youtubeSyncExecutor;
+        this.syncGate = new Semaphore(Math.max(1, properties.getConcurrency()));
     }
 
     @Scheduled(cron = "${vidingest.youtube.sync.cron:0 0/30 * * * *}")
@@ -53,16 +63,25 @@ public class YoutubeChannelSyncScheduler {
                 return;
             }
 
-            log.info("YouTube sync tick starting. channels={} playlistLimit={} timeoutSeconds={}",
-                    channels.size(), properties.getPlaylistLimit(), properties.getTimeoutSeconds());
+            log.info("YouTube sync tick starting. channels={} concurrency={} playlistLimit={} timeoutSeconds={}",
+                    channels.size(), properties.getConcurrency(), properties.getPlaylistLimit(),
+                    properties.getTimeoutSeconds());
 
             List<Future<?>> futures = new ArrayList<>(channels.size());
             for (var channel : channels) {
                 futures.add(youtubeSyncExecutor.submit(() -> {
                     try {
+                        syncGate.acquire();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    try {
                         youtubeChannels.syncChannel(channel.getId());
                     } catch (Exception e) {
                         log.warn("YouTube sync failed. channelId={} message={}", channel.getId(), e.getMessage());
+                    } finally {
+                        syncGate.release();
                     }
                 }));
             }

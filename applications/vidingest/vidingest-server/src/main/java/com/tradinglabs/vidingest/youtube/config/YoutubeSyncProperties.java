@@ -14,5 +14,7 @@ public class YoutubeSyncProperties {
     private String cron = "0 0/30 * * * *";
     private int playlistLimit = 200;
     private long timeoutSeconds = 120;
+    /** Channels synced at once. Each one runs a yt-dlp playlist fetch. */
+    private int concurrency = 4;
 }
 
