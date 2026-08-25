@@ -3,19 +3,26 @@ package com.tradinglabs.vidingest.pipeline.service;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRun;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
 import com.tradinglabs.vidingest.api.pipeline.RunDetails;
-import com.tradinglabs.vidingest.videos.domain.Video;
+import com.tradinglabs.vidingest.videos.repo.RunVideoPreview;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
 import com.tradinglabs.vidingest.pipeline.repo.PipelineRunItemRepository;
-import com.tradinglabs.vidingest.videos.domain.VideoStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Builds the run-details read model.
+ *
+ * <p>Reads videos through the {@link RunVideoPreview} projection rather than the {@code Video}
+ * entity: the six fields this view shows are the six the projection carries, and hydrating
+ * entities dragged the JSONB {@code metadata} column along for nothing — the same cost the
+ * run-list path shed in #266. Preview selection is {@link RunVideoPreview#PREVIEW_ORDER},
+ * shared with that path instead of reimplemented here.
+ */
 @Component
 @RequiredArgsConstructor
 public class RunDetailsMapper {
@@ -29,20 +36,21 @@ public class RunDetailsMapper {
                 ? pipelineRunItemRepository.findByPipelineRunIdOrdered(runId)
                 : List.of();
 
-        List<Video> videos = (runId != null)
-                ? videoRepository.findAllByPipelineRun_Id(runId)
+        List<RunVideoPreview> videos = (runId != null)
+                ? videoRepository.findRunVideoPreviews(List.of(runId)).stream()
+                        .filter(v -> v != null && v.videoId() != null)
+                        .toList()
                 : List.of();
 
-        Map<UUID, Video> videoById = new HashMap<>();
-        for (Video v : videos) {
-            if (v == null || v.getId() == null) continue;
-            videoById.put(v.getId(), v);
+        Map<UUID, RunVideoPreview> videoById = new HashMap<>();
+        for (RunVideoPreview v : videos) {
+            videoById.put(v.videoId(), v);
         }
 
-        Video previewVideo = pickPreviewVideo(videos);
-        String previewVideoId = previewVideo != null && previewVideo.getId() != null ? previewVideo.getId().toString() : "";
-        String previewChannelName = previewVideo != null ? safe(previewVideo.getChannelName()) : "";
-        String previewVideoTitle = previewVideo != null ? safe(previewVideo.getTitle()) : "";
+        RunVideoPreview previewVideo = videos.stream().min(RunVideoPreview.PREVIEW_ORDER).orElse(null);
+        String previewVideoId = previewVideo != null ? previewVideo.videoId().toString() : "";
+        String previewChannelName = previewVideo != null ? safe(previewVideo.channelName()) : "";
+        String previewVideoTitle = previewVideo != null ? safe(previewVideo.title()) : "";
 
         int videoCount = videos.size();
 
@@ -50,7 +58,7 @@ public class RunDetailsMapper {
         if (!items.isEmpty()) {
             itemDtos = items.stream()
                     .map(item -> {
-                        Video itemVideo = item.getVideoId() != null ? videoById.get(item.getVideoId()) : null;
+                        RunVideoPreview itemVideo = item.getVideoId() != null ? videoById.get(item.getVideoId()) : null;
                         return new RunDetails.RunItem(
                                 item.getId() != null ? item.getId().toString() : "",
                                 safe(item.getUrl()),
@@ -61,8 +69,8 @@ public class RunDetailsMapper {
                                 item.getErrorCode() != null ? item.getErrorCode().name() : "",
                                 safe(item.getError()),
                                 item.getVideoId() != null ? item.getVideoId().toString() : "",
-                                itemVideo != null ? safe(itemVideo.getChannelName()) : "",
-                                itemVideo != null ? safe(itemVideo.getTitle()) : "",
+                                itemVideo != null ? safe(itemVideo.channelName()) : "",
+                                itemVideo != null ? safe(itemVideo.title()) : "",
                                 item.getAttempt() != null ? item.getAttempt() : 1
                         );
                     })
@@ -105,56 +113,4 @@ public class RunDetailsMapper {
     private String safe(String value) {
         return value != null ? value : "";
     }
-
-    private static Video pickPreviewVideo(List<Video> videos) {
-        if (videos == null || videos.isEmpty()) return null;
-        Video best = null;
-        for (Video v : videos) {
-            if (v == null) continue;
-            if (best == null) {
-                best = v;
-                continue;
-            }
-            if (comparePreviewCandidate(v, best) < 0) {
-                best = v;
-            }
-        }
-        return best;
-    }
-
-    private static int comparePreviewCandidate(Video candidate, Video current) {
-        int statusCmp = Integer.compare(statusRank(candidate != null ? candidate.getStatus() : null),
-                statusRank(current != null ? current.getStatus() : null));
-        if (statusCmp != 0) return statusCmp;
-
-        int createdAtCmp = nullSafe(candidate != null ? candidate.getCreatedAt() : null)
-                .compareTo(nullSafe(current != null ? current.getCreatedAt() : null));
-        if (createdAtCmp != 0) return createdAtCmp;
-
-        UUID candId = candidate != null ? candidate.getId() : null;
-        UUID currId = current != null ? current.getId() : null;
-        if (candId == null && currId == null) return 0;
-        if (candId == null) return 1;
-        if (currId == null) return -1;
-        return candId.compareTo(currId);
-    }
-
-    private static int statusRank(VideoStatus status) {
-        if (status == null) return 100;
-        return switch (status) {
-            case COMPLETED -> 0;
-            case PROCESSING -> 1;
-            case TRANSCRIBING -> 2;
-            case DOWNLOADED -> 3;
-            case DOWNLOADING -> 4;
-            case EXTRACTING -> 5;
-            case PENDING -> 6;
-            case FAILED -> 7;
-        };
-    }
-
-    private static LocalDateTime nullSafe(LocalDateTime value) {
-        return value != null ? value : LocalDateTime.MAX;
-    }
 }
-
