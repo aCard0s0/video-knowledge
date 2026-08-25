@@ -9,10 +9,12 @@ import com.tradinglabs.vidingest.core.knowledge.mapper.KnowledgeUnitMapper;
 import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository;
 import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository.KnowledgeUnitView;
 import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionService;
+import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeQueryService;
 import com.tradinglabs.vidingest.core.knowledge.service.SemanticKnowledgeSearchService;
 import com.tradinglabs.vidingest.search.exceptions.SemanticSearchUnavailableException;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
+import com.tradinglabs.vidingest.videos.service.VideoQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -26,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,7 +40,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * in style — mocks the services and asserts JSON wiring + status codes.
  */
 @WebMvcTest(controllers = KnowledgeController.class)
-@Import({VidingestApiExceptionHandler.class, KnowledgeUnitMapper.class})
+@Import({VidingestApiExceptionHandler.class, KnowledgeUnitMapper.class,
+        KnowledgeQueryService.class, VideoQueryService.class})
 class KnowledgeControllerWebMvcTest {
 
     @Autowired
@@ -80,8 +84,18 @@ class KnowledgeControllerWebMvcTest {
     }
 
     @Test
+    void searchForwardsAnAbsentLimitAsNull() throws Exception {
+        // The default and the cap live in SemanticKnowledgeSearchService now; the controller
+        // used to restate both, so the 50 in the clamp existed twice.
+        when(searchService.searchKnowledge(eq("pear"), isNull(), isNull())).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/knowledge/search").param("query", "pear"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void searchReturns409WhenSemanticSearchDisabled() throws Exception {
-        when(searchService.searchKnowledge(eq("anything"), eq(null), eq(10)))
+        when(searchService.searchKnowledge(eq("anything"), isNull(), eq(10)))
                 .thenThrow(new SemanticSearchUnavailableException("Semantic search is disabled."));
 
         mockMvc.perform(get("/api/v1/knowledge/search")

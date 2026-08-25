@@ -3,6 +3,7 @@ package com.tradinglabs.vidingest.commons;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunNotFoundException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunItemNotFoundException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunRetryNotAllowedException;
+import com.tradinglabs.vidingest.core.diarization.service.SpeakerNotFoundException;
 import com.tradinglabs.vidingest.search.exceptions.SemanticSearchUnavailableException;
 import com.tradinglabs.vidingest.videos.exceptions.DuplicateVideoException;
 import com.tradinglabs.vidingest.videos.exceptions.LocalStorageException;
@@ -66,6 +67,11 @@ public class VidingestApiExceptionHandler {
 
     @ExceptionHandler(RunItemNotFoundException.class)
     ProblemDetail handlePipelineRunItemNotFound(RunItemNotFoundException e, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "Not found", e.getMessage(), request, e);
+    }
+
+    @ExceptionHandler(SpeakerNotFoundException.class)
+    ProblemDetail handleSpeakerNotFound(SpeakerNotFoundException e, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "Not found", e.getMessage(), request, e);
     }
 

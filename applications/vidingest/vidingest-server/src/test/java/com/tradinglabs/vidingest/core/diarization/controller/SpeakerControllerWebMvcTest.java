@@ -4,9 +4,11 @@ import com.tradinglabs.vidingest.commons.VidingestApiExceptionHandler;
 import com.tradinglabs.vidingest.core.diarization.domain.Speaker;
 import com.tradinglabs.vidingest.core.diarization.mapper.SpeakerMapper;
 import com.tradinglabs.vidingest.core.diarization.repo.SpeakerRepository;
+import com.tradinglabs.vidingest.core.diarization.service.SpeakerService;
 import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionSegmentRepository;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
+import com.tradinglabs.vidingest.videos.service.VideoQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -30,9 +32,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * WebMvc tests for {@link SpeakerController}. Covers the GET listing per video and the
  * PATCH rename endpoint, including the displayName-clearing semantics.
+ *
+ * <p>The real {@link SpeakerService} is imported rather than mocked: the controller is now a
+ * pass-through, so mocking the service would leave these assertions testing nothing but Jackson.
  */
 @WebMvcTest(controllers = SpeakerController.class)
-@Import({VidingestApiExceptionHandler.class, SpeakerMapper.class})
+@Import({VidingestApiExceptionHandler.class, SpeakerMapper.class,
+        SpeakerService.class, VideoQueryService.class})
 class SpeakerControllerWebMvcTest {
 
     @Autowired

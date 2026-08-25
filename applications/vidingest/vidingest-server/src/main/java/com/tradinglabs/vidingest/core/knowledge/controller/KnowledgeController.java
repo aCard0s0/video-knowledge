@@ -5,12 +5,10 @@ import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
 import com.tradinglabs.vidingest.api.knowledge.RegenerateKnowledgeResult;
 import com.tradinglabs.vidingest.api.knowledge.SearchKnowledgeHit;
 import com.tradinglabs.vidingest.api.paths.VidIngestApiPaths;
-import com.tradinglabs.vidingest.core.knowledge.mapper.KnowledgeUnitMapper;
-import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository;
 import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionService;
+import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeQueryService;
 import com.tradinglabs.vidingest.core.knowledge.service.SemanticKnowledgeSearchService;
-import com.tradinglabs.vidingest.videos.exceptions.VideoNotFoundException;
-import com.tradinglabs.vidingest.videos.repo.VideoRepository;
+import com.tradinglabs.vidingest.videos.service.VideoQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -40,14 +38,10 @@ import java.util.UUID;
 @Tag(name = "knowledge", description = "Knowledge-extraction APIs (M6/M8)")
 public class KnowledgeController {
 
-    private static final int DEFAULT_SEARCH_LIMIT = 10;
-    private static final int MAX_SEARCH_LIMIT = 50;
-
     private final SemanticKnowledgeSearchService searchService;
+    private final KnowledgeQueryService knowledgeQueryService;
     private final KnowledgeExtractionService extractionService;
-    private final KnowledgeUnitRepository knowledgeUnitRepository;
-    private final KnowledgeUnitMapper mapper;
-    private final VideoRepository videoRepository;
+    private final VideoQueryService videoQueryService;
 
     @GetMapping(VidIngestApiPaths.KNOWLEDGE_SEARCH)
     @Operation(summary = "Semantic search over knowledge units",
@@ -58,10 +52,7 @@ public class KnowledgeController {
             @RequestParam(name = "type", required = false) KnowledgeUnitType type,
             @RequestParam(name = "limit", required = false) Integer limit
     ) throws IOException {
-        int normalized = limit != null
-                ? Math.max(1, Math.min(limit, MAX_SEARCH_LIMIT))
-                : DEFAULT_SEARCH_LIMIT;
-        return searchService.searchKnowledge(query, type, normalized);
+        return searchService.searchKnowledge(query, type, limit);
     }
 
     @GetMapping(VidIngestApiPaths.VIDEO_KNOWLEDGE)
@@ -72,12 +63,7 @@ public class KnowledgeController {
             @PathVariable UUID videoId,
             @RequestParam(name = "type", required = false) KnowledgeUnitType type
     ) {
-        ensureVideoExists(videoId);
-        // Use the native projection that skips the `embedding vector(1536)` column —
-        // entity-shape SELECTs trip the pgvector array-delimiter bug in the PostgreSQL
-        // JDBC driver and 500 the call. See KnowledgeUnitRepository.findViewsByVideoId.
-        var rows = knowledgeUnitRepository.findViewsByVideoId(videoId, type == null ? null : type.name());
-        return rows.stream().map(mapper::toDto).toList();
+        return knowledgeQueryService.listForVideo(videoId, type);
     }
 
     @PostMapping(VidIngestApiPaths.VIDEO_KNOWLEDGE_REGENERATE)
@@ -85,16 +71,8 @@ public class KnowledgeController {
             description = "Mirrors POST /videos/{id}/context/regenerate. Wipes existing knowledge units for the "
                     + "video and re-runs the M6 KnowledgeExtractionService against the current multimodal segments.")
     public RegenerateKnowledgeResult regenerate(@PathVariable UUID videoId) {
-        var video = videoRepository.findById(videoId)
-                .orElseThrow(() -> new VideoNotFoundException(videoId));
-        int persisted = extractionService.extractKnowledge(video);
+        int persisted = extractionService.extractKnowledge(videoQueryService.getById(videoId));
         log.info("REST regenerate knowledge: videoId={}, persisted={}", videoId, persisted);
         return new RegenerateKnowledgeResult(videoId.toString(), persisted);
-    }
-
-    private void ensureVideoExists(UUID videoId) {
-        if (!videoRepository.existsById(videoId)) {
-            throw new VideoNotFoundException(videoId);
-        }
     }
 }

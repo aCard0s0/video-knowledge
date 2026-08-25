@@ -8,11 +8,16 @@ import com.tradinglabs.vidingest.core.fusion.mapper.MultimodalSegmentMapper;
 import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
 import com.tradinglabs.vidingest.core.ocr.domain.OcrResult;
 import com.tradinglabs.vidingest.core.ocr.mapper.OcrResultMapper;
+import com.tradinglabs.vidingest.core.fusion.service.MultimodalTimelineQueryService;
 import com.tradinglabs.vidingest.core.ocr.repo.OcrResultRepository;
+import com.tradinglabs.vidingest.core.ocr.service.OcrQueryService;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
+import com.tradinglabs.vidingest.videos.service.VideoQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -22,6 +27,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,10 +38,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * WebMvc tests for {@link VideoMultimodalArtifactsController}. Covers the multimodal timeline
- * (with optional from/to filtering) and the OCR-grouped-by-frame endpoint.
+ * and the OCR-grouped-by-frame endpoint, through the real query services — the controller is a
+ * pass-through, so mocking them would leave these assertions testing nothing but Jackson.
+ *
+ * <p>The from/to window itself is a JPQL predicate now, so a mocked repository cannot exercise
+ * it. It is covered against a real database in
+ * {@code MultimodalTimelineWindowIntegrationTest}; what is asserted here is that the request
+ * parameters reach the query unchanged.
  */
 @WebMvcTest(controllers = VideoMultimodalArtifactsController.class)
-@Import({VidingestApiExceptionHandler.class, MultimodalSegmentMapper.class, OcrResultMapper.class})
+@Import({VidingestApiExceptionHandler.class, MultimodalSegmentMapper.class, OcrResultMapper.class,
+        MultimodalTimelineQueryService.class, OcrQueryService.class, VideoQueryService.class})
 class VideoMultimodalArtifactsControllerWebMvcTest {
 
     @Autowired
@@ -51,11 +67,12 @@ class VideoMultimodalArtifactsControllerWebMvcTest {
         Video v = new Video();
         v.setId(videoId);
         when(videoRepository.existsById(videoId)).thenReturn(true);
-        when(multimodalSegmentRepository.findByVideo_IdOrderBySegmentIndexAsc(videoId))
-                .thenReturn(List.of(
+        when(multimodalSegmentRepository.findPageByVideoIdWindowedOrderBySegmentIndex(
+                eq(videoId), isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(
                         segment(v, 0, 0.0, 30.0, "spoken 0", "ocr 0"),
                         segment(v, 1, 30.0, 60.0, "spoken 1", null)
-                ));
+                )));
 
         mockMvc.perform(get("/api/v1/videos/{videoId}/multimodal-timeline", videoId))
                 .andExpect(status().isOk())
@@ -67,33 +84,24 @@ class VideoMultimodalArtifactsControllerWebMvcTest {
     }
 
     @Test
-    void multimodalTimelineRespectsTimeWindow() throws Exception {
+    void multimodalTimelinePassesTheRequestedWindowToTheQuery() throws Exception {
         UUID videoId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         Video v = new Video();
         v.setId(videoId);
         when(videoRepository.existsById(videoId)).thenReturn(true);
-        when(multimodalSegmentRepository.findByVideo_IdOrderBySegmentIndexAsc(videoId))
-                .thenReturn(List.of(
-                        segment(v, 0, 0.0, 30.0, "first", null),
-                        segment(v, 1, 30.0, 60.0, "middle", null),
-                        segment(v, 2, 60.0, 90.0, "last", null)
-                ));
+        when(multimodalSegmentRepository.findPageByVideoIdWindowedOrderBySegmentIndex(
+                eq(videoId), eq(25.0), eq(65.0), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(segment(v, 1, 30.0, 60.0, "middle", null))));
 
-        // Window [25, 65] should include segments 0 (ends at 30, > 25),
-        // 1 (whole), and 2 (starts at 60, < 65).
         mockMvc.perform(get("/api/v1/videos/{videoId}/multimodal-timeline", videoId)
                         .param("fromSeconds", "25")
                         .param("toSeconds", "65"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3));
-
-        // Window [35, 55] should only include segment 1.
-        mockMvc.perform(get("/api/v1/videos/{videoId}/multimodal-timeline", videoId)
-                        .param("fromSeconds", "35")
-                        .param("toSeconds", "55"))
-                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].transcriptText").value("middle"));
+
+        verify(multimodalSegmentRepository).findPageByVideoIdWindowedOrderBySegmentIndex(
+                eq(videoId), eq(25.0), eq(65.0), any(Pageable.class));
     }
 
     @Test
