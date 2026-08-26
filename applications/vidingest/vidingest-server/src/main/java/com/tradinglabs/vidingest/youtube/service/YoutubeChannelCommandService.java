@@ -25,6 +25,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -51,6 +52,7 @@ public class YoutubeChannelCommandService {
     private final PipelineIntakeService pipelineIntakeService;
     private final YoutubeChannelMapper youtubeChannelMapper;
     private final YoutubeSyncProperties youtubeSyncProperties;
+    private final TransactionOperations transactionOperations;
 
     @Transactional
     public YoutubeChannelSummary createChannel(CreateYoutubeChannelRequest request) {
@@ -92,47 +94,78 @@ public class YoutubeChannelCommandService {
         return youtubeChannelMapper.toSummary(ch, count);
     }
 
-    @Transactional
+    /**
+     * Deliberately <b>not</b> {@code @Transactional}. {@code discover} is a yt-dlp playlist fetch
+     * that runs for up to {@code vidingest.youtube.sync.timeoutSeconds}; wrapping the method held a
+     * pooled connection across it, four at a time per tick, against a pool of ten.
+     *
+     * <p>Splitting it also fixes the error path. A {@code RuntimeException} out of a transactional
+     * method rolls it back — including the {@code ERROR} status and {@code lastError} the catch
+     * block had just written. The channel kept its previous status and a null error, so a sync
+     * that failed this way was invisible to anyone reading the row.
+     */
     public YoutubeChannelSummary syncChannel(UUID channelId) throws IOException {
+        // Claim the channel and read its URL in one short transaction. It commits before discovery
+        // starts, so SYNCING is visible while the fetch runs and survives its failure.
+        String channelUrl = transactionOperations.execute(status -> {
+            YoutubeChannel ch = loadForSync(channelId);
+            ch.setStatus(YoutubeChannelStatus.SYNCING);
+            ch.setLastSyncAttemptAt(LocalDateTime.now());
+            ch.setLastError(null);
+            return youtubeChannelRepository.save(ch).getChannelUrl();
+        });
+
+        YoutubeChannelDiscoveryResult discovery;
+        try {
+            discovery = discoveryService.discover(
+                    channelUrl,
+                    youtubeSyncProperties.getPlaylistLimit(),
+                    youtubeSyncProperties.getTimeoutSeconds()
+            );
+        } catch (IOException | RuntimeException e) {
+            recordSyncFailure(channelId, e.getMessage());
+            throw e;
+        }
+
+        return transactionOperations.execute(status -> applyDiscovery(channelId, discovery));
+    }
+
+    /** Its own transaction, so it commits even though the caller is about to rethrow. */
+    private void recordSyncFailure(UUID channelId, String message) {
+        transactionOperations.executeWithoutResult(status ->
+                youtubeChannelRepository.findById(channelId).ifPresent(ch -> {
+                    ch.setStatus(YoutubeChannelStatus.ERROR);
+                    ch.setLastError(message);
+                    youtubeChannelRepository.save(ch);
+                }));
+    }
+
+    /** Caller supplies the transaction — {@link #syncChannel} wraps this in one. */
+    private YoutubeChannelSummary applyDiscovery(UUID channelId, YoutubeChannelDiscoveryResult discovery) {
+        YoutubeChannel ch = loadForSync(channelId);
+
+        if (ch.getDisplayName() == null && discovery.channelName() != null) {
+            ch.setDisplayName(discovery.channelName());
+        }
+        ch.setMetadata(discovery.metadata());
+
+        upsertVideos(ch, discovery.videos());
+
+        ch.setStatus(YoutubeChannelStatus.READY);
+        ch.setLastSyncSuccessAt(LocalDateTime.now());
+        ch.setLastError(null);
+
+        youtubeChannelRepository.save(ch);
+        return youtubeChannelMapper.toSummary(ch, youtubeChannelVideoRepository.countByChannel_Id(channelId));
+    }
+
+    private YoutubeChannel loadForSync(UUID channelId) {
         YoutubeChannel ch = youtubeChannelRepository.findById(channelId)
                 .orElseThrow(() -> new YoutubeChannelNotFoundException(channelId));
         if (ch.getStatus() == YoutubeChannelStatus.DISABLED) {
             throw new ConflictException("Channel is disabled: " + channelId);
         }
-
-        ch.setStatus(YoutubeChannelStatus.SYNCING);
-        ch.setLastSyncAttemptAt(LocalDateTime.now());
-        ch.setLastError(null);
-
-        try {
-            YoutubeChannelDiscoveryResult discovery = discoveryService.discover(
-                    ch.getChannelUrl(),
-                    youtubeSyncProperties.getPlaylistLimit(),
-                    youtubeSyncProperties.getTimeoutSeconds()
-            );
-
-            if (ch.getDisplayName() == null && discovery.channelName() != null) {
-                ch.setDisplayName(discovery.channelName());
-            }
-            ch.setMetadata(discovery.metadata());
-
-            upsertVideos(ch, discovery.videos());
-
-            ch.setStatus(YoutubeChannelStatus.READY);
-            ch.setLastSyncSuccessAt(LocalDateTime.now());
-            ch.setLastError(null);
-        } catch (IOException e) {
-            ch.setStatus(YoutubeChannelStatus.ERROR);
-            ch.setLastError(e.getMessage());
-            throw e;
-        } catch (RuntimeException e) {
-            ch.setStatus(YoutubeChannelStatus.ERROR);
-            ch.setLastError(e.getMessage());
-            throw e;
-        }
-
-        youtubeChannelRepository.save(ch);
-        return youtubeChannelMapper.toSummary(ch, youtubeChannelVideoRepository.countByChannel_Id(channelId));
+        return ch;
     }
 
     @Transactional(readOnly = true)
