@@ -2,10 +2,10 @@
 
 **Owner**: TradingLabs Platform
 **Last reviewed**: 2026-08-26
-**Status**: built (Angular 22 app under `../../applications/webapp/`)
+**Status**: built (Angular 22 app under `applications/webapp/`)
 
 **Applies to**:
-- `../../applications/webapp/` (Angular 22 app)
+- `applications/webapp/` (Angular 22 app)
 - `vidingest-server` (the only backend it talks to)
 
 **Source of truth**:

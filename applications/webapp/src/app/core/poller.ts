@@ -58,30 +58,22 @@ export class Poller {
    * injection context so the interval dies with the component.
    */
   every(intervalMs: () => number, fn: () => void): void {
-    let handle: ReturnType<typeof setInterval> | undefined;
-    let current = -1;
+    // One second tick with a deadline, so a cadence change (idle 15s ⇄ live 2s) is picked up on
+    // the next tick without rebuilding timers. Nothing fires on the first tick either, which is
+    // deliberate: `intervalMs` usually reads a resource whose params read a required route input,
+    // and those are not bound yet while a constructor runs (NG0950). The first fetch is the
+    // resource's own.
+    let last = Date.now();
+    const tick = setInterval(() => {
+      if (this.stopped() || Date.now() - last < Math.max(1000, intervalMs())) return;
+      last = Date.now();
+      fn();
+      this.lastTick.set(last);
+    }, 1000);
 
-    const arm = () => {
-      const ms = Math.max(1000, intervalMs());
-      if (ms === current) return;
-      current = ms;
-      if (handle) clearInterval(handle);
-      handle = setInterval(() => {
-        if (this.stopped()) return;
-        fn();
-        this.lastTick.set(Date.now());
-      }, ms);
-    };
-
-    // Deliberately not armed synchronously: `intervalMs` usually reads a resource whose params
-    // read a required route input, and those are not bound while the constructor runs (NG0950).
-    // The re-arm tick does the first arm a second later; the initial fetch is the resource's own.
-    const rearm = setInterval(arm, 1000);
     this.callbacks.add(fn);
-
     inject(DestroyRef).onDestroy(() => {
-      if (handle) clearInterval(handle);
-      clearInterval(rearm);
+      clearInterval(tick);
       this.callbacks.delete(fn);
     });
   }

@@ -10,10 +10,10 @@ import {
   VideoPhasesService,
   VideosService,
 } from '../../api/generated';
-import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, PHASE_PRODUCES, OptionalPhase, statusVar } from '../../core/domain';
+import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
 import { humanDuration, timecode } from '../../core/time';
 import { ApiFailure, toApiFailure } from '../../core/problem';
-import { frameImageUrl, videoFileUrl, whisperJsonUrl, whisperTxtUrl } from '../../core/api-base';
+import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
@@ -98,7 +98,6 @@ export class VideoDetail {
 
   protected readonly optionalPhases = OPTIONAL_PHASES;
   protected readonly knowledgeTypes = KNOWLEDGE_TYPES;
-  protected readonly produces = PHASE_PRODUCES;
   protected readonly statusVar = statusVar;
   protected readonly timecode = timecode;
 
@@ -110,15 +109,16 @@ export class VideoDetail {
   protected readonly KNOWLEDGE_CAP = 200;
   protected readonly knowledgeAll = computed(() => this.knowledge.value() ?? []);
   protected readonly knowledgeShown = computed(() => this.knowledgeAll().slice(0, this.KNOWLEDGE_CAP));
-  protected readonly knowledgeCapped = computed(() => this.knowledgeAll().length > this.KNOWLEDGE_CAP);
 
   protected readonly video = computed(() => this.detail.value()?.video);
   protected readonly counts = computed(() => this.detail.value()?.counts);
   protected readonly transcription = computed(() => this.detail.value()?.transcription);
 
-  protected readonly fileUrl = computed(() => videoFileUrl(this.videoId()));
-  protected readonly txtUrl = computed(() => whisperTxtUrl(this.videoId()));
-  protected readonly jsonUrl = computed(() => whisperJsonUrl(this.videoId()));
+  // Media and artifact URLs are bound straight into <video>, <img> and <a>, bypassing the
+  // generated client, so they carry the API prefix themselves.
+  protected readonly fileUrl = computed(() => `${API_V1}/videos/${this.videoId()}/file`);
+  protected readonly txtUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.txt`);
+  protected readonly jsonUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.json`);
 
   protected readonly detailFailure = computed(() => {
     const err = this.detail.error();
@@ -131,7 +131,7 @@ export class VideoDetail {
   });
 
   protected frameUrl(frameId: string | undefined): string {
-    return frameId ? frameImageUrl(frameId) : '';
+    return frameId ? `${API_V1}/frames/${frameId}/image` : '';
   }
 
   protected show(pane: Pane): void {
@@ -205,22 +205,13 @@ export class VideoDetail {
   }
 
   private reloadPane(): void {
-    switch (this.pane()) {
-      case 'transcript':
-        this.segments.reload();
-        break;
-      case 'frames':
-        this.frames.reload();
-        break;
-      case 'fused':
-        this.fused.reload();
-        break;
-      case 'knowledge':
-        this.knowledge.reload();
-        break;
-      case 'speakers':
-        this.speakers.reload();
-        break;
-    }
+    const byPane: Record<Pane, { reload(): void }> = {
+      transcript: this.segments,
+      frames: this.frames,
+      fused: this.fused,
+      knowledge: this.knowledge,
+      speakers: this.speakers,
+    };
+    byPane[this.pane()].reload();
   }
 }

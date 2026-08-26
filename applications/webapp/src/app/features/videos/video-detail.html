@@ -42,7 +42,7 @@
               class="btn-sm mono"
               type="button"
               [disabled]="running() !== null"
-              [title]="'Wipes and rebuilds ' + produces[phase] + ' for this video'"
+              title="Wipes and rebuilds this phase's artifacts for this video"
               (click)="runPhase(phase)"
             >
               {{ running() === phase ? phase + '…' : phase }}
@@ -209,7 +209,7 @@
               <span class="mono sm muted">Needs an ollama chat model loaded — check the gutter before starting.</span>
             </vk-empty>
           } @else {
-            @if (knowledgeCapped()) {
+            @if (knowledgeAll().length > knowledgeShown().length) {
               <p class="quiet warn mono sm">
                 Showing the first {{ KNOWLEDGE_CAP }} of {{ knowledgeAll().length }} units — this endpoint has no paging.
               </p>

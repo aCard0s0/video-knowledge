@@ -4,7 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 
 import { HealthService } from './api/generated';
 import { Poller } from './core/poller';
-import { humanAge } from './core/time';
+import { humanDuration } from './core/time';
 
 @Component({
   selector: 'app-root',
@@ -46,5 +46,5 @@ export class App {
     return running > 0 ? `ollama ${running} loaded` : 'ollama idle, 0 loaded';
   });
 
-  protected readonly tickLabel = computed(() => humanAge(new Date(this.poller.lastTick()).toISOString(), this.poller.now()));
+  protected readonly tickLabel = computed(() => `${humanDuration(this.poller.now() - this.poller.lastTick())} ago`);
 }

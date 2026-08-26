@@ -34,7 +34,9 @@ import { humanDuration } from '../core/time';
               <span class="merged mono">{{ seg.merged }}</span>
             } @else {
               <span class="ph mono">{{ seg.phase }}</span>
-              <span class="dur mono">{{ seg.ms === null ? label(seg) : humanDuration(seg.ms) }}</span>
+              <span class="dur mono">
+                {{ seg.ms === null ? (seg.state === 'skipped' ? 'skipped' : 'not reached') : humanDuration(seg.ms) }}
+              </span>
             }
           </button>
         </li>
@@ -211,10 +213,6 @@ export class Lane {
   /** Width ∝ measured time. Unmeasured phases keep their fixed 26px void. */
   protected grow(seg: LaneSegment): number {
     return seg.ms && seg.ms > 0 ? seg.ms : 1;
-  }
-
-  protected label(seg: LaneSegment): string {
-    return seg.state === 'skipped' ? 'skipped' : 'not reached';
   }
 
   protected describe(seg: LaneSegment & { merged?: number }): string {

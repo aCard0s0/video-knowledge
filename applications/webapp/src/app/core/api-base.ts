@@ -8,8 +8,3 @@
  */
 export const API_BASE = '/vidingest';
 export const API_V1 = `${API_BASE}/api/v1`;
-
-export const videoFileUrl = (videoId: string) => `${API_V1}/videos/${videoId}/file`;
-export const frameImageUrl = (frameId: string) => `${API_V1}/frames/${frameId}/image`;
-export const whisperTxtUrl = (videoId: string) => `${API_V1}/videos/${videoId}/transcription/whisper.txt`;
-export const whisperJsonUrl = (videoId: string) => `${API_V1}/videos/${videoId}/transcription/whisper.json`;

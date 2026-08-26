@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { Observable } from 'rxjs';
 
 import { PipelinesService, RunItem, RunItemAuditEvent } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
@@ -145,7 +146,7 @@ export class RunDetail {
     this.send(this.pipelines.retryRunItem(this.runId(), item.itemId, { skipPhases: this.retrySkips() }));
   }
 
-  private send(request: { subscribe: (o: { next: () => void; error: (e: unknown) => void }) => void }): void {
+  private send(request: Observable<unknown>): void {
     this.retrying.set(true);
     this.retryFailure.set(null);
     request.subscribe({

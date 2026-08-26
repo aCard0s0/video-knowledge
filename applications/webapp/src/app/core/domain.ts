@@ -81,17 +81,6 @@ export const VIDEO_STATUSES = [
 export const KNOWLEDGE_TYPES = ['ENTITY', 'TOPIC', 'SUMMARY', 'CLAIM', 'QUESTION'] as const;
 export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number];
 
-/** Which artifact panes a phase produces — drives the "run this phase" empty-state buttons. */
-export const PHASE_PRODUCES: Record<OptionalPhase, string> = {
-  TRANSCRIBE: 'transcript segments',
-  DIARIZE: 'speakers',
-  FRAME_SAMPLE: 'frames',
-  OCR: 'OCR text',
-  FUSE: 'fused timeline',
-  KNOWLEDGE: 'knowledge units',
-  CONTEXT: 'search chunks',
-};
-
 /** CSS custom property holding this status' colour. Unknown values get the neutral spine. */
 export function statusVar(status: string | null | undefined): string {
   switch (status) {
@@ -129,8 +118,4 @@ export function isLive(status: string | null | undefined): boolean {
 /** The API returns "" for absent values, not null. */
 export function blank(value: string | null | undefined): boolean {
   return value === null || value === undefined || value.trim() === '';
-}
-
-export function orDash(value: string | null | undefined): string {
-  return blank(value) ? '—' : value!;
 }
