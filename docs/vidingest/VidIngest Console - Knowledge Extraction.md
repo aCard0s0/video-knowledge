@@ -1,7 +1,7 @@
 # VidIngest Console — Knowledge Extraction (M2–M8)
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-08-25
+- **Last reviewed**: 2026-08-26
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
@@ -155,13 +155,20 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 - **Embedding**: each surviving unit's content is embedded via the existing
   `EmbeddingsClient` (1536-d, same shape as `context_chunks`). Embedding failure is soft —
   rows persist with `embedding=null` so they remain queryable by type/time.
-- **Idempotent**: wipe-then-save on each run. The wipe goes through the explicit
-  `@Modifying @Transactional @Query` on `KnowledgeUnitRepository.deleteByVideo_Id` —
-  derived `deleteBy*` here would materialise the `vector(1536)` column via Hibernate's
-  `FloatPrimitiveArrayJavaType` and trip the pgvector array-delimiter SELECT path.
-  The wipe commits *before* the LLM batch loop and the save after it, deliberately: one
-  transaction across the loop would pin a pooled connection for every chat round-trip. If
-  every batch fails the phase throws, so the run is FAILED rather than silently empty.
+- **Idempotent**: wipe-then-save on each run, both in one short transaction *after* the LLM
+  batch loop. The loop itself still holds no pooled connection — one transaction across it would
+  pin a connection for every chat round-trip — but the wipe no longer commits ahead of it, so
+  nothing that fails mid-loop can leave the video with its units destroyed and nothing to replace
+  them. The wipe goes through the explicit `@Modifying @Transactional @Query` on
+  `KnowledgeUnitRepository.deleteByVideo_Id` — derived `deleteBy*` here would materialise the
+  `vector(1536)` column via Hibernate's `FloatPrimitiveArrayJavaType` and trip the pgvector
+  array-delimiter SELECT path.
+- **Any failed batch fails the phase.** Partial coverage is not a valid replacement for a
+  complete extraction: salvaging the batches that worked used to swap a video's 300 units for the
+  dozen a single surviving batch produced and report success. The replace is atomic and runs only
+  once every batch has succeeded, so a flaky ollama leaves the existing rows untouched and the run
+  is marked FAILED. A run where every batch succeeded but nothing cleared the salience floor
+  *does* clear the table — that is a real answer, not a failure.
 
 ### CONTEXT (M7-enhanced)
 - **Code**: `search/service/embedding/ContextChunkGenerationService.java`
@@ -312,7 +319,8 @@ WHERE video_id = '<videoId>' GROUP BY type;
   `vidingest_multimodal_segments` has rows (M5 must run before M6). The `FUSE` phase is
   on by default, but a video with no transcript / no OCR produces an empty fusion which
   in turn produces no knowledge units.
-- **Knowledge extraction failed for every batch** — the LLM is unreachable. Knowledge
+- **Knowledge extraction failed for N of M batches** — the LLM is unreachable or flaky.
+  Prior knowledge units are left untouched. Knowledge
   partial-batch failures log but don't fail; all-batch failure does. Check
   `VIDINGEST_KNOWLEDGE_BASE_URL` and that the daemon is reachable from the
   `vidingest-server` container.

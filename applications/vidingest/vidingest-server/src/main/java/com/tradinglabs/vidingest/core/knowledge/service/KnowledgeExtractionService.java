@@ -14,6 +14,7 @@ import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,12 +39,13 @@ import java.util.Set;
  *   <li>Embed each surviving unit's content via the existing {@link EmbeddingsClient}
  *       (best-effort — embedding failures get logged + the unit still persists with a
  *       null embedding so the row remains queryable by type/time).</li>
- *   <li>Wipe prior rows, save the new batch.</li>
+ *   <li>Wipe prior rows and save the new batch, in one transaction.</li>
  * </ol>
  *
- * <p>Per-batch LLM failures are logged and skipped so a single rogue response doesn't
- * fail the whole video; if <i>every</i> batch fails, the service throws
- * {@link KnowledgeExtractionFailureException} so the pipeline run is marked FAILED.
+ * <p>A failed batch fails the whole video: what survives a partial run is partial coverage, and
+ * replacing a complete extraction with it would drop the rest silently. The replace is atomic and
+ * runs only once every batch has succeeded, so a failure leaves the previous units exactly as they
+ * were and the pipeline run is marked FAILED.
  */
 @Service
 @RequiredArgsConstructor
@@ -55,6 +57,7 @@ public class KnowledgeExtractionService {
     private final EmbeddingsClient embeddingsClient;
     private final MultimodalSegmentRepository multimodalSegmentRepository;
     private final KnowledgeUnitRepository knowledgeUnitRepository;
+    private final TransactionOperations transactionOperations;
 
     /**
      * Extract-and-persist for one video. Returns the count of {@code KnowledgeUnit} rows
@@ -77,13 +80,6 @@ public class KnowledgeExtractionService {
             return 0;
         }
 
-        // Wipe upfront so a mid-run crash leaves the DB consistent (empty + FAILED run)
-        // rather than interleaving stale + fresh rows.
-        int wiped = wipePrior(video.getId());
-        if (wiped > 0) {
-            log.info("Knowledge extraction wiped {} prior rows for videoId={}", wiped, video.getId());
-        }
-
         Set<KnowledgeUnitType> allowedTypes = allowedTypes();
         String systemPrompt = KnowledgeExtractionPrompt.systemMessage(config.getTypes());
 
@@ -92,7 +88,6 @@ public class KnowledgeExtractionService {
                 video.getId(), segments.size(), batches.size(), config.getMaxInputCharsPerBatch());
 
         List<KnowledgeUnitDraft> allDrafts = new ArrayList<>();
-        int batchesSucceeded = 0;
         int batchesFailed = 0;
         int batchIndex = 0;
         int globalStartIndex = 0;
@@ -101,7 +96,6 @@ public class KnowledgeExtractionService {
             try {
                 List<KnowledgeUnitDraft> drafts = chatClient.extract(systemPrompt, userPrompt);
                 allDrafts.addAll(drafts);
-                batchesSucceeded++;
                 log.info("Knowledge batch {} of {} returned {} drafts (videoId={})",
                         batchIndex + 1, batches.size(), drafts.size(), video.getId());
             } catch (KnowledgeExtractionFailureException e) {
@@ -113,41 +107,50 @@ public class KnowledgeExtractionService {
             globalStartIndex += batch.size();
         }
 
-        if (batchesSucceeded == 0 && batchesFailed > 0) {
+        // Any failed batch aborts the replace. The rows on disk are a complete extraction; what
+        // this run holds is a partial one, and swapping the first for the second silently drops
+        // the coverage of every batch that failed while still reporting success. The phase is
+        // idempotent, so a rerun costs LLM time — the alternative cost data.
+        if (batchesFailed > 0) {
             throw new KnowledgeExtractionFailureException(
-                    "Knowledge extraction failed for every batch (count=" + batchesFailed + ")");
+                    "Knowledge extraction failed for " + batchesFailed + " of " + batches.size()
+                            + " batches; leaving the existing knowledge units in place");
         }
 
         List<KnowledgeUnitDraft> kept = filterAndCap(allDrafts, allowedTypes);
-        if (kept.isEmpty()) {
-            log.info("Knowledge extraction completed with 0 surviving units for videoId={}", video.getId());
-            return 0;
-        }
-
         List<KnowledgeUnit> entities = mapToEntities(video, kept);
-        if (config.isEmbedContent()) {
+        if (config.isEmbedContent() && !entities.isEmpty()) {
             embedContent(entities);
         }
-        persist(entities);
+        replaceAll(video.getId(), entities);
 
-        log.info("Knowledge extraction complete: videoId={}, draftsFromLlm={}, persisted={}, batchesFailed={}",
-                video.getId(), allDrafts.size(), entities.size(), batchesFailed);
+        log.info("Knowledge extraction complete: videoId={}, draftsFromLlm={}, persisted={}",
+                video.getId(), allDrafts.size(), entities.size());
         return entities.size();
     }
 
-    // Not transactional, and deliberately so: the wipe commits before the LLM batch loop and
-    // the persist after it, because wrapping both would hold a pooled connection across every
-    // chat round-trip. Each half is atomic on its own — the repository's bulk delete carries
-    // its own @Transactional, and saveAll supplies its own.
-    private int wipePrior(java.util.UUID videoId) {
-        int n = knowledgeUnitRepository.deleteByVideo_Id(videoId);
-        knowledgeUnitRepository.flush();
-        return n;
-    }
-
-    private void persist(List<KnowledgeUnit> entities) {
-        if (entities.isEmpty()) return;
-        knowledgeUnitRepository.saveAll(entities);
+    /**
+     * Wipe-then-repopulate in one transaction. The wipe used to commit on its own <em>before</em>
+     * the LLM loop, which meant any failure past that point — a dead ollama, a rogue response, a
+     * filter that kept nothing — left the video with every prior unit destroyed and the phase
+     * reporting a successful zero.
+     *
+     * <p>Moving the wipe here rather than wrapping the whole method keeps PR #5's constraint
+     * intact: the batch loop above still holds no pooled connection, and this transaction spans
+     * two statements against a 10-connection pool. An empty {@code entities} is a legitimate
+     * result — the model was asked and found nothing salient — so it still clears the table.
+     */
+    private void replaceAll(java.util.UUID videoId, List<KnowledgeUnit> entities) {
+        transactionOperations.executeWithoutResult(status -> {
+            int wiped = knowledgeUnitRepository.deleteByVideo_Id(videoId);
+            knowledgeUnitRepository.flush();
+            if (wiped > 0) {
+                log.info("Knowledge extraction replacing {} prior rows for videoId={}", wiped, videoId);
+            }
+            if (!entities.isEmpty()) {
+                knowledgeUnitRepository.saveAll(entities);
+            }
+        });
     }
 
     /**

@@ -17,7 +17,7 @@
     </modules>
 
     <properties>
-        <java.version>25</java.version>
+        <java.version>26</java.version>
         <test.groups></test.groups>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -167,7 +167,7 @@
                                     <version>[3.9.0,)</version>
                                 </requireMavenVersion>
                                 <requireJavaVersion>
-                                    <version>[25,)</version>
+                                    <version>[26,)</version>
                                 </requireJavaVersion>
                             </rules>
                             <fail>true</fail>

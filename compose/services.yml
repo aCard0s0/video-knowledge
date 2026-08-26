@@ -1,6 +1,6 @@
 x-java-build-args: &java_build_args
-  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:25-jdk-alpine}
-  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:25-jre-alpine}
+  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:26-jdk-alpine}
+  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:26-jre-alpine}
   MAVEN_VERSION: ${MAVEN_VERSION:-3.9.11}
   APP_UID: ${APP_UID:-1000}
   APP_GID: ${APP_GID:-1000}
@@ -29,6 +29,13 @@ services:
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${VK_HIKARI_MIN_IDLE:-1}
       # Concurrent pipeline items. Keep <= the Hikari pool size above.
       VIDINGEST_INGESTION_CONCURRENCY: ${VIDINGEST_INGESTION_CONCURRENCY:-4}
+      # Hard ceiling on the TRANSCRIBE/DIARIZE audio extract. Frame sampling has its own below.
+      VIDINGEST_FFMPEG_TIMEOUT: ${VIDINGEST_FFMPEG_TIMEOUT:-PT20M}
+      # Stuck-item reconciler. itemStaleAfter also bounds how long an item orphaned by a dead
+      # process waits before it becomes retryable, so it is worth tuning per deployment.
+      VIDINGEST_RECONCILER_ITEMSTALEAFTER: ${VIDINGEST_RECONCILER_ITEMSTALEAFTER:-PT1H}
+      VIDINGEST_RECONCILER_INTERVALMS: ${VIDINGEST_RECONCILER_INTERVALMS:-300000}
+      VIDINGEST_LEASE_TTL: ${VIDINGEST_LEASE_TTL:-PT10M}
       # Semantic search + embeddings (ollama by default)
       VIDINGEST_SEARCH_SEMANTIC_ENABLED: ${VIDINGEST_SEARCH_SEMANTIC_ENABLED:-true}
       VIDINGEST_EMBEDDINGS_PROVIDER: ${VIDINGEST_EMBEDDINGS_PROVIDER:-ollama}
@@ -52,6 +59,7 @@ services:
       VIDINGEST_FRAMES_INTERVAL_SECONDS: ${VIDINGEST_FRAMES_INTERVAL_SECONDS:-10}
       VIDINGEST_FRAMES_SCENE_CHANGE_THRESHOLD: ${VIDINGEST_FRAMES_SCENE_CHANGE_THRESHOLD:-0.35}
       VIDINGEST_FRAMES_MAX_PER_VIDEO: ${VIDINGEST_FRAMES_MAX_PER_VIDEO:-600}
+      VIDINGEST_FRAMES_FFMPEG_TIMEOUT: ${VIDINGEST_FRAMES_FFMPEG_TIMEOUT:-PT20M}
       # OCR (optional). Requires the paddleocr-server sidecar. NOT a hard depends_on.
       VIDINGEST_OCR_ENABLED: ${VIDINGEST_OCR_ENABLED:-false}
       VIDINGEST_OCR_BASE_URL: ${VIDINGEST_OCR_BASE_URL:-http://paddleocr-server:8002}

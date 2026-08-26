@@ -33,7 +33,16 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
     /** Run-items in a run with a given terminal status — used for run-completion summary logging. */
     long countByPipelineRun_IdAndStatus(UUID pipelineRunId, RunStatus status);
 
-    List<PipelineRunItem> findByStatusAndPhaseUpdatedAtBefore(RunStatus status, LocalDateTime before);
+    /**
+     * Reconciler sweep. {@code PENDING} is in scope as well as {@code IN_PROGRESS}: an item whose
+     * owner died while it was still queued never reaches IN_PROGRESS, and nothing else would ever
+     * look at it again. {@code phase_updated_at} is stamped at creation by {@code @PrePersist}, so
+     * it dates a queued item the same way it dates a running one.
+     *
+     * <p>Served by {@code idx_vidingest_pipeline_run_items_status_phase_updated_at} for each status
+     * in the collection — no new index.
+     */
+    List<PipelineRunItem> findByStatusInAndPhaseUpdatedAtBefore(Collection<RunStatus> statuses, LocalDateTime before);
 
     /** Claims (or re-claims) an item for {@code owner} until {@code expiresAt}. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)

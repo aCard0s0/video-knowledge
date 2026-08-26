@@ -2,8 +2,8 @@
 # Multi-stage build: compile with full JDK, run with minimal JRE
 # Build context: repository root (enables Maven reactor builds)
 
-ARG JDK_IMAGE=eclipse-temurin:25-jdk-alpine
-ARG JRE_IMAGE=eclipse-temurin:25-jre-alpine
+ARG JDK_IMAGE=eclipse-temurin:26-jdk-alpine
+ARG JRE_IMAGE=eclipse-temurin:26-jre-alpine
 ARG MAVEN_VERSION=3.9.11
 ARG APP_UID=1000
 ARG APP_GID=1000

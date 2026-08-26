@@ -1,6 +1,6 @@
 x-java-build-args: &java_build_args
-  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:25-jdk-alpine}
-  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:25-jre-alpine}
+  JDK_IMAGE: ${JDK_IMAGE:-eclipse-temurin:26-jdk-alpine}
+  JRE_IMAGE: ${JRE_IMAGE:-eclipse-temurin:26-jre-alpine}
   MAVEN_VERSION: ${MAVEN_VERSION:-3.9.11}
   APP_UID: ${APP_UID:-1000}
   APP_GID: ${APP_GID:-1000}

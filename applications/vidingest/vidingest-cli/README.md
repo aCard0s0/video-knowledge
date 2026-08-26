@@ -6,14 +6,14 @@ A Spring Boot CLI application for downloading videos, extracting metadata, trans
 
 ### 1. Java (required)
 
-This module targets **Java 25** (see `applications/vidingest/pom.xml`).
+This module targets **Java 26** (see `applications/vidingest/pom.xml`).
 
 If you use SDKMAN:
 
 ```bash
 source "$HOME/.sdkman/bin/sdkman-init.sh"
-sdk use java 25.0.2-tem
-mvn -version  # should show Java 25.x
+sdk use java 26.0.1-tem
+mvn -version  # should show Java 26.x
 ```
 
 ### 2. Prerequisites

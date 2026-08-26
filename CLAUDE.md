@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Build (Java 25 + Maven 3.9+ enforced by the root POM; `./mvnw` pins the build):
+Build (Java 26 + Maven 3.9+ enforced by the root POM; `./mvnw` pins the build):
 
 ```bash
 ./mvnw clean package
@@ -34,6 +34,12 @@ Running one test with `-am` fails the build on the sibling modules that have no 
 ```bash
 ./mvnw -pl applications/vidingest/vidingest-server test -Dtest='*IntegrationTest'
 ```
+
+**Always pair `clean` with `-am`.** `./mvnw -pl <module> clean test` resolves the sibling
+`vidingest-*` modules from `~/.m2` instead of the reactor, so a stale installed jar makes the
+build compile against yesterday's API. That fails as **BUILD SUCCESS** over source that does not
+compile — incremental `test-compile` skips work it thinks is up to date, and the errors only
+appear once something forces a real recompile.
 
 Run the stack (`scripts/tradey.sh --help` for the full command/target list; infra starts
 automatically as a dependency of the server):
@@ -123,7 +129,7 @@ writes no status — every `PipelineRun` status write goes through `RunAggregati
 on a phase *transition*, so a phase that legitimately runs for hours is indistinguishable from
 abandoned work by timestamp alone, and failing a live item invites an operator retry that runs
 a second worker over the same video. Two independent answers guard it, because they fail in
-opposite directions: `PipelineService.isItemInFlight` is blind to other instances but never
+opposite directions: `PipelineService.isItemOwned` is blind to other instances but never
 wrong about this one, and the `lease_owner`/`lease_expires_at` columns on
 `vidingest_pipeline_run_items` see every instance but go stale if this process stops
 heartbeating. An item is reaped only when neither claims it. `RunItemLeaseService` owns the
@@ -131,6 +137,16 @@ writes, `PipelineService.renewLeases` heartbeats them on a schedule that must st
 `vidingest.lease.ttl`, and `ProgressPipelineRunReconciler` leaves a run alone entirely while
 any of its items holds a live lease. Lease renewal is scoped by owner, so a heartbeat can
 never extend a lease another instance took over.
+
+Ownership is claimed *before* the executor submit and the lease *after* the gate, and the gap
+between them is the point: an item queued behind the gate is `PENDING` with no lease, so the
+sweep covers `PENDING` too and `isItemOwned` is the only thing that keeps queued work from being
+reaped. Nothing else ever revisits a `PENDING` item — before Aug 2026 a process that died with
+items queued left them unreachable, their run stuck `IN_PROGRESS`, and every retry refused.
+**Retry eligibility asks the same question**: any item not `COMPLETED`, not `CANCELLED` and not
+claimed. The run-level "only a FAILED run may be retried" gate is separate and answered *first* —
+`RunLifecycleService.prepareRetry` validates and mutates in one call, so it cannot also be what
+defers the decision, and a retry that accepts nothing must leave the run `FAILED`.
 
 The executor is virtual-thread-per-task and stays unbounded so shutdown waits only for
 in-flight work; concurrency is capped by a `Semaphore` inside `PipelineService`
@@ -151,11 +167,19 @@ makes per-phase rerun possible: `POST /api/v1/videos/{id}/phases/{phase}/run`
 Only TRANSCRIBE..CONTEXT are reachable that way — METADATA/DOWNLOAD/PERSIST consume a URL,
 not a video row, so those need a full pipeline run.
 
-TRANSCRIBE, DIARIZE, FRAME_SAMPLE, FUSE and CONTEXT wipe and repopulate in **one
-transaction**. OCR and KNOWLEDGE deliberately do not: they wipe before a minutes-long
-sidecar/LLM loop and persist after, because one transaction across that loop would pin a
-pooled connection for its whole duration. They throw when nothing was produced rather than
-reporting a successful zero over freshly-wiped rows.
+Every phase wipes and repopulates in **one transaction**, taken after its slow work. OCR and
+KNOWLEDGE are the two whose loop sits between the read and the write; their transaction covers
+only the two statements, so the loop still runs connection-free. Committing the wipe *before* the
+loop was the older answer to that constraint and it made every mid-loop failure a silent data
+loss. Their failure policies differ on purpose: OCR skips a bad frame and throws only when *no*
+frame was readable, while KNOWLEDGE fails on any failed batch — a batch is ~40 segments of
+coverage, not one frame, so salvaging the rest would silently narrow the extraction.
+
+**Every ffmpeg invocation goes through `FfmpegRunner`.** Never call `readAllBytes()` on a process
+stream before `waitFor`: the stream reaches EOF only when the process exits, so draining on the
+waiting thread makes the timeout unreachable for exactly the hung process it exists to kill. The
+runner drains on a separate thread, passes `-nostdin`, and closes the child's stdin — ffmpeg reads
+stdin by default and blocks forever on a pipe nobody writes.
 
 **Transactions.** `@Transactional` on a `protected`/`private` or self-invoked method does
 nothing — `AnnotationTransactionAttributeSource` is `publicMethodsOnly`, and `this.` calls
@@ -164,6 +188,10 @@ process and HTTP work in the same method as their writes, so the public driver c
 carry `@Transactional`: inject `TransactionOperations` and wrap only the DB block. Bulk
 `deleteBy*` repo methods carry their own `@Modifying @Transactional @Query`. Never open a
 transaction around a sidecar, ollama or yt-dlp call — the pool is 10 connections.
+`SubprocessTransactionBoundaryIntegrationTest` and `ContextChunkRegenerateIntegrationTest` assert
+this from inside the stubbed call, so re-adding `@Transactional` fails a test rather than
+production. **Irreversible work goes after the commit, not inside it**: a recursive directory
+delete cannot roll back, so `VideoDeleteService` deletes the row first and the artifacts second.
 
 ### Data and external services
 

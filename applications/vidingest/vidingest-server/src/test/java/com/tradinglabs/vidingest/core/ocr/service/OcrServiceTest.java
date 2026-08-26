@@ -17,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -62,7 +63,8 @@ class OcrServiceTest {
         config.setMinConfidence(0.5);
         config.setMinLinesPerFrame(1);
         config.setMaxResultsPerVideo(10_000);
-        service = new OcrService(config, paddleOcrClient, videoFrameRepository, ocrResultRepository);
+        service = new OcrService(config, paddleOcrClient, videoFrameRepository, ocrResultRepository,
+                TransactionOperations.withoutTransaction());
     }
 
     @Test

@@ -4,8 +4,8 @@
 # Build context: repository root (enables Maven reactor builds)
 
 # Build-time arguments with defaults (override via --build-arg or compose)
-ARG JDK_IMAGE=eclipse-temurin:25-jdk-alpine
-ARG JRE_IMAGE=eclipse-temurin:25-jre-alpine
+ARG JDK_IMAGE=eclipse-temurin:26-jdk-alpine
+ARG JRE_IMAGE=eclipse-temurin:26-jre-alpine
 ARG MAVEN_VERSION=3.9.11
 ARG APP_UID=1000
 ARG APP_GID=1000
