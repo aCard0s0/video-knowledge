@@ -7,6 +7,7 @@ import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
 import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeChatClient;
 import com.tradinglabs.vidingest.core.knowledge.domain.KnowledgeUnit;
 import com.tradinglabs.vidingest.core.knowledge.dto.KnowledgeUnitDraft;
+import com.tradinglabs.vidingest.commons.ConflictException;
 import com.tradinglabs.vidingest.core.knowledge.prompt.KnowledgeExtractionPrompt;
 import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository;
 import com.tradinglabs.vidingest.search.service.embedding.EmbeddingsClient;
@@ -65,6 +66,17 @@ public class KnowledgeExtractionService {
      * when M5 fusion ran but found no signals to fuse.
      */
     public int extractKnowledge(Video video) {
+        // The master switch, checked here rather than only in KnowledgePhase.applies(). The phase
+        // gate never covered POST /videos/{id}/knowledge/regenerate, so with the feature off that
+        // endpoint still called the chat model and hung for the full
+        // vidingest.knowledge.read-timeout (10m by default) before failing. Same shape of guard as
+        // SemanticKnowledgeSearchService uses for vidingest.search.semantic-enabled, and naming the
+        // property is the point: a 409 that does not say which flag to flip is a worse answer than
+        // the hang.
+        if (!config.isEnabled()) {
+            throw new ConflictException(
+                    "Knowledge extraction is disabled. Set vidingest.knowledge.enabled=true.");
+        }
         if (video == null) {
             throw new KnowledgeExtractionFailureException("Video is null");
         }

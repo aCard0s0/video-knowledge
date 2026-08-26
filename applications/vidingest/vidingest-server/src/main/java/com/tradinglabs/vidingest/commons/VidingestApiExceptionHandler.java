@@ -15,9 +15,13 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.ErrorResponseException;
+import org.springframework.web.HttpMediaTypeException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -82,6 +86,26 @@ public class VidingestApiExceptionHandler {
     })
     ProblemDetail handleBindingFailure(Exception e, HttpServletRequest request) {
         return problem(HttpStatus.BAD_REQUEST, "Bad request", e.getMessage(), request, e);
+    }
+
+    /**
+     * Protocol-level mismatches: an HTTP method the handler does not map, a {@code Content-Type}
+     * it will not consume, an {@code Accept} it cannot produce. Same shape of gap as
+     * {@link #handleBindingFailure}: they implement {@link ErrorResponse} but do not extend
+     * {@link ErrorResponseException}, so they reached the {@code Exception} catch-all and every
+     * one answered 500 — {@code GET} on a PATCH-only route reported "Request method 'GET' is not
+     * supported" under a 500.
+     *
+     * <p>The status and body come from the exception rather than being hardcoded, so each type
+     * keeps its own answer: 405, 415, 406. {@link ErrorResponse#getHeaders()} is copied through
+     * because that is where {@code Allow} lives, and RFC 9110 requires a 405 to carry it.
+     */
+    @ExceptionHandler({HttpRequestMethodNotSupportedException.class, HttpMediaTypeException.class})
+    ResponseEntity<ProblemDetail> handleProtocolMismatch(Exception e, HttpServletRequest request) {
+        ErrorResponse response = (ErrorResponse) e;
+        HttpStatus status = HttpStatus.valueOf(response.getStatusCode().value());
+        ProblemDetail body = problem(status, status.getReasonPhrase(), e.getMessage(), request, e);
+        return ResponseEntity.status(status).headers(response.getHeaders()).body(body);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -107,7 +107,15 @@ services:
       start_period: 30s
     networks:
       - video-knowledge
-    mem_limit: 3G
+    # 3G put PaddleOCR permanently in direct reclaim on text-dense frames. Recognition cost is
+    # per detected box, so a chart capture with 141 lines needs far more resident memory than a
+    # talking-head frame with four. At 3G the cgroup reported anon 2.88G against the 3G cap,
+    # `memory.events max` 27179 hard-limit hits, pgscan_direct 12.2M and workingset_refault_anon
+    # 3.8M — it was evicting its own working set and faulting it back on every allocation, which
+    # is charged synchronously to the request. Same frame, same code: 40-44s at 3G, 17-19s at 6G,
+    # with every reclaim counter back to zero. It never OOM-killed, so this only ever showed up as
+    # latency and as wild run-to-run variance.
+    mem_limit: ${PADDLEOCR_MEM_LIMIT:-6G}
     mem_reservation: 1G
     restart: unless-stopped
 
