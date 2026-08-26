@@ -93,6 +93,19 @@ public class OllamaKnowledgeChatClient implements KnowledgeChatClient {
             throw new KnowledgeExtractionFailureException(
                     "Knowledge LLM returned HTTP " + e.getStatusCode().value() + ": " + safeBodySnippet(e), e);
         } catch (RestClientException e) {
+            // A read timeout reaches this branch wrapped by the message converter, so
+            // e.getMessage() reads "Error while extracting response for type [byte[]] and content
+            // type [application/octet-stream]" — a decoding complaint for what is actually the
+            // clock running out, which sends the reader looking at content negotiation. Say what
+            // happened and name the knob that bounds it.
+            if (isTimeout(e)) {
+                log.warn("Knowledge LLM timed out: model={}, elapsedMs={}, readTimeout={}",
+                        knowledgeConfig.getChatModel(), elapsedMs(startNs), knowledgeConfig.getReadTimeout());
+                throw new KnowledgeExtractionFailureException(
+                        "Knowledge LLM timed out after " + knowledgeConfig.getReadTimeout()
+                                + " (vidingest.knowledge.read-timeout), model "
+                                + knowledgeConfig.getChatModel(), e);
+            }
             log.warn("Knowledge LLM request failed: model={}, elapsedMs={}, message={}",
                     knowledgeConfig.getChatModel(), elapsedMs(startNs), e.getMessage());
             throw new KnowledgeExtractionFailureException("Knowledge LLM request failed: " + e.getMessage(), e);
@@ -353,6 +366,24 @@ public class OllamaKnowledgeChatClient implements KnowledgeChatClient {
         if (s == null) return "";
         String trimmed = s.trim();
         return trimmed.length() <= 200 ? trimmed : trimmed.substring(0, 200) + "...";
+    }
+
+    /**
+     * Whether a failure is the read timeout rather than anything about the payload. Walks the
+     * cause chain because the converter wraps it: the {@code SocketTimeoutException} sits under a
+     * {@code RestClientException} whose own message talks about decoding.
+     */
+    private static boolean isTimeout(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof java.net.SocketTimeoutException
+                    || c instanceof java.net.http.HttpTimeoutException) {
+                return true;
+            }
+            if (c.getCause() == c) {
+                break;
+            }
+        }
+        return false;
     }
 
     private static long elapsedMs(long startNs) {

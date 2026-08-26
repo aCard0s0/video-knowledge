@@ -196,6 +196,40 @@ class OllamaKnowledgeChatClientTest {
         assertThat(body).contains("user says hello");
     }
 
+    /**
+     * A read timeout used to surface as "Error while extracting response for type [byte[]] and
+     * content type [application/octet-stream]" — the message converter's complaint, not the
+     * clock's, which is exactly the wrong place to send whoever is reading the failure.
+     */
+    @Test
+    void readTimeoutSaysSoAndNamesTheProperty() throws Exception {
+        // Accept the request, send headers, then never send the body: the client blocks on read.
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/chat", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, 512);   // promise 512 bytes, deliver none
+        });
+        server.start();
+
+        KnowledgeExtractionConfig cfg = config();
+        cfg.setReadTimeout(Duration.ofMillis(600));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(
+                new ObjectMapper(), cfg, shortReadRestClient(baseUrl()));
+
+        assertThatThrownBy(() -> client.extract("sys", "user"))
+                .isInstanceOf(KnowledgeExtractionFailureException.class)
+                .hasMessageContaining("timed out")
+                .hasMessageContaining("vidingest.knowledge.read-timeout");
+    }
+
+    private static RestClient shortReadRestClient(String baseUrl) {
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout(2000);
+        rf.setReadTimeout(600);
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
+    }
+
     // ----- HTTP test scaffolding -----
 
     private void startServer(int status, String body) throws IOException {
