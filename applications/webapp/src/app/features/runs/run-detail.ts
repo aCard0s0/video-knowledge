@@ -12,14 +12,12 @@ import {
 } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import {
-  OPTIONAL_PHASES,
   OptionalPhase,
   PHASE_PANE,
   RUN_STATUSES,
   blank,
   isLanePhase,
   isLive,
-  orDash,
   statusVar,
 } from '../../core/domain';
 import { absoluteTime, clockTime, humanAge, humanDuration, msBetween } from '../../core/time';
@@ -151,14 +149,11 @@ export class RunDetail {
    * Item statuses counted, in ramp order. "4 item(s)" does not say how many of them need
    * attention, and the API has answered that question in the same response all along.
    */
-  protected readonly tally = computed(() => {
-    const counts = new Map<string, number>();
-    for (const item of this.items()) {
-      const status = item.status ?? '';
-      if (status) counts.set(status, (counts.get(status) ?? 0) + 1);
-    }
-    return RUN_STATUSES.filter((s) => counts.has(s)).map((status) => ({ status, n: counts.get(status)! }));
-  });
+  protected readonly tally = computed(() =>
+    RUN_STATUSES.map((status) => ({ status, n: this.items().filter((i) => i.status === status).length })).filter(
+      (count) => count.n > 0,
+    ),
+  );
 
   /**
    * Which optional phases this run already skipped, as a stable key.
@@ -173,7 +168,6 @@ export class RunDetail {
     return this.lane(drawn)
       .filter((s) => s.state === 'skipped')
       .map((s) => s.phase as string)
-      .filter((phase) => (OPTIONAL_PHASES as readonly string[]).includes(phase))
       .join(',');
   });
 
@@ -195,7 +189,6 @@ export class RunDetail {
   protected readonly clockTime = clockTime;
   protected readonly humanDuration = humanDuration;
   protected readonly blank = blank;
-  protected readonly orDash = orDash;
 
   /**
    * Lanes are built once per change, not once per template read: the old code called buildLane

@@ -41,21 +41,18 @@ export function buildLane(item: RunItem, events: RunItemAuditEvent[], nowMs: num
   // it in the failure red says an operator has something to fix when they do not.
   const stopState: SegmentState = item.status === 'CANCELLED' ? 'cancelled' : 'failed';
 
-  // Where it stopped — but only when that is a phase the lane actually draws. An item reaped
-  // while it was still queued blames CREATED, which is a run marker: `indexOf` answers -1, and a
-  // -1 frontier used to make every phase "not reached" *and* leave the lane with no cap at all,
-  // so a FAILED item rendered as ten blank boxes reading "complete". Handled explicitly instead.
-  const stoppedAt = isLanePhase(item.failedPhase) ? item.failedPhase : null;
-  const stoppedBeforeLane = !blank(item.failedPhase) && item.failedPhase !== 'DONE' && !stoppedAt;
+  // What the item blamed, and — separately — whether that is a phase the lane actually draws. An
+  // item reaped while it was still queued blames CREATED, a run marker: it still sets the frontier
+  // (`indexOf` answers -1, so every phase reads "not reached", which is the truth) but it can
+  // never take the cap, which is why a FAILED item used to render as ten blank boxes reading
+  // "complete". The lane component carries that outcome from `status` instead.
+  const blamed = blank(item.failedPhase) || item.failedPhase === 'DONE' ? null : item.failedPhase!;
+  const stoppedAt = isLanePhase(blamed) ? blamed : null;
 
   // Everything past the frontier was never reached; everything before it that has no ENTERED
   // event was deliberately skipped. Same absence, opposite meaning.
-  const frontierName = stoppedAt ?? (live ? lastEntered(current) : null);
-  const frontier = stoppedBeforeLane
-    ? -1
-    : frontierName
-      ? LANE_PHASES.indexOf(frontierName as LanePhase)
-      : LANE_PHASES.length - 1;
+  const frontierName = blamed ?? (live ? lastEntered(current) : null);
+  const frontier = frontierName ? LANE_PHASES.indexOf(frontierName as LanePhase) : LANE_PHASES.length - 1;
 
   return LANE_PHASES.map((phase, index) => {
     const start = entered.get(phase);

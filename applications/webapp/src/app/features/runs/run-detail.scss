@@ -85,7 +85,6 @@ summary {
   list-style: none;
   margin: 0;
   padding: 0;
-
 }
 
 // A 40-item run pushed the trail thousands of pixels down, so the panel a phase click filters was
@@ -161,17 +160,6 @@ summary {
   margin-left: auto;
 }
 
-.detail {
-  white-space: normal;
-  min-width: 32ch;
-}
-
-table.grid td.detail {
-  padding-top: 0;
-  padding-bottom: var(--space-xs);
-  height: auto;
-}
-
 .trail-head {
   display: flex;
   align-items: baseline;
@@ -198,31 +186,21 @@ table.grid td.when {
   white-space: nowrap;
 }
 
-// Wide screens keep the message in its column; the extra row is narrow-only.
-.detail-row {
-  display: none;
+// The message row belongs to the event above it, so it loses the gap between them and wraps.
+table.grid .detail-row td {
+  padding-top: 0;
+  white-space: normal;
 }
 
 @media (max-width: 767px) {
   // Drop From and Status. `previousPhase` repeats the phase of the row below it and the status is
-  // implied by the event type — but errorCode and its message are the reason the screen gets
-  // opened, so instead of being dropped they move out of the column and under the row.
+  // implied by the event type. errorCode and its message stay: they are the reason the screen gets
+  // opened, and they are on their own row rather than in a column that would sit off the edge.
   table.grid th.from,
   table.grid td.from,
   table.grid th.st,
-  table.grid td.st,
-  table.grid th.detail,
-  table.grid td.detail {
+  table.grid td.st {
     display: none;
-  }
-
-  .detail-row {
-    display: table-row;
-  }
-
-  table.grid .detail-row td {
-    padding-top: 0;
-    white-space: normal;
   }
 
   // The label is already the URL's tail; let it wrap rather than clipping the part that identifies it.

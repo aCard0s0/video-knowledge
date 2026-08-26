@@ -100,16 +100,16 @@ export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number];
  * button already lives. Re-running one phase is deliberately *not* offered from the run screen:
  * the endpoint takes a video id, a run item carries one only while that video row still exists
  * (`ON DELETE SET NULL`), and the video screen can show what the phase produced. Deep-linking the
- * pane removes the only part of that trip that was actually a hunt.
+ * pane removes the only part of that trip that was actually a hunt. CONTEXT is absent on purpose:
+ * search chunks have no pane, so there is nowhere honest to land.
  */
-export const PHASE_PANE: Record<OptionalPhase, string> = {
+export const PHASE_PANE: Partial<Record<OptionalPhase, string>> = {
   TRANSCRIBE: 'transcript',
   DIARIZE: 'speakers',
   FRAME_SAMPLE: 'frames',
   OCR: 'frames',
   FUSE: 'fused',
   KNOWLEDGE: 'knowledge',
-  CONTEXT: 'transcript', // search chunks have no pane of their own
 };
 
 /** CSS custom property holding this status' colour. Unknown values get the neutral spine. */
@@ -149,9 +149,4 @@ export function isLive(status: string | null | undefined): boolean {
 /** The API returns "" for absent values, not null. */
 export function blank(value: string | null | undefined): boolean {
   return value === null || value === undefined || value.trim() === '';
-}
-
-/** Renders an absent value as an em dash, so a "" never reaches the page as an empty cell. */
-export function orDash(value: string | null | undefined): string {
-  return blank(value) ? '—' : value!;
 }
