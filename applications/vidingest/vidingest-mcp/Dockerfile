@@ -13,7 +13,6 @@ ARG HEALTH_PATH=/vidingest/actuator/health
 ARG GIT_COMMIT=unknown
 ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT_TIME=unknown
-ARG OTEL_JAVAAGENT_VERSION=2.26.1
 
 # ============================================================================
 # Stage 1: Builder - Compile and package the application
@@ -23,18 +22,11 @@ ARG MAVEN_VERSION
 ARG GIT_COMMIT
 ARG GIT_BRANCH
 ARG GIT_COMMIT_TIME
-ARG OTEL_JAVAAGENT_VERSION
 
 WORKDIR /workspace
 
 COPY docker/scripts/install-maven.sh /usr/local/bin/install-maven
 RUN chmod +x /usr/local/bin/install-maven && /usr/local/bin/install-maven "${MAVEN_VERSION}"
-
-# Download the OpenTelemetry Java agent (pinned).
-RUN apk add --no-cache curl \
-    && mkdir -p /workspace/.otel \
-    && curl -fsSL -o /workspace/.otel/opentelemetry-javaagent.jar \
-      "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar"
 
 COPY . .
 
@@ -66,9 +58,8 @@ RUN chmod +x /usr/local/bin/create-app-user && /usr/local/bin/create-app-user "$
 WORKDIR /app
 
 COPY --from=builder /workspace/applications/vidingest/vidingest-mcp/target/*.jar app.jar
-COPY --from=builder /workspace/.otel/opentelemetry-javaagent.jar /otel/opentelemetry-javaagent.jar
 
-RUN mkdir -p /app/logs /app/tmp /otel && chown -R "${APP_USER}:${APP_USER}" /app
+RUN mkdir -p /app/logs /app/tmp && chown -R "${APP_USER}:${APP_USER}" /app
 
 USER ${APP_USER}
 

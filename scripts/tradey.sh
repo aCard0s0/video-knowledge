@@ -17,7 +17,7 @@
 #   ./scripts/tradey.sh start --build         # build images first, then start
 #   ./scripts/tradey.sh start vidingest       # backend only (auto-starts infra)
 #   ./scripts/tradey.sh start mcp             # MCP server only
-#   ./scripts/tradey.sh cli                   # open the VidIngest console
+#   ./scripts/tradey.sh cli                   # open the VidIngest CLI
 #   ./scripts/tradey.sh logs -f vidingest     # follow backend logs
 #   ./scripts/tradey.sh ollama pull qwen2.5:14b-instruct
 #   ./scripts/tradey.sh status
@@ -172,7 +172,7 @@ cmd_shell() {
   "${COMPOSE[@]}" exec "${svc}" sh
 }
 
-# Open the interactive VidIngest console (Spring Shell CLI).
+# Open the interactive VidIngest CLI (Spring Shell).
 cmd_cli() {
   require_docker
   info "ensuring vidingest-cli is up"
@@ -225,7 +225,7 @@ Commands:
   status | ps                compose ps with health
   logs [-f] [-n N] [svc]     container logs
   shell <service>            sh inside a running container
-  cli                        open the VidIngest console (vidingest-cli)
+  cli                        open the VidIngest CLI (vidingest-cli)
   ollama [args...]           ollama CLI in the ollama container (no args: list)
   down [--volumes]           stop + remove everything; --volumes also wipes data
   help                       this text

@@ -20,6 +20,7 @@ public class RunItemLifecycleService {
     private final PipelineRunRepository pipelineRunRepository;
     private final PipelineRunItemRepository pipelineRunItemRepository;
     private final PipelineAuditService pipelineAuditService;
+    private final VideoLifecycleService videoLifecycleService;
 
     @Transactional
     public List<PipelineRunItem> createItems(UUID runId, List<String> urls) {
@@ -123,6 +124,9 @@ public class RunItemLifecycleService {
         item.setPhase(PipelineRunPhase.DONE);
         PipelineRunItem saved = pipelineRunItemRepository.save(item);
         pipelineAuditService.recordFailed(saved, errorCode, errorMessage);
+        // Every path that fails an item ends up here, so the video follows from one place. The
+        // reap path in StuckItemReconciler has no catch block of its own to do it.
+        videoLifecycleService.markFailedIfUnfinished(saved.getVideoId());
     }
 
     @Transactional

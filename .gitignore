@@ -31,3 +31,5 @@ package/
 
 # Stray logs from running the CLI/server outside the container
 *.log
+/.claude/
+/skills-lock.json

@@ -30,12 +30,12 @@ curl -s -N --max-time 2 "http://localhost:8055/vidingest/sse"
 
 ## Docs
 
-- Overview: [VidIngest Console](../../docs/vidingest/VidIngest%20Console.md)
-- CLI commands: [VidIngest Console - CLI Commands](../../docs/vidingest/VidIngest%20Console%20-%20CLI%20Commands.md)
-- Download pipeline: [VidIngest Console - Download Pipeline](../../docs/vidingest/VidIngest%20Console%20-%20Download%20Pipeline.md)
-- Data model: [VidIngest Console - Data Model](../../docs/vidingest/VidIngest%20Console%20-%20Data%20Model.md)
-- Config and runtime: [VidIngest Console - Config and Runtime](../../docs/vidingest/VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- MCP setup: [VidIngest Console - MCP with LM Studio](../../docs/vidingest/VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md)
+- Overview: [VidIngest](../../docs/vidingest/VidIngest.md)
+- CLI commands: [VidIngest - CLI Commands](../../docs/vidingest/VidIngest%20-%20CLI%20Commands.md)
+- Download pipeline: [VidIngest - Download Pipeline](../../docs/vidingest/VidIngest%20-%20Download%20Pipeline.md)
+- Data model: [VidIngest - Data Model](../../docs/vidingest/VidIngest%20-%20Data%20Model.md)
+- Config and runtime: [VidIngest - Config and Runtime](../../docs/vidingest/VidIngest%20-%20Config%20and%20Runtime.md)
+- MCP setup: [VidIngest - MCP with LM Studio](../../docs/vidingest/VidIngest%20-%20MCP%20with%20LM%20Studio.md)
 
 ## What lives here
 

@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,6 +38,9 @@ class RunItemLifecycleServiceTest {
     @Mock
     private PipelineAuditService pipelineAuditService;
 
+    @Mock
+    private VideoLifecycleService videoLifecycleService;
+
     private RunItemLifecycleService service;
 
     private UUID runId;
@@ -45,7 +49,8 @@ class RunItemLifecycleServiceTest {
 
     @BeforeEach
     void setup() {
-        service = new RunItemLifecycleService(pipelineRunRepository, pipelineRunItemRepository, pipelineAuditService);
+        service = new RunItemLifecycleService(
+                pipelineRunRepository, pipelineRunItemRepository, pipelineAuditService, videoLifecycleService);
         runId = UUID.randomUUID();
         itemId = UUID.randomUUID();
         run = PipelineRun.builder().status(RunStatus.PENDING).build();
@@ -134,6 +139,36 @@ class RunItemLifecycleServiceTest {
         assertThat(item.getFailedPhase()).isEqualTo(PipelineRunPhase.TRANSCRIBE);
         assertThat(item.getError()).isEqualTo("asr down");
         verify(pipelineAuditService).recordFailed(item, PipelineErrorCode.TRANSCRIPTION_FAILURE, "asr down");
+    }
+
+    /**
+     * The reap path in {@code StuckItemReconciler} has no catch block of its own, so if the video
+     * is not carried along from here a process that dies mid-phase leaves it TRANSCRIBING forever.
+     */
+    @Test
+    void markFailedAlsoFailsTheItemsVideo() {
+        PipelineRunItem item = stubExistingItem();
+        item.setPhase(PipelineRunPhase.TRANSCRIBE);
+        item.setStatus(RunStatus.IN_PROGRESS);
+        UUID videoId = UUID.randomUUID();
+        item.setVideoId(videoId);
+
+        service.markFailed(itemId, PipelineErrorCode.UNEXPECTED, "reconciler: stuck");
+
+        verify(videoLifecycleService).markFailedIfUnfinished(videoId);
+    }
+
+    @Test
+    void markCancelledLeavesTheVideoAlone() {
+        PipelineRunItem item = stubExistingItem();
+        item.setPhase(PipelineRunPhase.METADATA);
+        item.setStatus(RunStatus.IN_PROGRESS);
+        item.setVideoId(UUID.randomUUID());
+
+        service.markCancelled(itemId, PipelineErrorCode.DUPLICATE_VIDEO, "dup");
+
+        // DUPLICATE_VIDEO cancels against a healthy existing video; failing it would be wrong.
+        verify(videoLifecycleService, never()).markFailedIfUnfinished(any());
     }
 
     @Test

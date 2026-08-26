@@ -10,26 +10,18 @@ ARG MAVEN_VERSION=3.9.11                     # Pinned Maven version
 ARG APP_UID=1000                             # Non-root user ID
 ARG APP_GID=1000                             # Non-root group ID
 ARG APP_USER=app                             # CLI user (convention: 'app' for CLIs)
-ARG OTEL_JAVAAGENT_VERSION=2.26.1
 
 # ============================================================================
 # Stage 1: Builder - Compile and package the CLI application
 # ============================================================================
 FROM ${JDK_IMAGE} AS builder
 ARG MAVEN_VERSION
-ARG OTEL_JAVAAGENT_VERSION
 
 WORKDIR /workspace
 
 # Install Maven using shared script
 COPY docker/scripts/install-maven.sh /usr/local/bin/install-maven
 RUN chmod +x /usr/local/bin/install-maven && /usr/local/bin/install-maven "${MAVEN_VERSION}"
-
-# Download the OpenTelemetry Java agent (pinned).
-RUN apk add --no-cache curl \
-    && mkdir -p /workspace/.otel \
-    && curl -fsSL -o /workspace/.otel/opentelemetry-javaagent.jar \
-      "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar"
 
 # Copy entire repo for Maven reactor build
 COPY . .
@@ -57,13 +49,10 @@ WORKDIR /app
 # Create non-root user for CLI execution
 COPY docker/scripts/create-app-user.sh /usr/local/bin/create-app-user
 RUN chmod +x /usr/local/bin/create-app-user \
-    && /usr/local/bin/create-app-user "${APP_USER}" "${APP_UID}" "${APP_GID}" \
-    && mkdir -p /otel \
-    && chown -R "${APP_USER}:${APP_USER}" /otel
+    && /usr/local/bin/create-app-user "${APP_USER}" "${APP_UID}" "${APP_GID}"
 
 # Copy compiled CLI JAR from builder
 COPY --from=builder /workspace/applications/vidingest/vidingest-cli/target/vidingest-cli-*.jar app.jar
-COPY --from=builder /workspace/.otel/opentelemetry-javaagent.jar /otel/opentelemetry-javaagent.jar
 
 # Install launcher script (wraps java -jar with Spring Shell modes)
 COPY applications/vidingest/vidingest-cli/docker/vidingest-cli-launcher.sh /usr/local/bin/vidingest-cli

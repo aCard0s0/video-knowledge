@@ -38,5 +38,26 @@ class SearchControllerWebMvcTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("Conflict"));
     }
+
+    /**
+     * Request-binding failures are client errors. They implement {@code ErrorResponse} but not
+     * {@code ErrorResponseException}, so before the explicit handler they fell through to the
+     * {@code Exception} catch-all and every one of them answered 500.
+     */
+    @Test
+    void bindingFailuresReturn400() throws Exception {
+        // missing required parameter
+        mockMvc.perform(get("/api/v1/search"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Bad request"));
+
+        // parameter-level constraint violation (@Max(50))
+        mockMvc.perform(get("/api/v1/search").param("query", "q").param("limit", "999"))
+                .andExpect(status().isBadRequest());
+
+        // value that will not convert to the declared type
+        mockMvc.perform(get("/api/v1/search").param("query", "q").param("limit", "abc"))
+                .andExpect(status().isBadRequest());
+    }
 }
 

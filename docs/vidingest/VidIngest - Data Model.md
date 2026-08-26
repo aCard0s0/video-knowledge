@@ -254,7 +254,7 @@ Migrations create the pgvector extension (`CREATE EXTENSION IF NOT EXISTS vector
 The following tables back the multi-modal knowledge-extraction phases. All use the
 `vidingest_` prefix and cascade on `video_id` (or on the parent frame, which itself
 cascades on `video_id`). See
-[Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md) for usage.
+[Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) for usage.
 
 ### `vidingest_speakers` (Speaker)
 Pyannote-identified speakers per video. One row per `(video_id, label)` pair. Includes
@@ -284,6 +284,6 @@ holds salience, source segment indices, prompt version, chat model name.
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)

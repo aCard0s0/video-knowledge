@@ -8,16 +8,16 @@ update those pointers when you move/rename code.
 
 ## VidIngest
 
-- Overview: [VidIngest Console](vidingest/VidIngest%20Console.md)
-- Config and runtime: [VidIngest Console - Config and Runtime](vidingest/VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- Data model: [VidIngest Console - Data Model](vidingest/VidIngest%20Console%20-%20Data%20Model.md)
-- Download pipeline: [VidIngest Console - Download Pipeline](vidingest/VidIngest%20Console%20-%20Download%20Pipeline.md)
-- Knowledge extraction: [VidIngest Console - Knowledge Extraction](vidingest/VidIngest%20Console%20-%20Knowledge%20Extraction.md)
-- Per-phase rerun: [VidIngest Console - Per-Phase Rerun](vidingest/VidIngest%20Console%20-%20Per-Phase%20Rerun.md)
-- YouTube channels: [VidIngest Console - YouTube Channels](vidingest/VidIngest%20Console%20-%20YouTube%20Channels.md)
-- CLI commands: [VidIngest Console - CLI Commands](vidingest/VidIngest%20Console%20-%20CLI%20Commands.md)
-- MCP with LM Studio: [VidIngest Console - MCP with LM Studio](vidingest/VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md)
-- Test scenarios: [VidIngest Console - Test Scenarios](vidingest/VidIngest%20Console%20-%20Test%20Scenarios.md)
+- Overview: [VidIngest](vidingest/VidIngest.md)
+- Config and runtime: [VidIngest - Config and Runtime](vidingest/VidIngest%20-%20Config%20and%20Runtime.md)
+- Data model: [VidIngest - Data Model](vidingest/VidIngest%20-%20Data%20Model.md)
+- Download pipeline: [VidIngest - Download Pipeline](vidingest/VidIngest%20-%20Download%20Pipeline.md)
+- Knowledge extraction: [VidIngest - Knowledge Extraction](vidingest/VidIngest%20-%20Knowledge%20Extraction.md)
+- Per-phase rerun: [VidIngest - Per-Phase Rerun](vidingest/VidIngest%20-%20Per-Phase%20Rerun.md)
+- YouTube channels: [VidIngest - YouTube Channels](vidingest/VidIngest%20-%20YouTube%20Channels.md)
+- CLI commands: [VidIngest - CLI Commands](vidingest/VidIngest%20-%20CLI%20Commands.md)
+- MCP with LM Studio: [VidIngest - MCP with LM Studio](vidingest/VidIngest%20-%20MCP%20with%20LM%20Studio.md)
+- Test scenarios: [VidIngest - Test Scenarios](vidingest/VidIngest%20-%20Test%20Scenarios.md)
 
 Diagrams live in [vidingest/diagrams](vidingest/diagrams) (`mermaid/` sources,
 `svg/` rendered output — regenerate with `./scripts/regenerate-mermaid-svgs.sh`).

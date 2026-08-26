@@ -1,4 +1,4 @@
-# VidIngest Console - MCP with LM Studio
+# VidIngest - MCP with LM Studio
 
 This page shows how to use VidIngest MCP tools with a model you run in LM Studio.
 
@@ -240,12 +240,12 @@ deployment has enabled; naming a mandatory phase is rejected. This replaced six 
 booleans, so calls written against the older tool signature need updating — a request still
 carrying them is a 400 naming the offending property, not a silently ignored field.
 
-See [Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md) for the
+See [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) for the
 underlying pipeline phases and configuration.
 
 ## related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - CLI Commands](VidIngest%20-%20CLI%20Commands.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
 - Shared MCP autoconfiguration: `libraries/common-mcp-configs`

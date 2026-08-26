@@ -13,7 +13,6 @@ ARG APP_USER=spring
 ARG GIT_COMMIT=unknown
 ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT_TIME=unknown
-ARG OTEL_JAVAAGENT_VERSION=2.26.1
 
 # ============================================================================
 # Stage 1: Builder - Compile and package the application
@@ -23,19 +22,12 @@ ARG MAVEN_VERSION
 ARG GIT_COMMIT
 ARG GIT_BRANCH
 ARG GIT_COMMIT_TIME
-ARG OTEL_JAVAAGENT_VERSION
 
 WORKDIR /workspace
 
 # Install Maven using shared script
 COPY docker/scripts/install-maven.sh /usr/local/bin/install-maven
 RUN chmod +x /usr/local/bin/install-maven && /usr/local/bin/install-maven "${MAVEN_VERSION}"
-
-# Download the OpenTelemetry Java agent (pinned).
-RUN apk add --no-cache curl \
-    && mkdir -p /workspace/.otel \
-    && curl -fsSL -o /workspace/.otel/opentelemetry-javaagent.jar \
-      "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar"
 
 # Copy entire repository for Maven multi-module reactor build
 COPY . .
@@ -74,14 +66,13 @@ COPY docker/scripts/create-app-user.sh /usr/local/bin/create-app-user
 RUN chmod +x /usr/local/bin/create-app-user && /usr/local/bin/create-app-user "${APP_USER}" "${APP_UID}" "${APP_GID}"
 
 # Create writable directories for video storage and processing
-RUN mkdir -p /data/videos /tmp/vidingest /app/logs /app/tmp /otel \
+RUN mkdir -p /data/videos /tmp/vidingest /app/logs /app/tmp \
     && chown -R "${APP_USER}:${APP_USER}" /data /tmp/vidingest /app
 
 WORKDIR /app
 
 # Copy compiled JAR from builder stage
 COPY --from=builder /workspace/applications/vidingest/vidingest-server/target/vidingest-server-*.jar app.jar
-COPY --from=builder /workspace/.otel/opentelemetry-javaagent.jar /otel/opentelemetry-javaagent.jar
 
 # Set ownership for application JAR
 RUN chown "${APP_USER}:${APP_USER}" /app/app.jar
@@ -89,7 +80,12 @@ RUN chown "${APP_USER}:${APP_USER}" /app/app.jar
 # Switch to non-root user
 USER ${APP_USER}
 
-ENV JAVA_TOOL_OPTIONS="-Xms256m -Xmx768m -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC" \
+# No -Xmx: it wins over MaxRAMPercentage, and -Xmx768m against the compose mem_limit of 768M
+# left the heap free to grow into every byte the container had. Metaspace, thread stacks and
+# the direct buffers the sidecar uploads use all live outside the heap, so the container OOM
+# killer fired before -XX:+ExitOnOutOfMemoryError could ever report a Java OOM. The percentage
+# is container-aware and re-scales on its own if mem_limit changes. Matches vidingest-mcp.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=20.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC" \
     SPRING_PROFILES_ACTIVE="docker"
 
 # Internal container port (host mapping is defined in compose)

@@ -1,4 +1,4 @@
-# VidIngest Console — Per-Phase Rerun
+# VidIngest — Per-Phase Rerun
 
 **Owner**: TradingLabs Platform
 **Last reviewed**: 2026-08-26
@@ -275,6 +275,6 @@ SELECT
 
 ## Related
 
-- [Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
-- [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- [Data Model](VidIngest%20Console%20-%20Data%20Model.md)
+- [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
+- [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
+- [Data Model](VidIngest%20-%20Data%20Model.md)

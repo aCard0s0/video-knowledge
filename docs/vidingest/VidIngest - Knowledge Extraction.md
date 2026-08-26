@@ -1,14 +1,14 @@
-# VidIngest Console — Knowledge Extraction (M2–M8)
+# VidIngest — Knowledge Extraction (M2–M8)
 
 - **Owner**: TradingLabs Platform
 - **Last reviewed**: 2026-08-26
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
-- **Related**: [Data Model](VidIngest%20Console%20-%20Data%20Model.md),
-  [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md),
-  [MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md),
-  [CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
+- **Related**: [Data Model](VidIngest%20-%20Data%20Model.md),
+  [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md),
+  [MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md),
+  [CLI Commands](VidIngest%20-%20CLI%20Commands.md)
 
 ## What this is
 
@@ -191,12 +191,12 @@ All under `/vidingest/api/v1`. Existing endpoints unchanged; new endpoints:
 | `GET`   | `/videos/{videoId}/multimodal-timeline?fromSeconds=&toSeconds=` | Fused timeline rows, optional time clip |
 | `GET`   | `/videos/{videoId}/ocr`                            | OCR detections grouped by frame |
 | `GET`   | `/frames/{frameId}/image`                          | Inline JPG bytes for a sampled frame (UI `<img src>`) |
-| `POST`  | `/videos/{videoId}/phases/{phase}/run`             | Re-run one phase against an existing video. See [Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md) |
+| `POST`  | `/videos/{videoId}/phases/{phase}/run`             | Re-run one phase against an existing video. See [Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md) |
 
 ## MCP tools (M8)
 
 Seven tools added on top of the original nine. See
-[MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md) for the full
+[MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md) for the full
 list and parameter reference.
 
 - `searchKnowledge(query, type, limit)`
@@ -218,7 +218,7 @@ speakers --video-id <UUID>
 
 ## Configuration
 
-See [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md) for the
+See [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) for the
 full property reference. Key environment variables:
 
 ```bash
@@ -256,24 +256,67 @@ VIDINGEST_KNOWLEDGE_MIN_SALIENCE=0.2
 
 ## Operational runbook
 
-### Enable end-to-end on Docker
+### Getting a HUGGINGFACE_TOKEN
+
+`pyannote/speaker-diarization-3.1` is gated, so the token is not optional and a token
+without the accepted EULA fails the same way a missing one does. Three steps, all on
+huggingface.co, all free:
+
+1. **Account** — sign up at <https://huggingface.co/join> (or sign in).
+2. **Accept two EULAs.** The pipeline loads a second gated model internally, and missing
+   either one 401s the download:
+   - <https://huggingface.co/pyannote/speaker-diarization-3.1>
+   - <https://huggingface.co/pyannote/segmentation-3.0>
+
+   Open each, fill in the short "gated model" form on the model card, submit. Access is
+   granted immediately — the card stops showing the form.
+3. **Create a token** at <https://huggingface.co/settings/tokens> → *Create new token* →
+   type **Read**. Copy it (`hf_…`); the value is shown once.
+
+Put it in the gitignored `.env` at the repo root rather than exporting it, so every
+`tradey.sh` invocation picks it up:
 
 ```bash
-# 1. Accept the pyannote EULA and set the token
-export HUGGINGFACE_TOKEN=hf_...
+HUGGINGFACE_TOKEN=hf_...
+```
 
-# 2. Pull the chat model into Ollama
-ollama pull qwen2.5:14b-instruct
+Verify from inside the sidecar once it is up — this is the same call the DIARIZE phase makes,
+so a 200 here means the phase will work:
 
-# 3. Flip the master switches
-export VIDINGEST_DIARIZATION_ENABLED=true
-export VIDINGEST_FRAMES_ENABLED=true
-export VIDINGEST_OCR_ENABLED=true
-export VIDINGEST_KNOWLEDGE_ENABLED=true
+```bash
+docker exec video-knowledge-diarize-asr-1 \
+  python -c "import os;from huggingface_hub import HfApi;print(HfApi().model_info('pyannote/speaker-diarization-3.1', token=os.environ['HUGGINGFACE_TOKEN']).id)"
+```
 
-# 4. Start the sidecars + server (compose.sh layers in compose.yml, which declares
-#    the video-knowledge network and the named volumes the services reference)
-./scripts/compose.sh up -d whisper diarize-asr paddleocr-server ollama vidingest
+`401` means the token is wrong; `403` means an EULA is still unaccepted.
+
+### Enable end-to-end on Docker
+
+`.env` at the repo root is read automatically by `docker compose`, and so by `tradey.sh`.
+It is gitignored, which is what makes it the right home for the token.
+
+```bash
+# 1. .env — token from the section above, plus the master switches
+cat >> .env <<'EOF'
+HUGGINGFACE_TOKEN=hf_...
+VIDINGEST_DIARIZATION_ENABLED=true
+VIDINGEST_FRAMES_ENABLED=true
+VIDINGEST_OCR_ENABLED=true
+VIDINGEST_KNOWLEDGE_ENABLED=true
+EOF
+
+# 2. Pull the models. The embed model is required by CONTEXT whenever semantic search is
+#    on (the default) — the schema pins VECTOR(1536), so this model, not a 768-dim one.
+./scripts/tradey.sh ollama pull rjmalagon/gte-qwen2-1.5b-instruct-embed-f16
+./scripts/tradey.sh ollama pull qwen2.5:14b-instruct
+
+# 3. Build and start the sidecars, then restart the server onto the new .env
+./scripts/tradey.sh start sidecars --build
+./scripts/tradey.sh start vidingest
+
+# 4. Both sidecars must read (healthy) before a run — an enabled phase whose sidecar is
+#    unreachable fails the phase, and with it the whole run
+./scripts/tradey.sh status
 
 # 5. Submit a pipeline run with all phases enabled
 curl -sX POST http://localhost:8051/vidingest/api/v1/pipelines \
@@ -324,6 +367,39 @@ WHERE video_id = '<videoId>' GROUP BY type;
   partial-batch failures log but don't fail; all-batch failure does. Check
   `VIDINGEST_KNOWLEDGE_BASE_URL` and that the daemon is reachable from the
   `vidingest-server` container.
+- **`Error while extracting response for type [byte[]] and content type
+  [application/octet-stream]`, with `elapsedMs` at exactly 600000** — that is not a codec
+  problem, it is `vidingest.knowledge.read-timeout` (default `10m`) expiring mid-read. The
+  message is the socket timeout surfacing as a decode failure.
+
+### The default chat model does not fit CPU-only Docker
+
+Measured on this repo's compose stack (Docker Desktop, Apple Silicon, 10 CPUs, no GPU):
+
+| | `qwen2.5:14b-instruct` | `qwen2.5:0.5b-instruct` |
+|---|---|---|
+| model load | **384 s** | 51 s |
+| one batch, 360 input chars | timed out at 600 s | 415 s |
+| result | phase FAILED | 1 unit, phase OK |
+
+`ollama ps` reports `size_vram 0.0 GB` — **Docker Desktop gives Linux containers no access to
+Apple Silicon's Metal GPU**, so all inference is CPU-only. The `qwen2.5:14b-instruct` default
+in `application.properties` therefore cannot complete a batch inside the 10-minute read
+timeout, and no amount of raising that timeout makes a 14b model on CPU practical for
+ingestion. `OLLAMA_KEEP_ALIVE=30s` compounds it: the chat and embed models evict each other,
+so a run pays a fresh load for each.
+
+Options, in the order worth trying:
+
+1. **Run ollama on the host instead of in the container** and point
+   `VIDINGEST_KNOWLEDGE_BASE_URL` / `VIDINGEST_OLLAMA_BASE_URL` at
+   `http://host.docker.internal:11434`. Host ollama uses Metal; this is the only option that
+   makes a 14b model viable on a Mac.
+2. **Use a small chat model** — `qwen2.5:3b-instruct` is a reasonable floor for structured
+   extraction. `0.5b` proves the wiring but its output is poor: on the sample above it
+   emitted `entity_type: ORGANIZATION` for the entity `elephant`.
+3. **Leave KNOWLEDGE off** for local work, as it is by default, and enable it only where a
+   GPU is available.
 
 ## Future work
 
@@ -337,9 +413,9 @@ WHERE video_id = '<videoId>' GROUP BY type;
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md) (overview)
-- [Data Model](VidIngest%20Console%20-%20Data%20Model.md)
-- [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- [MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md)
-- [CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
-- [YouTube Channels](VidIngest%20Console%20-%20YouTube%20Channels.md)
+- [VidIngest](VidIngest.md) (overview)
+- [Data Model](VidIngest%20-%20Data%20Model.md)
+- [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
+- [MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md)
+- [CLI Commands](VidIngest%20-%20CLI%20Commands.md)
+- [YouTube Channels](VidIngest%20-%20YouTube%20Channels.md)

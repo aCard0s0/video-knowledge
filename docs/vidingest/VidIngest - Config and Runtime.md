@@ -1,4 +1,4 @@
-# VidIngest Console - Config and Runtime
+# VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
 - **Last reviewed**: 2026-08-26
@@ -93,7 +93,11 @@ All database properties support environment variable overrides.
 | `spring.datasource.username` | `dealer` | `DB_USERNAME` | Database user |
 | `spring.datasource.password` | `dev_dealer` | `DB_PASSWORD` | Database password |
 | `spring.jpa.hibernate.ddl-auto` | `none` | - | Schema managed by Liquibase |
+| `spring.jpa.open-in-view` | `false` | - | Off on purpose: OSIV holds a connection for the whole request against a Hikari pool of 10 that the pipeline competes for. Safe because every controller returns a MapStruct DTO mapped inside the service transaction, so no lazy association reaches the serializer |
 | `spring.liquibase.enabled` | `true` | - | Run migrations on startup |
+
+No `spring.jpa.properties.hibernate.dialect`: Hibernate selects `PostgreSQLDialect` from the
+connection, and warns (`HHH90000025`) if it is named anyway.
 
 ### Storage (`vidingest.storage.*`)
 
@@ -103,11 +107,16 @@ All database properties support environment variable overrides.
 
 **Path resolution priority**:
 
-1. Explicit property value (if set and non-empty)
-2. `ProjectPathResolver` auto-detection: `{projectRoot}/package/vidingest/videos`
-3. `VIDEO_KNOWLEDGE_ROOT` env var (if set, used to locate project root)
-4. Auto-detect by walking up from `user.dir` looking for root `pom.xml`
-5. Fallback: current working directory
+1. Explicit `vidingest.storage.video-path` (if set and non-empty). The `docker` profile always
+   sets it to `/data/videos`, so nothing below runs in a container.
+2. Otherwise `ProjectPathResolver` builds `{projectRoot}/package/vidingest/videos`, resolving
+   `projectRoot` in this order:
+   1. `VIDEO_KNOWLEDGE_ROOT` env var, if it names an existing directory
+   2. Walking up from `user.dir` (max 10 levels) for the root `pom.xml`
+   3. Fallback: `user.dir`, with a `WARN` on each of the two lines it logs
+
+Compose sets `VIDEO_KNOWLEDGE_ROOT=/app` for exactly that last case — the runtime image ships
+no `pom.xml`, so the walk always failed and warned twice on every boot.
 
 ### Whisper transcription (`vidingest.whisper.*`)
 
@@ -219,17 +228,33 @@ Transcript sidecars are written next to the downloaded video file, so under
 
 ### Dockerfile (`vidingest-server`)
 
-- Build stage: Eclipse Temurin 25 JDK Alpine + Maven 3.9.11 (via `docker/scripts/install-maven.sh`)
-- Runtime stage: Eclipse Temurin 25 JRE Alpine
+- Build stage: Eclipse Temurin 26 JDK Alpine + Maven 3.9.11 (via `docker/scripts/install-maven.sh`)
+- Runtime stage: Eclipse Temurin 26 JRE Alpine
 - Extra tools: `python3`, `py3-pip`, `ffmpeg`, `deno`, plus `yt-dlp` via pip
 - User: `spring:spring` (uid/gid 1000, from `docker/scripts/create-app-user.sh`)
-- JVM: `-Xms256m -Xmx768m -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC`
-- Container memory: `mem_limit: 768M`, `mem_reservation: 256M`
+- JVM: `-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=20.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC`
+- Container memory: `mem_limit: 1G`, `mem_reservation: 256M`
+
+**No `-Xmx`, deliberately.** It used to be `-Xmx768m` against a `mem_limit` of `768M`, which
+also made the `MaxRAMPercentage` on the same line inert: the heap could claim every byte the
+container had, while metaspace, thread stacks and the native buffers OCR uses for multipart
+frame upload all live outside it. The container OOM killer therefore always beat
+`-XX:+ExitOnOutOfMemoryError`, so a Java OOM could never be reported as one. The percentage is
+container-aware and re-scales on its own when `mem_limit` changes. `vidingest-mcp` was always
+configured this way; the server is now consistent with it.
 - Health check: `GET /vidingest/api/v1/health/ready` from inside the container
 - Build context is the repository root so the Maven reactor can resolve sibling modules
 
-An OpenTelemetry Java agent (pinned 2.26.1) is downloaded into `/otel` by all three
-Dockerfiles but is **not** wired into `JAVA_TOOL_OPTIONS`, so nothing loads it at runtime.
+**There is no OpenTelemetry agent.** All three Dockerfiles used to `curl` a pinned 2.26.1
+javaagent into `/otel` — 24 MB per image, downloaded on every uncached build, and never loaded:
+the entrypoints are a plain `java -jar /app/app.jar`, confirmed from `/proc/1/cmdline`. There is
+no collector in the compose stack for it to export to either, so it was removed rather than
+wired. To add tracing, add a collector service first, then `-javaagent` plus `OTEL_*` config —
+re-adding the download alone just restores the dead weight.
+
+Metrics do not depend on it: `/actuator/prometheus` carries
+`vidingest.pipeline.phase.duration{phase,outcome}`, `vidingest.pipeline.items.*`,
+`http.server.requests` and the Hikari pool gauges.
 
 ### Running with Docker
 
@@ -287,7 +312,7 @@ Adds verbose SQL/transaction tracing on top of defaults:
 
 All disabled by default (fusion is the exception — pure-Java, defaults on). Full
 description and operational notes in
-[Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md).
+[Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md).
 
 ### Speaker diarization (M2)
 ```properties
@@ -384,12 +409,25 @@ embed model (`gte-qwen2-1.5b-embed-f16` ~3.6 GB). Defaults in
 mem_limit: 16G          # bumped from 4G for the 14b chat model
 mem_reservation: 4G
 environment:
-  - OLLAMA_KEEP_ALIVE=30s   # unload model after 30s idle so chat and embed alternate
+  - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30s}   # unload after 30s so chat and embed alternate
 ```
 
 With `OLLAMA_KEEP_ALIVE=30s`, the chat model unloads soon after each batch so the embed
 call can load without hitting the OOM heuristic (`"model requires more system memory than
 is currently available"`). Trade-off: ~10–30 s reload cost per swap.
+
+**That default only pays for itself while KNOWLEDGE is on.** With it off, the embed model is
+the only resident model, there is nothing to swap with, and the unload is pure cost — measured
+on a 19 s video, the CONTEXT phase took **57.8 s cold against 2.4 s warm**, nearly all of it
+reloading 3.2 GB (12.1 s of that when the file was still in the host page cache; the rest is a
+cold read off disk). Raise it in the gitignored `.env` at the repo root for that case:
+
+```bash
+OLLAMA_KEEP_ALIVE=4h
+```
+
+Drop it back to `30s` before enabling KNOWLEDGE — `qwen2.5:14b` (~9 GB) plus the embed model
+(~3.2 GB) needs the churn.
 
 ### Ollama embeddings client gotchas
 
@@ -407,7 +445,7 @@ is currently available"`). Trade-off: ~10–30 s reload cost per swap.
 Once a video is past PERSIST, individual phases can be re-run via
 `POST /api/v1/videos/{videoId}/phases/{phase}/run`. Useful after a model swap or sidecar
 upgrade — no need to re-download / re-transcribe. See
-[Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md).
+[Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md).
 
 ## Concurrency and run-status aggregation
 
@@ -477,8 +515,8 @@ leaves the run FAILED rather than moving it out of the only state from which it 
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - Download Pipeline](VidIngest%20Console%20-%20Download%20Pipeline.md)
-- [VidIngest Console - Data Model](VidIngest%20Console%20-%20Data%20Model.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
-- [VidIngest Console - Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - Download Pipeline](VidIngest%20-%20Download%20Pipeline.md)
+- [VidIngest - Data Model](VidIngest%20-%20Data%20Model.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
+- [VidIngest - Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md)

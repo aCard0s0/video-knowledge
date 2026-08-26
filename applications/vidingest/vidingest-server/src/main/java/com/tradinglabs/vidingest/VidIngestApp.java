@@ -6,9 +6,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableScheduling
-public class VidIngestConsoleApp {
+public class VidIngestApp {
 
     public static void main(String[] args) {
-        SpringApplication.run(VidIngestConsoleApp.class, args);
+        SpringApplication.run(VidIngestApp.class, args);
     }
 }
