@@ -256,24 +256,67 @@ VIDINGEST_KNOWLEDGE_MIN_SALIENCE=0.2
 
 ## Operational runbook
 
-### Enable end-to-end on Docker
+### Getting a HUGGINGFACE_TOKEN
+
+`pyannote/speaker-diarization-3.1` is gated, so the token is not optional and a token
+without the accepted EULA fails the same way a missing one does. Three steps, all on
+huggingface.co, all free:
+
+1. **Account** — sign up at <https://huggingface.co/join> (or sign in).
+2. **Accept two EULAs.** The pipeline loads a second gated model internally, and missing
+   either one 401s the download:
+   - <https://huggingface.co/pyannote/speaker-diarization-3.1>
+   - <https://huggingface.co/pyannote/segmentation-3.0>
+
+   Open each, fill in the short "gated model" form on the model card, submit. Access is
+   granted immediately — the card stops showing the form.
+3. **Create a token** at <https://huggingface.co/settings/tokens> → *Create new token* →
+   type **Read**. Copy it (`hf_…`); the value is shown once.
+
+Put it in the gitignored `.env` at the repo root rather than exporting it, so every
+`tradey.sh` invocation picks it up:
 
 ```bash
-# 1. Accept the pyannote EULA and set the token
-export HUGGINGFACE_TOKEN=hf_...
+HUGGINGFACE_TOKEN=hf_...
+```
 
-# 2. Pull the chat model into Ollama
-ollama pull qwen2.5:14b-instruct
+Verify from inside the sidecar once it is up — this is the same call the DIARIZE phase makes,
+so a 200 here means the phase will work:
 
-# 3. Flip the master switches
-export VIDINGEST_DIARIZATION_ENABLED=true
-export VIDINGEST_FRAMES_ENABLED=true
-export VIDINGEST_OCR_ENABLED=true
-export VIDINGEST_KNOWLEDGE_ENABLED=true
+```bash
+docker exec video-knowledge-diarize-asr-1 \
+  python -c "import os;from huggingface_hub import HfApi;print(HfApi().model_info('pyannote/speaker-diarization-3.1', token=os.environ['HUGGINGFACE_TOKEN']).id)"
+```
 
-# 4. Start the sidecars + server (compose.sh layers in compose.yml, which declares
-#    the video-knowledge network and the named volumes the services reference)
-./scripts/compose.sh up -d whisper diarize-asr paddleocr-server ollama vidingest
+`401` means the token is wrong; `403` means an EULA is still unaccepted.
+
+### Enable end-to-end on Docker
+
+`.env` at the repo root is read automatically by `docker compose`, and so by `tradey.sh`.
+It is gitignored, which is what makes it the right home for the token.
+
+```bash
+# 1. .env — token from the section above, plus the master switches
+cat >> .env <<'EOF'
+HUGGINGFACE_TOKEN=hf_...
+VIDINGEST_DIARIZATION_ENABLED=true
+VIDINGEST_FRAMES_ENABLED=true
+VIDINGEST_OCR_ENABLED=true
+VIDINGEST_KNOWLEDGE_ENABLED=true
+EOF
+
+# 2. Pull the models. The embed model is required by CONTEXT whenever semantic search is
+#    on (the default) — the schema pins VECTOR(1536), so this model, not a 768-dim one.
+./scripts/tradey.sh ollama pull rjmalagon/gte-qwen2-1.5b-instruct-embed-f16
+./scripts/tradey.sh ollama pull qwen2.5:14b-instruct
+
+# 3. Build and start the sidecars, then restart the server onto the new .env
+./scripts/tradey.sh start sidecars --build
+./scripts/tradey.sh start vidingest
+
+# 4. Both sidecars must read (healthy) before a run — an enabled phase whose sidecar is
+#    unreachable fails the phase, and with it the whole run
+./scripts/tradey.sh status
 
 # 5. Submit a pipeline run with all phases enabled
 curl -sX POST http://localhost:8051/vidingest/api/v1/pipelines \

@@ -89,7 +89,12 @@ RUN chown "${APP_USER}:${APP_USER}" /app/app.jar
 # Switch to non-root user
 USER ${APP_USER}
 
-ENV JAVA_TOOL_OPTIONS="-Xms256m -Xmx768m -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC" \
+# No -Xmx: it wins over MaxRAMPercentage, and -Xmx768m against the compose mem_limit of 768M
+# left the heap free to grow into every byte the container had. Metaspace, thread stacks and
+# the direct buffers the sidecar uploads use all live outside the heap, so the container OOM
+# killer fired before -XX:+ExitOnOutOfMemoryError could ever report a Java OOM. The percentage
+# is container-aware and re-scales on its own if mem_limit changes. Matches vidingest-mcp.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=20.0 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC" \
     SPRING_PROFILES_ACTIVE="docker"
 
 # Internal container port (host mapping is defined in compose)

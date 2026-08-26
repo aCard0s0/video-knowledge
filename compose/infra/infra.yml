@@ -45,7 +45,10 @@ services:
       # (chat model) and search/knowledge embedding alternate; the combined RAM (e.g.
       # qwen2.5:14b ~9 GB + embed ~3.6 GB = 12.6 GB) won't fit in the Docker VM headroom,
       # so a short keep-alive lets ollama swap cleanly instead of OOMing.
-      - OLLAMA_KEEP_ALIVE=30s
+      # The 30s default only makes sense while both models are in play. With KNOWLEDGE off
+      # the embed model is alone and the unload is pure cost: a cold CONTEXT phase measured
+      # 12.1s against 1.1s warm, all of it reloading 3.2 GB. Raise it in .env for that case.
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30s}
     volumes:
       - ollama_data:/root/.ollama
       - ai_models:/models

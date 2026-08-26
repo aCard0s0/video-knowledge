@@ -21,6 +21,10 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       LOG_DIR: /app/logs
+      # ProjectPathResolver walks up looking for the root pom.xml, which the runtime image does
+      # not ship, and warns twice on every boot when it gives up. /app is the root here. Only a
+      # fallback for vidingest.storage.video-path, which the docker profile always sets.
+      VIDEO_KNOWLEDGE_ROOT: /app
       SERVER_PORT: ${VIDINGEST_PORT:-8051}
       SPRING_DATASOURCE_URL: jdbc:postgresql://timescaledb:5432/tradingPlatformDB
       SPRING_DATASOURCE_USERNAME: dealer
@@ -89,6 +93,10 @@ services:
         condition: service_started
       whisper:
         condition: service_healthy
-    mem_limit: 768M
+    # 768M left ~22M of slack once the 75%-of-limit heap and 151M of committed non-heap were
+    # counted, and OCR buffers whole frames for multipart upload in native memory that neither
+    # of those numbers covers. 1G gives the same 75% split real headroom; the JVM re-scales on
+    # its own because nothing pins -Xmx any more.
+    mem_limit: 1G
     mem_reservation: 256M
     restart: "no"

@@ -11,6 +11,7 @@ import com.tradinglabs.vidingest.videos.exceptions.VideoArtifactNotFoundExceptio
 import com.tradinglabs.vidingest.videos.exceptions.VideoNotFoundException;
 import com.tradinglabs.vidingest.youtube.exceptions.YoutubeChannelNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -18,8 +19,11 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingPathVariableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.io.IOException;
@@ -57,6 +61,27 @@ public class VidingestApiExceptionHandler {
         // which is exactly what a caller sending a removed field needs to see.
         return problem(HttpStatus.BAD_REQUEST, "Bad request",
                 "Request body could not be read: " + e.getMostSpecificCause().getMessage(), request, e);
+    }
+
+    /**
+     * Spring's request-binding failures: a query parameter the handler requires and the caller
+     * omitted, a value that will not convert to the declared type (a non-UUID {@code videoId}, a
+     * non-numeric {@code limit}), and a parameter-level constraint violation on a
+     * {@code @Validated} controller. All three are client errors, so they must not fall through
+     * to the {@code Exception} catch-all and answer 500 with a stack trace in the logs.
+     *
+     * <p>{@link MissingPathVariableException} is deliberately absent — a URI template variable
+     * the handler declares but the mapping never supplies is a server bug, and 500 is right.
+     * {@code HandlerMethodValidationException} needs no entry either: it extends
+     * {@link ErrorResponseException}, so {@link #handleErrorResponse} already carries it.
+     */
+    @ExceptionHandler({
+            MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class,
+            ConstraintViolationException.class
+    })
+    ProblemDetail handleBindingFailure(Exception e, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "Bad request", e.getMessage(), request, e);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
