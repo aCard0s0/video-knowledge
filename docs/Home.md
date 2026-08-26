@@ -14,6 +14,7 @@ update those pointers when you move/rename code.
 - Download pipeline: [VidIngest - Download Pipeline](vidingest/VidIngest%20-%20Download%20Pipeline.md)
 - Knowledge extraction: [VidIngest - Knowledge Extraction](vidingest/VidIngest%20-%20Knowledge%20Extraction.md)
 - Per-phase rerun: [VidIngest - Per-Phase Rerun](vidingest/VidIngest%20-%20Per-Phase%20Rerun.md)
+- Web UI: [VidIngest - Web UI](vidingest/VidIngest%20-%20Web%20UI.md)
 - YouTube channels: [VidIngest - YouTube Channels](vidingest/VidIngest%20-%20YouTube%20Channels.md)
 - CLI commands: [VidIngest - CLI Commands](vidingest/VidIngest%20-%20CLI%20Commands.md)
 - MCP with LM Studio: [VidIngest - MCP with LM Studio](vidingest/VidIngest%20-%20MCP%20with%20LM%20Studio.md)

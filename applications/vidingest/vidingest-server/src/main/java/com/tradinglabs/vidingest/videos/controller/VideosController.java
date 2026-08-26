@@ -56,7 +56,7 @@ public class VideosController {
 
     @PostMapping("/download")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Download a video", description = "Downloads a video using yt-dlp. Supports disk-only (no DB) and database-backed modes.")
+    @Operation(operationId = "downloadVideo", summary = "Download a video", description = "Downloads a video using yt-dlp. Supports disk-only (no DB) and database-backed modes.")
     public DownloadVideoResponse download(@Valid @RequestBody DownloadVideoRequest request) throws IOException {
         validateHttpUrl(request.url());
         if (request.diskOnly()) {
@@ -71,7 +71,7 @@ public class VideosController {
     }
 
     @GetMapping
-    @Operation(summary = "List videos")
+    @Operation(operationId = "listVideos", summary = "List videos")
     public PageResponse<VideoSummary> list(
             @RequestParam(name = "status", required = false) String status,
             @RequestParam(name = "source", required = false) String source,
@@ -87,7 +87,7 @@ public class VideosController {
     }
 
     @GetMapping("/{videoId}")
-    @Operation(summary = "Get a video by id")
+    @Operation(operationId = "getVideo", summary = "Get a video by id")
     public VideoSummary get(@PathVariable UUID videoId) {
         Video video = videoQueryService.getById(videoId);
         return videoSummaryMapper.toSummary(video);
@@ -121,7 +121,7 @@ public class VideosController {
     }
 
     @DeleteMapping("/{videoId}")
-    @Operation(summary = "Delete a video", description = "Deletes the video DB record and its file on disk (best-effort).")
+    @Operation(operationId = "deleteVideo", summary = "Delete a video", description = "Deletes the video DB record and its file on disk (best-effort).")
     public DeleteVideoResult delete(@PathVariable UUID videoId) throws IOException {
         videoDeleteService.deleteVideo(videoId);
         return new DeleteVideoResult("deleted", videoId.toString());

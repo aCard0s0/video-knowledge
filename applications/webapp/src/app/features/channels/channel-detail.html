@@ -1,0 +1,127 @@
+@if (channel.value(); as ch) {
+  <div class="head">
+    <div>
+      <h1 class="mono">{{ ch.displayName || 'channel' }}</h1>
+      <p class="sub mono sm">
+        <vk-status [status]="ch.status" />
+        · {{ ch.videoCount ?? 0 }} in catalog · synced
+        <span [title]="absoluteTime(ch.lastSyncSuccessAt)">{{ ch.lastSyncSuccessAt ? age(ch.lastSyncSuccessAt) : 'never' }}</span>
+      </p>
+    </div>
+    <div class="head-actions">
+      <a class="mono sm" routerLink="/channels">← all channels</a>
+      <a class="mono sm" [href]="ch.url" target="_blank" rel="noopener">Open on YouTube ↗</a>
+      <button type="button" [disabled]="busy()" (click)="sync()">{{ busy() ? 'Working…' : 'Sync now' }}</button>
+    </div>
+  </div>
+
+  @if (!blank(ch.lastError)) {
+    <p class="panel sync-error mono sm failed">{{ ch.lastError }}</p>
+  }
+
+  <vk-problem [failure]="listFailure()" />
+
+  @if (started(); as run) {
+    <p class="panel started mono sm" aria-live="polite">
+      Run started for {{ run.items?.length ?? 0 }} video(s).
+      <a [routerLink]="['/runs', run.runId]">Watch run {{ run.runId?.slice(0, 8) }} →</a>
+    </p>
+  }
+
+  <section class="panel">
+    <div class="panel-head">
+      <span class="eyebrow">uploads</span>
+      <div class="head-tools mono sm">
+        <label class="inline">
+          <input type="checkbox" [checked]="onlyNew()" (change)="onlyNew.set(!onlyNew())" />
+          not ingested only
+        </label>
+        <button class="btn-sm" type="button" [disabled]="newOnPage() === 0" (click)="pickAllNew()">
+          Select {{ newOnPage() }} new on this page
+        </button>
+        @if (pickedCount() > 0) {
+          <button class="btn-sm" type="button" (click)="clearPicks()">Clear {{ pickedCount() }}</button>
+        }
+      </div>
+    </div>
+
+    @if (rows().length === 0 && allRows().length > 0) {
+      <!-- Filtered to nothing, but the catalog page is not empty: keep the pager reachable. -->
+      <p class="quiet muted">
+        All {{ allRows().length }} uploads on this page are already ingested. Try the next page, or
+        untick “not ingested only”.
+      </p>
+      <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
+    } @else if (rows().length === 0) {
+      <vk-empty
+        [message]="
+          onlyNew()
+            ? 'Every upload in this catalog is already ingested.'
+            : 'This catalog is empty. Sync the channel to fetch its uploads.'
+        "
+      >
+        <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
+      </vk-empty>
+    } @else {
+      <div class="table-scroll">
+        <table class="grid" translate="no">
+          <thead>
+            <tr>
+              <th scope="col" class="pick"><span class="sr-only">Selected</span></th>
+              <th scope="col">Title</th>
+              <th scope="col" class="num">Published</th>
+              <th scope="col">State</th>
+              <th scope="col"><span class="sr-only">Link</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (video of rows(); track video.id) {
+              <tr [class.on]="isPicked(video)">
+                <td class="pick">
+                  <label class="sr-only" [attr.for]="'pick-' + video.id">Select {{ video.title }}</label>
+                  <input
+                    [id]="'pick-' + video.id"
+                    type="checkbox"
+                    [checked]="isPicked(video)"
+                    [disabled]="video.ingested"
+                    (change)="toggle(video)"
+                  />
+                </td>
+                <td class="truncate" [title]="video.title">{{ video.title }}</td>
+                <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
+                <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>
+                <td><a class="mono sm" [href]="video.watchUrl" target="_blank" rel="noopener">watch ↗</a></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
+    }
+  </section>
+
+  <section class="panel ingest">
+    <div class="panel-head">
+      <span class="eyebrow">ingest selection</span>
+      <span class="mono sm" [class.warn]="overLimit()">
+        {{ pickedCount() }} selected
+        @if (overLimit()) {
+          · over the {{ maxPerRun }}-video limit for one run
+        }
+      </span>
+    </div>
+    <div class="ingest-body">
+      <vk-phase-picker [(skipped)]="skipped" />
+      <button class="btn-primary" type="button" [disabled]="busy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
+        {{ busy() ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
+      </button>
+    </div>
+  </section>
+} @else if (channel.error()) {
+  <h1 class="mono">channel</h1>
+  <vk-problem [failure]="listFailure()" />
+  <a class="mono sm" routerLink="/channels">← all channels</a>
+} @else {
+  <p class="quiet muted mono">Loading channel…</p>
+}

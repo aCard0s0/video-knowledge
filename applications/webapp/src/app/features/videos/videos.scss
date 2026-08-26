@@ -1,0 +1,15 @@
+.filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.filters select,
+.filters input {
+  font-size: var(--fs-sm);
+  padding: 4px 8px;
+}
+
+.filters input {
+  width: 22ch;
+}

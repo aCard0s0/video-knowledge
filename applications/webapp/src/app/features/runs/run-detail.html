@@ -1,0 +1,149 @@
+@if (run.value(); as detail) {
+  <div class="head">
+    <div>
+      <h1 class="mono">run <span class="id">{{ detail.id?.slice(0, 8) }}</span></h1>
+      <p class="sub mono sm">
+        <vk-status [status]="detail.status" />
+        · {{ items().length }} item(s) · started
+        <span [title]="absoluteTime(detail.createdAt)">{{ age(detail.createdAt) }}</span>
+        @if (detail.channelName) {
+          · {{ detail.channelName }}
+        }
+      </p>
+    </div>
+
+    <div class="head-actions">
+      <a class="mono sm" routerLink="/runs">← all runs</a>
+      @if (retryable()) {
+        <button class="btn-primary" type="button" [disabled]="retrying()" (click)="retryRun()">
+          {{ retrying() ? 'Retrying…' : 'Retry run' }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <vk-problem [failure]="failure()" />
+  <vk-problem [failure]="retryFailure()" />
+
+  @if (retryable()) {
+    <details class="panel opts">
+      <summary class="eyebrow">retry options</summary>
+      <div class="opts-body">
+        <vk-phase-picker [(skipped)]="retrySkips" />
+        <p class="mono muted sm">
+          Applies to both buttons below. A retry re-runs every phase the item has not completed.
+        </p>
+      </div>
+    </details>
+  }
+
+  <section class="panel">
+    <div class="panel-head">
+      <span class="eyebrow">items — click a phase to filter the trail</span>
+      @if (auditTruncated()) {
+        <span class="mono warn sm">
+          showing {{ events().length }} of {{ auditTotal() }} events — durations may be partial
+        </span>
+      }
+    </div>
+
+    <ul class="items">
+      @for (item of items(); track item.itemId) {
+        <li class="item" [class.on]="item.itemId === selectedId()">
+          <div class="item-head">
+            <button class="pick mono" type="button" (click)="select(item)" [attr.aria-pressed]="item.itemId === selectedId()">
+              <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
+              <vk-status [status]="item.status" />
+            </button>
+
+            <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+
+            <span class="meta mono sm muted">
+              attempt {{ item.attempt }} · {{ laneTotal(item) }}
+              @if (!blank(item.failedPhase) && item.failedPhase !== 'DONE') {
+                · died in <span class="failed">{{ item.failedPhase }}</span>
+              }
+            </span>
+
+            <span class="item-actions">
+              @if (item.videoId) {
+                <a class="mono sm" [routerLink]="['/videos', item.videoId]">video →</a>
+              }
+              @if (item.status !== 'COMPLETED' && !live(item)) {
+                <button class="btn-sm" type="button" [disabled]="retrying()" (click)="retryItem(item)">Retry item</button>
+              }
+            </span>
+          </div>
+
+          <vk-lane [segments]="lane(item)" (pick)="pickPhase(item, $event)" />
+
+          <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+        </li>
+      } @empty {
+        <li class="quiet muted">This run has no items — nothing was accepted when it was created.</li>
+      }
+    </ul>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <span class="trail-head">
+        <span class="eyebrow">trail</span>
+        @if (selected(); as item) {
+          <span class="mono sm muted trail-url" [title]="item.url">{{ item.url }}</span>
+        }
+        @if (phaseFilter(); as phase) {
+          <span class="mono sm">{{ phase }}</span>
+        }
+      </span>
+      @if (phaseFilter()) {
+        <button class="btn-sm" type="button" (click)="phaseFilter.set(null)">Clear phase filter</button>
+      }
+    </div>
+
+    @if (timeline().length === 0) {
+      <p class="quiet muted">No events recorded for this item yet.</p>
+    } @else {
+      <div class="table-scroll">
+        <table class="grid" translate="no">
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col" class="num">Gap</th>
+              <th scope="col">Event</th>
+              <th scope="col">Phase</th>
+              <th scope="col">From</th>
+              <th scope="col">Status</th>
+              <th scope="col">Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (event of timeline(); track event.id; let i = $index) {
+              <tr>
+                <td class="mono sm" [title]="absoluteTime(event.occurredAt)">{{ age(event.occurredAt) }}</td>
+                <td class="num sm muted">{{ gap(event, i) }}</td>
+                <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
+                <td class="mono sm">{{ event.phase }}</td>
+                <td class="mono sm muted">{{ event.previousPhase || '—' }}</td>
+                <td><vk-status [status]="event.status" /></td>
+                <td class="detail">
+                  @if (!blank(event.errorCode) || !blank(event.error)) {
+                    <vk-fault [errorCode]="event.errorCode" [error]="event.error" />
+                  } @else {
+                    <span class="muted">—</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+} @else if (run.error()) {
+  <h1 class="mono">run</h1>
+  <vk-problem [failure]="failure()" />
+  <a class="mono sm" routerLink="/runs">← all runs</a>
+} @else {
+  <p class="quiet muted mono">Loading run…</p>
+}

@@ -45,7 +45,7 @@ public class PipelineController {
     private final PipelineAuditQueryService pipelineAuditQueryService;
 
     @PostMapping
-    @Operation(summary = "Create a pipeline run", description = "Starts one asynchronous pipeline run containing one run item per accepted URL.")
+    @Operation(operationId = "createRuns", summary = "Create a pipeline run", description = "Starts one asynchronous pipeline run containing one run item per accepted URL.")
     public ResponseEntity<CreatePipelineRunResponse> create(@Valid @RequestBody CreatePipelineRunRequest request) {
         CreatePipelineRunResponse response = pipelineIntakeService.intake(
                 request.urls(), SkipPhasesParser.parse(request.skipPhases()));
@@ -54,7 +54,7 @@ public class PipelineController {
     }
 
     @GetMapping
-    @Operation(summary = "List pipeline runs")
+    @Operation(operationId = "listRuns", summary = "List pipeline runs")
     public PageResponse<RunSummary> list(
             @RequestParam(name = "status", defaultValue = "ALL") String status,
             @RequestParam(name = "page", required = false) Integer page,
@@ -72,7 +72,7 @@ public class PipelineController {
     @PostMapping("/{runId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(
-            summary = "Retry a failed run",
+            operationId = "retryRun", summary = "Retry a failed run",
             description = "Resets the run state and retries all FAILED run items asynchronously using the same run id."
     )
     public CreatePipelineRunResponse retry(@PathVariable UUID runId, @Valid @RequestBody RetryRunRequest request) {
@@ -82,7 +82,7 @@ public class PipelineController {
 
     @PostMapping("/{runId}/items/{itemId}/retry")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @Operation(summary = "Retry a failed run item", description = "Resets a single FAILED run item and retries it asynchronously using the same run id and item id.")
+    @Operation(operationId = "retryRunItem", summary = "Retry a failed run item", description = "Resets a single FAILED run item and retries it asynchronously using the same run id and item id.")
     public CreatePipelineRunResponse retryItem(
             @PathVariable UUID runId,
             @PathVariable UUID itemId,
@@ -93,7 +93,7 @@ public class PipelineController {
     }
 
     @GetMapping("/{runId}")
-    @Operation(summary = "Get an pipeline run by id")
+    @Operation(operationId = "getRun", summary = "Get an pipeline run by id")
     public RunDetails get(@PathVariable UUID runId) {
         return runDetailsMapper.toDetails(runQueryService.getPipelineRun(runId));
     }

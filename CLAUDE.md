@@ -225,6 +225,75 @@ use the real phase impls with mocked services. ffmpeg is faked by overriding
 `com.sun.net.httpserver.HttpServer` on port 0. Services that take `TransactionOperations`
 get `TransactionOperations.withoutTransaction()` in unit tests — no mocking needed.
 
+## Frontend
+
+The operator console lives at [applications/webapp/](applications/webapp/) — **Angular 22, zoneless** (no zone.js),
+standalone components, signals, `@if`/`@for`, `provideHttpClient(withFetch())`, typed reactive
+forms, lazy routes, SCSS. No component library. See
+[docs/vidingest/VidIngest - Web UI.md](docs/vidingest/VidIngest%20-%20Web%20UI.md) for the screens,
+the design tokens and the measured API findings behind them.
+
+```bash
+cd applications/webapp && npm start
+```
+
+`ng serve` runs on :4200 and proxies `/vidingest` to the server on :8051
+([proxy.conf.json](applications/webapp/proxy.conf.json)), so the app is same-origin in dev and in production
+(the build is served from `classpath:/static` under the `/vidingest` context path). Every request
+is relative — there is no environment file and no CORS config.
+
+**The API client is generated, never hand-written.**
+
+```bash
+cd applications/webapp && npm run api:gen
+```
+
+That curls the live spec to `openapi/vidingest.json` and regenerates
+`src/app/api/generated/` (openapi-generator 7, `typescript-angular`). Commit the snapshot and the
+generated tree together; never edit the generated tree.
+
+**`--type-mappings=set=Array` is load-bearing.** A Java `Set` field (`skipPhases`) becomes
+`uniqueItems: true`, which generates `Set<string>` — and `JSON.stringify(new Set(['OCR']))` is
+`"{}"`, so the field silently reaches the server as an object and the request 400s. Keep the flag
+on any regeneration.
+
+Every controller method carries an explicit `@Operation(operationId = …)`. Without them springdoc
+derives ids from method names, they collide across controllers, and the client gets `list1()`,
+`get2()`, `_delete()`. Add one when you add an endpoint.
+
+What the generator cannot give us, and therefore lives by hand in `src/app/core/`:
+
+- `domain.ts` — the seven server enums (`RunStatus`, `PipelineRunPhase`, `PipelineErrorCode`,
+  `PipelineRunItemEventType`, `VideoStatus`, `YoutubeChannelStatus`, `TranscriptionStatus`).
+  springdoc emits them as bare `string`. **Update this file when a server enum gains a constant.**
+- `problem.ts` — the RFC 9457 `ProblemDetail` envelope. No operation in the spec documents a
+  4xx/5xx, so error bodies generate as `any`. `errorCode` is a *pipeline* field, never an HTTP one;
+  the two are rendered by different components and never merged.
+- `time.ts` — server timestamps are naive `LocalDateTime`; the container runs UTC and the browser
+  may not, so they are parsed as UTC. Without that, ages read an hour off.
+
+Three API facts worth not rediscovering: a **FAILED run still reports `phase: "DONE"`** (use
+`item.failedPhase`); **`?live=true` on `/pipelines` is only honoured together with `ids`** — alone
+it silently returns every run, so the board queries `status=IN_PROGRESS` and `status=PENDING`; and
+**`POST /pipelines` answers 400 with a `CreatePipelineRunResponse` body** (not a ProblemDetail)
+when every URL was rejected.
+
+The container runs `-Duser.timezone=UTC` (see the Dockerfile), which is what makes the
+parse-as-UTC rule in `core/time.ts` correct rather than a guess.
+
+Production serving is one jar: the Dockerfile builds the console in a node stage with
+`--base-href=/vidingest/` and copies it into `resources/static/`, and
+`config/SpaStaticResourceConfig` forwards client routes to `index.html` while leaving `api/`,
+`actuator`, `v3/` and `swagger-ui` to 404 as JSON.
+
+Design tokens are [applications/webapp/src/styles/_tokens.scss](applications/webapp/src/styles/_tokens.scss). They
+override [design-system/vidingest-console/MASTER.md](design-system/vidingest-console/MASTER.md),
+which is regenerable search-CLI output and never hand-edited (it is a light-mode landing-page
+template with several unusable values). The five design skills in [.claude/skills/](.claude/skills/)
+run in a fixed order — see [docs/frontend-skills.md](docs/frontend-skills.md). Never run
+`ui-ux-pro-max` and `frontend-design` in the same turn. **`shadcn` is disabled in
+`.claude/settings.local.json`: it is React-only and cannot help here.**
+
 ## Conventions
 
 Docs in [docs/](docs/) are treated as source-of-truth companions to the code: each page

@@ -1,0 +1,7 @@
+{
+  "/vidingest": {
+    "target": "http://localhost:8051",
+    "secure": false,
+    "changeOrigin": false
+  }
+}

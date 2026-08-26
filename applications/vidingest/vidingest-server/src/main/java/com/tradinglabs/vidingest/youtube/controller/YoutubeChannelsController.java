@@ -38,14 +38,14 @@ public class YoutubeChannelsController {
     private final YoutubeChannelCommandService youtubeChannels;
 
     @PostMapping
-    @Operation(summary = "Add a YouTube channel", description = "Stores the channel URL and prepares it for periodic sync.")
+    @Operation(operationId = "createChannel", summary = "Add a YouTube channel", description = "Stores the channel URL and prepares it for periodic sync.")
     public ResponseEntity<YoutubeChannelSummary> create(@Valid @RequestBody CreateYoutubeChannelRequest request) {
         YoutubeChannelSummary summary = youtubeChannels.createChannel(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(summary);
     }
 
     @GetMapping
-    @Operation(summary = "List YouTube channels")
+    @Operation(operationId = "listChannels", summary = "List YouTube channels")
     public PageResponse<YoutubeChannelSummary> list(
             @RequestParam(name = "page", required = false) Integer page,
             @RequestParam(name = "size", required = false) Integer size
@@ -54,21 +54,21 @@ public class YoutubeChannelsController {
     }
 
     @GetMapping("/{channelId}")
-    @Operation(summary = "Get a YouTube channel by id")
+    @Operation(operationId = "getChannel", summary = "Get a YouTube channel by id")
     public YoutubeChannelSummary get(@PathVariable UUID channelId) {
         return youtubeChannels.getChannel(channelId);
     }
 
     @PostMapping("/{channelId}/sync")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Sync a YouTube channel now", description = "Refreshes the stored list of available videos for the channel using yt-dlp.")
+    @Operation(operationId = "syncChannel", summary = "Sync a YouTube channel now", description = "Refreshes the stored list of available videos for the channel using yt-dlp.")
     public YoutubeChannelSummary sync(@PathVariable UUID channelId) throws IOException {
         log.info("REST sync YouTube channel: channelId={}", channelId);
         return youtubeChannels.syncChannel(channelId);
     }
 
     @GetMapping("/{channelId}/videos")
-    @Operation(summary = "List available videos for a channel")
+    @Operation(operationId = "listChannelVideos", summary = "List available videos for a channel")
     public PageResponse<YoutubeChannelVideoSummary> listVideos(
             @PathVariable UUID channelId,
             @RequestParam(name = "page", required = false) Integer page,
@@ -79,7 +79,7 @@ public class YoutubeChannelsController {
 
     @PostMapping("/{channelId}/pipelines")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    @Operation(summary = "Create a pipeline run from selected channel videos",
+    @Operation(operationId = "createRunsFromChannel", summary = "Create a pipeline run from selected channel videos",
             description = "Expands selected youtubeVideoIds into watch URLs and submits a batch pipeline run.")
     public CreatePipelineRunResponse createPipelineRun(
             @PathVariable UUID channelId,

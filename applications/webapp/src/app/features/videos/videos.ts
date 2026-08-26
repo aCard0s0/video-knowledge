@@ -1,0 +1,99 @@
+import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { rxResource } from '@angular/core/rxjs-interop';
+
+import { VideoSummary, VideosService } from '../../api/generated';
+import { VIDEO_STATUSES, statusVar } from '../../core/domain';
+import { absoluteTime, humanAge } from '../../core/time';
+import { Poller } from '../../core/poller';
+import { ApiFailure, toApiFailure } from '../../core/problem';
+import { syncQueryParams } from '../../core/url-state';
+import { StatusBadge } from '../../ui/status-badge';
+import { Pager } from '../../ui/pager';
+import { Empty } from '../../ui/empty';
+import { Problem } from '../../ui/problem';
+
+const PAGE_SIZE = 25;
+
+@Component({
+  selector: 'vk-videos',
+  imports: [RouterLink, StatusBadge, Pager, Empty, Problem],
+  templateUrl: './videos.html',
+  styleUrl: './videos.scss',
+})
+export class Videos {
+  private readonly videos = inject(VideosService);
+  protected readonly poller = inject(Poller);
+
+  protected readonly statuses = ['ALL', ...VIDEO_STATUSES];
+  protected readonly status = signal('ALL');
+  protected readonly channel = signal('');
+  protected readonly page = signal(0);
+  protected readonly size = PAGE_SIZE;
+
+  /** Two-step delete: the first click arms the row, the second sends it. */
+  protected readonly armed = signal<string | null>(null);
+  protected readonly deleting = signal(false);
+  protected readonly failure = signal<ApiFailure | null>(null);
+
+  constructor() {
+    syncQueryParams({ status: this.status, channel: this.channel, page: this.page });
+  }
+
+  protected readonly list = rxResource({
+    params: () => ({ status: this.status(), channel: this.channel().trim(), page: this.page() }),
+    stream: ({ params }) =>
+      this.videos.listVideos(
+        params.status === 'ALL' ? undefined : params.status,
+        undefined,
+        params.channel || undefined,
+        params.page,
+        PAGE_SIZE,
+      ),
+  });
+
+  protected readonly rows = computed(() => this.list.value()?.items ?? []);
+  protected readonly total = computed(() => this.list.value()?.total ?? 0);
+  protected readonly listFailure = computed(() => {
+    const err = this.list.error();
+    return err ? toApiFailure(err) : this.failure();
+  });
+
+  protected readonly statusVar = statusVar;
+  protected readonly absoluteTime = absoluteTime;
+
+  protected age(value: string | undefined): string {
+    return humanAge(value, this.poller.now());
+  }
+
+  protected setStatus(value: string): void {
+    this.status.set(value);
+    this.page.set(0);
+  }
+
+  protected setChannel(value: string): void {
+    this.channel.set(value);
+    this.page.set(0);
+  }
+
+  protected remove(video: VideoSummary): void {
+    if (!video.id) return;
+    if (this.armed() !== video.id) {
+      this.armed.set(video.id);
+      return;
+    }
+    this.deleting.set(true);
+    this.failure.set(null);
+    this.videos.deleteVideo(video.id).subscribe({
+      next: () => {
+        this.deleting.set(false);
+        this.armed.set(null);
+        this.list.reload();
+      },
+      error: (err: unknown) => {
+        this.deleting.set(false);
+        this.failure.set(toApiFailure(err));
+      },
+    });
+  }
+}

@@ -33,7 +33,7 @@ public class SearchController {
     private final SearchChunkResultMapper searchChunkResultMapper;
 
     @GetMapping
-    @Operation(summary = "Search similar context chunks")
+    @Operation(operationId = "searchChunks", summary = "Search similar context chunks")
     public List<SearchChunkResult> search(
             @RequestParam("query") @NotBlank String query,
             @RequestParam(name = "limit", defaultValue = "5") @Min(1) @Max(50) int limit

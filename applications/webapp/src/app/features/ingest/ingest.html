@@ -1,0 +1,123 @@
+<h1 class="mono">ingest</h1>
+<p class="prose sub">
+  One URL per line, up to {{ maxUrls }} per run. Anything yt-dlp can fetch works — the pipeline
+  reads metadata, downloads, and then runs the phases you leave enabled below.
+</p>
+
+<vk-problem [failure]="failure()" />
+
+<div class="split">
+  <form class="panel form" [formGroup]="form" (ngSubmit)="submit()">
+    <div class="field">
+      <label for="urls">Source URLs</label>
+      <textarea
+        id="urls"
+        rows="8"
+        spellcheck="false"
+        autocomplete="off"
+        placeholder="https://www.youtube.com/watch?v=…"
+        formControlName="urls"
+      ></textarea>
+
+      <p class="counts mono" [class.warn]="tooMany()">
+        {{ parsed().valid.length }} URL(s) ready
+        @if (parsed().duplicates > 0) {
+          · {{ parsed().duplicates }} duplicate(s) dropped
+        }
+        @if (parsed().invalid.length) {
+          · {{ parsed().invalid.length }} line(s) are not http(s) and will be left out
+        }
+        @if (tooMany()) {
+          · over the {{ maxUrls }}-URL limit for one run
+        }
+      </p>
+    </div>
+
+    <div class="field">
+      <vk-phase-picker [(skipped)]="skipped" />
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" type="submit" [disabled]="!canSubmit()">
+        {{ submitting() ? 'Starting…' : 'Ingest ' + parsed().valid.length + ' URL(s)' }}
+      </button>
+    </div>
+
+    @if (rejected().length) {
+      <div class="rejects" aria-live="polite">
+        <table class="grid" translate="no">
+          <caption class="eyebrow">
+            rejected — fix these and submit again
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">URL</th>
+              <th scope="col">Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of rejected(); track item.url) {
+              <tr>
+                <td class="mono truncate" [title]="item.url">{{ item.url }}</td>
+                <td class="reason">{{ item.reason }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </form>
+
+  <!--
+    The run you just started, advancing in place. Same lane component as the run screen, so what
+    you learn to read here is what you read when something breaks.
+  -->
+  <section class="panel watch">
+    @if (watched(); as run) {
+      <div class="panel-head">
+        <span class="eyebrow">started · {{ accepted().length }} accepted</span>
+        <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
+      </div>
+
+      <p class="watch-meta mono sm" aria-live="polite">
+        <vk-status [status]="run.status" />
+        <span class="muted">· {{ watchedItems().length }} item(s) · {{ age(run.createdAt) }}</span>
+      </p>
+
+      <ul class="watch-items">
+        @for (item of watchedItems(); track item.itemId) {
+          <li>
+            <div class="watch-item-head">
+              <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
+              <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+            </div>
+            <vk-lane [segments]="lane(item)" />
+            <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+          </li>
+        }
+      </ul>
+    } @else {
+      <div class="panel-head">
+        <span class="eyebrow">last five runs</span>
+        <a class="mono sm" routerLink="/runs">all runs →</a>
+      </div>
+
+      @if (recentRuns().length === 0) {
+        <p class="quiet muted">Nothing ingested yet. The run you start appears here and keeps advancing.</p>
+      } @else {
+        <ul class="recent">
+          @for (run of recentRuns(); track run.id) {
+            <li>
+              <span class="spine-dot" [style.background]="statusVar(run.status)" aria-hidden="true"></span>
+              <a class="mono sm" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
+              <span class="url truncate" [title]="run.videoTitle || run.videoUrl">
+                {{ run.videoTitle || run.videoUrl }}
+              </span>
+              <span class="mono sm muted">{{ age(run.createdAt) }}</span>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </section>
+</div>

@@ -92,7 +92,9 @@ def iter_target_files() -> list[Path]:
     pruned: list[Path] = []
     for c in candidates:
         parts = set(c.parts)
-        if {"target", ".git", "package"} & parts:
+        # node_modules and Angular's build cache arrived with applications/webapp; their
+        # vendored READMEs are not ours to keep link-clean.
+        if {"target", ".git", "package", "node_modules", ".angular", "dist"} & parts:
             continue
         pruned.append(c)
     return sorted(set(pruned))

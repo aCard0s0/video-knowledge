@@ -30,6 +30,7 @@ public class VideoPhaseController {
 
     @PostMapping(value = VidIngestApiPaths.VIDEO_PHASE_RUN, produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(
+            operationId = "runVideoPhase",
             summary = "Re-run one pipeline phase for an existing video",
             description = "Synchronous. Allowed phase values (case-insensitive, '-' or '_' separated): "
                     + "TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT. Each phase "

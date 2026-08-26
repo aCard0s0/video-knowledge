@@ -1,0 +1,65 @@
+// Design tokens — VidIngest console.
+//
+// Source: design-system/vidingest-console/MASTER.md (ui-ux-pro-max search CLI), with the
+// corrections recorded in docs/vidingest/VidIngest - Web UI.md. Where the two disagree, this
+// file wins: MASTER.md is a regenerable landing-page template with light-mode leftovers.
+//
+// Contrast ratios in comments are measured against --bg (#020617).
+
+:root {
+  // --- surface -------------------------------------------------------------
+  --bg: #020617;
+  --card: #0e1223; // one step up from --bg; elevation is a surface step, not a shadow
+  --muted: #1a1e2f; // row hover, inert fills
+  --border: #334155; // 1.95:1 — table rules only, never the sole state indicator
+
+  // --- text ----------------------------------------------------------------
+  --fg: #f8fafc; // 19.3:1
+  --fg-muted: #94a3b8; // 7.9:1
+  --ring: #ffffff; // 19.3:1 focus
+
+  // --- action --------------------------------------------------------------
+  --accent: #16a34a; // 6.1:1 — primary CTA only
+  --accent-fg: #020617;
+  --accent-hover: #15803d;
+
+  // --- status ramp ---------------------------------------------------------
+  // One green cannot mean both "running" and "completed".
+  --st-pending: #94a3b8; // 7.9:1
+  --st-running: #38bdf8; // 9.4:1
+  --st-done: #4ade80; // 11.6:1
+  --st-failed: #f87171; // 7.3:1 — FAILED text
+  --st-failed-fill: #dc2626; // 4.2:1 — fills, caps and borders only, never text
+  --st-cancelled: #64748b;
+  --st-warn: #f59e0b; // 9.4:1
+  --st-skipped: #2a3040; // hatched void in the lane
+
+  // --- spacing (kept from MASTER.md) --------------------------------------
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px; // data-dense: 12px, not 16px
+  --space-lg: 20px;
+  --space-xl: 32px;
+
+  // --- shape ---------------------------------------------------------------
+  --radius: 4px; // controls
+  --radius-panel: 6px;
+  --row-h: 32px;
+  --gutter-h: 28px;
+  --nav-w: 200px;
+  --nav-w-collapsed: 56px;
+
+  // --- type ----------------------------------------------------------------
+  --font-sans: 'Fira Sans', system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
+  --fs-xs: 11px; // eyebrows, table headers
+  --fs-sm: 12px; // ids, timestamps
+  --fs-md: 13px; // body, rows
+  --fs-lg: 15px;
+  --fs-title: 20px;
+
+  --t-fast: 150ms;
+  --t-med: 250ms;
+
+  color-scheme: dark;
+}

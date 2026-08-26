@@ -1,0 +1,54 @@
+<a class="skip" href="#main">Skip to content</a>
+
+<!--
+  Status gutter: a tmux-style strip, not a dashboard header. Every dependency the pipeline
+  needs, the age of the last poll, and a switch to stop polling — "live" is only claimed while
+  something is actually refreshing.
+-->
+<header class="gutter">
+  <div class="deps mono">
+    @if (ready.error()) {
+      <span class="chip bad">server unreachable</span>
+    } @else {
+      @for (check of checks(); track check.name) {
+        <span class="chip" [class.bad]="!check.ok" [title]="check.name + ': ' + check.value">
+          {{ check.name }} {{ check.ok ? 'ok' : 'down' }}
+        </span>
+      }
+    }
+    @if (ollama.error()) {
+      <span class="chip bad">ollama probe failed</span>
+    } @else if (ollama.value(); as o) {
+      <span class="chip" [class.bad]="!o.reachable" [title]="o.embedModel ? 'embed model: ' + o.embedModel : ''">
+        {{ ollamaLabel() }}
+      </span>
+    }
+  </div>
+
+  <div class="tick mono">
+    @if (poller.hidden()) {
+      <span class="muted">paused — tab hidden</span>
+    } @else if (poller.paused()) {
+      <span class="muted">paused</span>
+    } @else {
+      <span class="muted">updated {{ tickLabel() }}</span>
+    }
+    <button class="btn-sm" type="button" (click)="poller.toggle()" [attr.aria-pressed]="poller.paused()">
+      {{ poller.paused() ? 'Resume polling' : 'Pause polling' }}
+    </button>
+  </div>
+</header>
+
+<div class="frame">
+  <nav aria-label="Sections">
+    <a routerLink="/ingest" routerLinkActive="on">Ingest</a>
+    <a routerLink="/channels" routerLinkActive="on">Channels</a>
+    <a routerLink="/runs" routerLinkActive="on">Runs</a>
+    <a routerLink="/videos" routerLinkActive="on">Videos</a>
+    <a routerLink="/audit" routerLinkActive="on">Audit</a>
+  </nav>
+
+  <main id="main" tabindex="-1">
+    <router-outlet />
+  </main>
+</div>
