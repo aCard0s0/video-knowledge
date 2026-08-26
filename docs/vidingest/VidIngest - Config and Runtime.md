@@ -399,6 +399,46 @@ Tradey wiring (`scripts/tradey.sh`):
 - `ollama` is part of the `infra` group and starts automatically with `vidingest`.
 - Probe endpoints: `:9001/health` and `:8002/health` respectively.
 
+### PaddleOCR memory, and why OCR time tracks text density
+
+OCR cost is charged **per detected text line**, not per frame, because recognition runs once per
+detected box. Measured on one 157s video: a 4-line frame took 0.5s, a 141-line chart frame took
+17-19s, and the phase as a whole did 560 lines across 17 frames.
+
+That makes `paddleocr-server`'s memory limit load-dependent, and it was set too low. At
+`mem_limit: 3G` a text-dense frame put the container permanently in direct reclaim:
+
+```
+anon                     2.88G   against a 3G cap
+memory.events max        27179   hard-limit hits
+pgscan_direct            12.2M   pages scanned in synchronous reclaim
+workingset_refault_anon   3.8M   evicted, then faulted straight back
+oom_kill                     0   ← never failed, so it only looked like latency
+```
+
+Direct reclaim is charged to the allocating thread, so it landed on request latency and showed up
+as wild variance: the *same* frame took anywhere from 29s to 56s. The limit is now
+`${PADDLEOCR_MEM_LIMIT:-6G}`, at which every counter above reads zero and that frame settles at
+17-19s. Peak anon is 5.5G, so 6G is right-sized rather than generous — raise
+`PADDLEOCR_MEM_LIMIT` for denser sources, and check `memory.events` before blaming the CPU:
+
+```bash
+docker exec video-knowledge-paddleocr-server-1 \
+  sh -lc 'grep -E "^(anon|pgscan_direct|workingset_refault_anon) " /sys/fs/cgroup/memory.stat; cat /sys/fs/cgroup/memory.events'
+```
+
+Two things measured and rejected while tuning this. **Parallelising the per-frame loop**: four
+concurrent sidecar requests took 2.11s against 2.04s for four sequential ones — it is one uvicorn
+worker doing CPU-bound work, so concurrency buys nothing until the sidecar runs more workers, and
+each worker costs another ~5G. **`OCR_USE_ANGLE_CLS=false`**: it looked like a 30-40% win while the
+container was thrashing, but at 6G on/off measured 16.9-19.3s against 17.5-19.9s — the apparent
+gain was the reclaim, not the flag.
+
+`vidingest.ocr.max-results-per-video` (default 10000, `VIDINGEST_OCR_MAX_RESULTS_PER_VIDEO`) is a
+real ceiling on the work, not a post-hoc trim — `OcrService` tests it before each sidecar call and
+stops. At the ~0.28s per line above, though, 10000 rows is still ~45 minutes for a single video, so
+lower it for text-dense sources rather than relying on it as a safety net.
+
 ### Ollama memory tuning
 
 Knowledge extraction (chat model, e.g. `qwen2.5:14b-instruct` ~9 GB) runs alongside the
