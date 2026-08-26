@@ -4,7 +4,8 @@
 
 A correctness-only review of `applications/vidingest` — bugs, not design. Five defects, ranked by
 blast radius. Two of them were made worse by the lease landing in
-[#8](pr-008-phase-toggle-and-read-model.md).
+[#8](pr-008-phase-toggle-and-read-model.md). Carries an unrelated Java 25 → 26 toolchain bump as
+its last commit; see below for why it rode along.
 
 ## Problem
 
@@ -47,6 +48,10 @@ ownership claimed *before* the executor submit. Retry asks "is anyone running th
 matching on FAILED. The wipe in OCR and KNOWLEDGE moves after the loop into the insert's
 transaction. `@Transactional` comes off both yt-dlp paths. The row delete precedes the `rm`.
 
+Two commits follow the five: the `VIDINGEST_FFMPEG_TIMEOUT` / reconciler / lease knobs wired
+through compose, and the toolchain moved to Java 26 (`e3e2c13`) — both `java.version` properties,
+the enforcer floor, three Dockerfile ARGs, three compose blocks and the docs that name a version.
+
 ## Decisions
 
 - **Ownership and the lease are separate sets, not one.** `inFlightItemIds` is what the heartbeat
@@ -66,6 +71,14 @@ transaction. `@Transactional` comes off both yt-dlp paths. The row delete preced
   defect #5 removed from six services.
 - **Guards proven to have teeth**, per #5: `@Transactional` was re-added to `downloadToDatabase`
   and confirmed to fail `SubprocessTransactionBoundaryIntegrationTest` before being reverted.
+- **The Java 26 bump rode along instead of getting its own PR.** This PR already touched
+  `compose/services.yml`, `CLAUDE.md` and the docs, so a branch off main would have conflicted
+  with it, and stacking is what auto-closed PR #2 here. The cost is a decision record covering two
+  unrelated concerns; the alternative was a merge conflict or a wait. Enforcer floor went to
+  `[26,)` rather than staying permissive — with `maven.compiler.release=26` a JDK 25 toolchain
+  otherwise fails deep in javac instead of at the enforcer.
+- **`libraries/common-*` needed no edit** for the bump: they inherit `release` from the root
+  `pluginManagement` and never pinned a version of their own.
 
 ## Deliberately not done
 
@@ -85,6 +98,19 @@ transaction. `@Transactional` comes off both yt-dlp paths. The row delete preced
 - **`VideoPhaseRunnerService` still runs phases outside the ingestion gate.** An operator looping
   the rerun endpoint can spawn unbounded ffmpeg. Out of scope here, and it is an authenticated
   operator escape hatch by design.
+
+## Verification
+
+Three of the four planned live-stack checks pass end-to-end against real ffmpeg 8.0.1 and yt-dlp:
+the ffmpeg timeout fires and leaves no orphan process, a SIGKILL mid-batch leaves items the
+reconciler then reaps as `stuck PENDING in phase CREATED` with retry accepting all of them, and a
+dead ollama leaves the prior knowledge units untouched behind a 502.
+
+The fourth — no pooled connection held across yt-dlp — rests on
+`SubprocessTransactionBoundaryIntegrationTest`. A live probe sampling
+`hikaricp.connections.active` read 0 during a download, but the same metric reads 0 under 25
+concurrent DB-backed requests, so the instrument cannot resolve short checkouts and that reading
+proves nothing. A decisive live test needs an A/B against a pre-fix image; not done.
 
 ## Follow-ups
 
