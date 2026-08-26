@@ -7,6 +7,7 @@ import { VIDEO_STATUSES, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { Poller } from '../../core/poller';
 import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { clampPage } from '../../core/paging';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -38,6 +39,8 @@ export class Videos {
 
   constructor() {
     syncQueryParams({ status: this.status, channel: this.channel, page: this.page });
+    // Deleting the only row on the last page leaves this page past the end of the list.
+    clampPage(this.page, PAGE_SIZE, this.list);
   }
 
   protected readonly list = rxResource({

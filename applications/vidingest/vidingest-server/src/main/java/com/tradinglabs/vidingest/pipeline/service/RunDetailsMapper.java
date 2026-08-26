@@ -106,7 +106,11 @@ public class RunDetailsMapper {
                 videoCount,
                 itemDtos,
                 run.getCreatedAt() != null ? run.getCreatedAt().toString() : "",
-                run.getUpdatedAt() != null ? run.getUpdatedAt().toString() : ""
+                run.getUpdatedAt() != null ? run.getUpdatedAt().toString() : "",
+                // EnumSet iterates in enum order, so this arrives in pipeline order.
+                run.getSkipPhases() != null
+                        ? run.getSkipPhases().stream().map(Enum::name).toList()
+                        : List.of()
         );
     }
 

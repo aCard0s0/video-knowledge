@@ -54,6 +54,15 @@ public class IngestCommands {
      */
     private static final String DEFAULT_SKIP_PHASES = "DIARIZE,FRAME_SAMPLE,OCR,KNOWLEDGE";
 
+    /**
+     * Retry has no default of its own: omitting the option reuses the phase set the run was created
+     * with. A fixed default here would have retried every run with the same opinionated list,
+     * whatever the run itself was configured to do.
+     */
+    private static final String RETRY_SKIP_PHASES_HELP =
+            "Comma-separated optional phases to skip. Omit to retry with the phases the run itself "
+            + "was created with; pass an empty string to run every enabled phase.";
+
     private final VidingestClient client;
     private final VidingestClientProperties properties;
 
@@ -371,11 +380,12 @@ public class IngestCommands {
     @ShellMethod(key = "retry", value = "Retry a failed pipeline run by UUID")
     public String retry(
             @ShellOption(help = "Pipeline UUID") String pipelineId,
-            @ShellOption(help = SKIP_PHASES_HELP, defaultValue = DEFAULT_SKIP_PHASES) String skipPhases) {
+            @ShellOption(help = RETRY_SKIP_PHASES_HELP, defaultValue = ShellOption.NULL) String skipPhases) {
         try {
             UUID uuid = UUID.fromString(pipelineId);
+            // null, not an empty set: the server reads the run's own set when the field is absent.
             CreatePipelineRunResponse result = client.retryPipeline(uuid, new RetryRunRequest(
-                    parseSkipPhases(skipPhases)));
+                    skipPhases == null ? null : parseSkipPhases(skipPhases)));
             if (result.items() == null || result.items().isEmpty()) {
                 return "ERROR [Retry]: Server returned empty retry response";
             }

@@ -1,8 +1,9 @@
 import { Component, computed, inject } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { HealthService } from './api/generated';
+import { HealthService, ReadinessResult } from './api/generated';
 import { Poller } from './core/poller';
 import { humanDuration } from './core/time';
 
@@ -30,8 +31,30 @@ export class App {
     );
   }
 
+  /**
+   * Readiness answers **503 with the full ReadinessResult** when a check fails
+   * (`HealthController.readiness`), so the error body *is* the report — not a reason to discard it.
+   * "videoPath not-writable: /data/videos" is the whole diagnosis, and it only ever arrives on a
+   * failing response. Treating any error as "server unreachable" sent the operator to check a
+   * server that was up and had already named the thing that broke.
+   *
+   * Status 0 — nothing answered — is the only unreachable there is. Anything else that is not a
+   * ReadinessResult (a proxy's HTML error page) has no checks to show, so it reads unreachable too.
+   */
+  private readonly readiness = computed<ReadinessResult | null>(() => {
+    if (this.ready.hasValue()) return this.ready.value() ?? null;
+    const err = this.ready.error();
+    const body = err instanceof HttpErrorResponse && err.status !== 0 ? err.error : null;
+    // `checks` is what makes it a report: a 503 from a filter or a proxy carries a ProblemDetail or
+    // an HTML page, and neither has anything to show, so both read unreachable.
+    const report = typeof body === 'object' && body !== null && 'checks' in body;
+    return report ? (body as ReadinessResult) : null;
+  });
+
+  protected readonly unreachable = computed(() => !!this.ready.error() && !this.readiness());
+
   protected readonly checks = computed(() =>
-    Object.entries(this.ready.value()?.checks ?? {}).map(([name, value]) => ({
+    Object.entries(this.readiness()?.checks ?? {}).map(([name, value]) => ({
       name,
       value,
       ok: String(value).startsWith('ok'),

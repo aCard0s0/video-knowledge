@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
-import { Observable, of, switchMap } from 'rxjs';
+import { Observable } from 'rxjs';
 
 import {
   CreatePipelineRunResponse,
@@ -22,6 +22,7 @@ import {
 } from '../../core/domain';
 import { absoluteTime, clockTime, humanAge, humanDuration, msBetween } from '../../core/time';
 import { LaneSegment, buildLanes, laneTotalMs } from '../../core/lane';
+import { auditTail } from '../../core/audit';
 import { ApiFailure, toApiFailure } from '../../core/problem';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
@@ -29,16 +30,6 @@ import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
 import { Problem } from '../../ui/problem';
 import { PhasePicker } from '../../ui/phase-picker';
-
-/**
- * One request for every lane on the screen: the run-level audit feed carries every item's events,
- * so a 40-item run costs two polls, not forty-one.
- *
- * 500 is the server's own `MAX_PAGE_SIZE` in `PipelineAuditQueryService`, which silently clamps
- * anything larger — asking for 1000 and reporting "showing 500 of N" made the cap look like the
- * client's choice when it was never honoured.
- */
-const AUDIT_FETCH = 500;
 
 @Component({
   selector: 'vk-run-detail',
@@ -58,21 +49,13 @@ export class RunDetail {
   });
 
   /**
-   * The trail is ascending, so page 0 is the *oldest* window. On a run past the cap that dropped
-   * the ITEM_FAILED — the one event the screen exists to show — while the banner only warned that
-   * durations might be partial. Overshoot once and take the last page instead: losing the early
-   * phases of a very long run costs a duration, losing the tail costs the diagnosis.
+   * One request for every lane on the screen, not one per item: the run-level feed carries every
+   * item's events. `auditTail` takes whole pages from the *end* of that ascending feed — see there
+   * for why the last page on its own was not the last window.
    */
   protected readonly audit = rxResource({
     params: () => ({ id: this.runId() }),
-    stream: ({ params }) =>
-      this.pipelines.auditRun(params.id, 0, AUDIT_FETCH).pipe(
-        switchMap((first) => {
-          const total = first.total ?? 0;
-          if (total <= AUDIT_FETCH) return of(first);
-          return this.pipelines.auditRun(params.id, Math.floor((total - 1) / AUDIT_FETCH), AUDIT_FETCH);
-        }),
-      ),
+    stream: ({ params }) => auditTail(this.pipelines, params.id),
   });
 
   protected readonly retrying = signal(false);
@@ -156,20 +139,18 @@ export class RunDetail {
   );
 
   /**
-   * Which optional phases this run already skipped, as a stable key.
+   * Which optional phases this run skips, as a stable key.
    *
-   * A string, not an array, because it is the source of a `linkedSignal` below: the lanes rebuild
-   * on every poll (and every second while something is live), and an array would be a fresh
-   * reference each time, resetting the picker under the operator's hands.
+   * Straight from `RunDetails.skipPhases` — the set persisted on the run row. This used to be read
+   * off the lane, which cannot answer it: a phase *after* the one that failed was never reached,
+   * and the lane draws that the same way it draws a phase that was never reached because it was
+   * turned off. A run that skipped OCR and died in DOWNLOAD therefore reported nothing skipped, and
+   * every retry from here silently switched OCR and KNOWLEDGE back on.
+   *
+   * A joined string, not the array, because it is the source of a `linkedSignal` below: the array
+   * is a fresh reference on every poll and would reset the picker under the operator's hands.
    */
-  private readonly skippedByRun = computed(() => {
-    const drawn = this.items().find((item) => this.lane(item).length > 0);
-    if (!drawn) return '';
-    return this.lane(drawn)
-      .filter((s) => s.state === 'skipped')
-      .map((s) => s.phase as string)
-      .join(',');
-  });
+  private readonly skippedByRun = computed(() => (this.detail()?.skipPhases ?? []).join(','));
 
   /**
    * Seeded from what the run actually skipped; the operator's edit wins after that.

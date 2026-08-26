@@ -9,7 +9,9 @@ import lombok.Builder;
 import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -49,6 +51,19 @@ public class PipelineRun {
 
     @Column(name = "video_url", columnDefinition = "TEXT")
     private String videoUrl;
+
+    /**
+     * The optional phases this run opted out of.
+     *
+     * <p>Stored because a retry has to reproduce the run it is retrying, and nothing else records
+     * what the operator turned off: the runs board has no phase picker at all, and reconstructing
+     * the set from the audit trail cannot work — a phase after the one that failed was never
+     * reached, which is indistinguishable from skipped.
+     */
+    @Convert(converter = PhaseSetConverter.class)
+    @Column(name = "skip_phases", columnDefinition = "TEXT")
+    @Builder.Default
+    private Set<PipelineRunPhase> skipPhases = EnumSet.noneOf(PipelineRunPhase.class);
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

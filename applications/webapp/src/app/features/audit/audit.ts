@@ -7,6 +7,7 @@ import { EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
 import { toApiFailure, valueOf } from '../../core/problem';
+import { clampPage } from '../../core/paging';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -67,6 +68,8 @@ export class Audit {
       to: this.to,
       page: this.page,
     });
+    // A shared link carries its page: ?page=9&eventType=ITEM_FAILED on a feed with three failures.
+    clampPage(this.page, PAGE_SIZE, this.list);
     this.poller.every(
       () => POLL_IDLE,
       () => this.list.reload(),

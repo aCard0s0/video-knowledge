@@ -110,7 +110,7 @@ public class PipelineService {
         }
 
         String previewUrl = urls.get(0);
-        PipelineRun run = runLifecycle.createPipelineRun(previewUrl);
+        PipelineRun run = runLifecycle.createPipelineRun(previewUrl, skipPhases);
         List<PipelineRunItem> items = runItemLifecycleService.createItems(run.getId(), urls);
 
         log.info("Pipeline run started: runId={}, items={}, urls={}, skipPhases={}",
@@ -128,10 +128,15 @@ public class PipelineService {
         return new BatchEnqueueResult(run.getId(), enqueued);
     }
 
-    public CreatePipelineRunResponse enqueueRetryBatch(UUID runId, Set<PipelineRunPhase> skipPhases) {
+    /**
+     * @param requestedSkips the phases this attempt must skip, or {@code null} to reuse the run's
+     *                       own set — see {@link #resolveSkips}.
+     */
+    public CreatePipelineRunResponse enqueueRetryBatch(UUID runId, Set<PipelineRunPhase> requestedSkips) {
+        Set<PipelineRunPhase> skipPhases = resolveSkips(runId, requestedSkips);
         List<PipelineRunItem> items = runItemLifecycleService.listItems(runId);
         if (items.isEmpty()) {
-            PipelineRun run = runLifecycle.prepareRetry(runId);
+            PipelineRun run = runLifecycle.prepareRetry(runId, skipPhases);
             String url = run.getVideoUrl();
             if (url == null || url.isBlank()) {
                 return new CreatePipelineRunResponse(runId.toString(), List.of(new CreatePipelineRunResponse.ItemResult(
@@ -173,7 +178,7 @@ public class PipelineService {
                     .toList());
         }
 
-        runLifecycle.prepareRetry(runId);
+        runLifecycle.prepareRetry(runId, skipPhases);
 
         Set<UUID> accepted = retryable.stream().map(PipelineRunItem::getId).collect(Collectors.toSet());
         List<CreatePipelineRunResponse.ItemResult> results = items.stream()
@@ -229,8 +234,13 @@ public class PipelineService {
                 reason);
     }
 
-    public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, Set<PipelineRunPhase> skipPhases) {
+    /**
+     * @param requestedSkips the phases this attempt must skip, or {@code null} to reuse the run's
+     *                       own set — see {@link #resolveSkips}.
+     */
+    public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, Set<PipelineRunPhase> requestedSkips) {
         PipelineRun run = runLifecycle.getPipelineRun(runId);
+        Set<PipelineRunPhase> skipPhases = requestedSkips != null ? requestedSkips : orEmpty(run.getSkipPhases());
 
         PipelineRunItem item = pipelineRunItemRepository.findByIdAndPipelineRun_Id(itemId, runId)
                 .orElseThrow(() -> new RunItemNotFoundException(runId, itemId));
@@ -244,13 +254,35 @@ public class PipelineService {
             return new CreatePipelineRunResponse(runId.toString(), List.of(rejected(item, rejection)));
         }
 
-        runLifecycle.prepareRetry(runId);
+        runLifecycle.prepareRetry(runId, skipPhases);
         runItemLifecycleService.prepareRetry(itemId);
         enqueueItem(runId, itemId, item.getUrl(), skipPhases);
         return new CreatePipelineRunResponse(runId.toString(), List.of(
                 new CreatePipelineRunResponse.ItemResult(
                         item.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, item.getId().toString(), null)
         ));
+    }
+
+    /**
+     * The phases a retry must skip: the ones it asked for, or — when it asked for nothing at all —
+     * the run's own set.
+     *
+     * <p>Absent and empty are different answers. Empty is an operator saying "run every enabled
+     * phase"; absent is "retry this run the way it was configured", which is the only answer that
+     * reproduces the run being retried. Collapsing the two is what made the runs board's retry
+     * button — which has no phase picker and sent an empty list — silently re-enable the enrichment
+     * phases a run had deliberately skipped, calling out to paddleocr and ollama and writing
+     * artifacts for a run created without them.
+     *
+     * <p>The run is read only on the inherit path, so a caller that names its phases still pays for
+     * no extra query.
+     */
+    private Set<PipelineRunPhase> resolveSkips(UUID runId, Set<PipelineRunPhase> requestedSkips) {
+        return requestedSkips != null ? requestedSkips : orEmpty(runLifecycle.getPipelineRun(runId).getSkipPhases());
+    }
+
+    private static Set<PipelineRunPhase> orEmpty(Set<PipelineRunPhase> phases) {
+        return phases != null ? phases : Set.of();
     }
 
     private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {

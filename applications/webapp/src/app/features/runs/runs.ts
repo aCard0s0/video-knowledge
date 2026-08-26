@@ -7,6 +7,7 @@ import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { RUN_STATUSES, blank, isLive, statusVar } from '../../core/domain';
 import { humanAge, absoluteTime, parseServerTime } from '../../core/time';
 import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { clampPage } from '../../core/paging';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -54,6 +55,8 @@ export class Runs {
 
   constructor() {
     syncQueryParams({ status: this.status, page: this.page });
+    // Retrying the FAILED runs on a page empties it out from under the FAILED filter.
+    clampPage(this.page, PAGE_SIZE, this.history);
     this.poller.every(
       () => (this.liveRuns().length > 0 ? POLL_LIVE : POLL_IDLE),
       () => {
@@ -109,12 +112,19 @@ export class Runs {
     this.page.set(0);
   }
 
-  /** Retry straight from the board: triage used to cost a navigation before the button appeared. */
+  /**
+   * Retry straight from the board: triage used to cost a navigation before the button appeared.
+   *
+   * No body at all, and that is the point. There is no phase picker here, so this screen has no
+   * business naming phases — and an *empty* `skipPhases` is not silence, it is "run every enabled
+   * phase". Sending one re-enabled OCR and KNOWLEDGE for a run created without them. Omitted, the
+   * server retries the run with the set stored on the run row.
+   */
   protected retry(run: RunSummary): void {
     if (!run.id) return;
     this.retrying.set(run.id);
     this.retryFailure.set(null);
-    this.pipelines.retryRun(run.id, { skipPhases: [] }).subscribe({
+    this.pipelines.retryRun(run.id).subscribe({
       next: () => {
         this.retrying.set(null);
         this.running.reload();

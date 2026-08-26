@@ -14,7 +14,7 @@ VidIngest uses PostgreSQL with the pgvector extension. Schema is managed via Liq
 
 | File | Role |
 |------|------|
-| `applications/vidingest/vidingest-server/src/main/resources/db/changelog/changesets/` | Liquibase changesets (source of truth for schema): `001-core-pipeline.sql`, `002-youtube-channels.sql`, `003-knowledge-extraction.sql` |
+| `applications/vidingest/vidingest-server/src/main/resources/db/changelog/changesets/` | Liquibase changesets (source of truth for schema): `001-core-pipeline.sql`, `002-youtube-channels.sql`, `003-knowledge-extraction.sql`, `004-run-item-lease.sql`, `005-run-skip-phases.sql` |
 | `applications/vidingest/vidingest-server/src/main/resources/db/changelog/db.changelog-master.yaml` | Liquibase master changelog |
 | `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/config/LiquibaseConfig.java` | Explicit Liquibase bean wiring |
 
@@ -41,6 +41,7 @@ In batch mode, **one** `PipelineRun` contains **many** per-URL run-items (`vidin
 | `error_code` | VARCHAR(80) | nullable | Typed error code (e.g., `DUPLICATE_VIDEO`) |
 | `error` | TEXT | nullable | Error message if the pipeline run failed |
 | `video_url` | TEXT | nullable | Legacy single-video runs only. For batch runs, URL is stored on `vidingest_pipeline_run_items.url` |
+| `skip_phases` | TEXT | nullable | Optional phases this run opts out of, comma-separated in enum order (`PhaseSetConverter`). NULL and `''` both mean nothing skipped. Read on retry: a retry request that omits `skipPhases` reuses this set, and `prepareRetry` writes back the set the new attempt runs with |
 | `created_at` | TIMESTAMP | NOT NULL | Set on persist |
 | `updated_at` | TIMESTAMP | NOT NULL | Updated on every save |
 

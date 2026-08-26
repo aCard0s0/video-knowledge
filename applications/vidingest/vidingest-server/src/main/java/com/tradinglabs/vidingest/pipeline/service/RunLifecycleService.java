@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -19,17 +20,26 @@ public class RunLifecycleService {
     private final PipelineRunItemRepository pipelineRunItemRepository;
 
     @Transactional
-    public PipelineRun createPipelineRun(String videoUrl) {
+    public PipelineRun createPipelineRun(String videoUrl, Set<PipelineRunPhase> skipPhases) {
         PipelineRun run = PipelineRun.builder()
                 .status(RunStatus.PENDING)
                 .phase(PipelineRunPhase.CREATED)
                 .videoUrl(videoUrl)
+                .skipPhases(skipPhases != null ? skipPhases : Set.of())
                 .build();
         return pipelineRunRepository.save(run);
     }
 
+    /**
+     * Resets the run for another attempt and records the phase set that attempt will run with.
+     *
+     * <p>The set is written every time, not only when it changes: a retry that overrides it is the
+     * run's configuration from then on, so the next retry that omits the field inherits the last
+     * attempt and not the original one — and the run screen's phase picker, which seeds from this
+     * field, keeps describing the attempt the operator is looking at.
+     */
     @Transactional
-    public PipelineRun prepareRetry(UUID runId) {
+    public PipelineRun prepareRetry(UUID runId, Set<PipelineRunPhase> skipPhases) {
         PipelineRun run = pipelineRunRepository.findById(runId)
                 .orElseThrow(() -> new RunNotFoundException(runId));
 
@@ -47,6 +57,7 @@ public class RunLifecycleService {
         run.setError(null);
         run.setErrorCode(null);
         run.setPhase(PipelineRunPhase.CREATED);
+        run.setSkipPhases(skipPhases != null ? skipPhases : Set.of());
         return pipelineRunRepository.save(run);
     }
 

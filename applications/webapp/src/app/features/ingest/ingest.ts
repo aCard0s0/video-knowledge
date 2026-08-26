@@ -8,6 +8,7 @@ import { CreatePipelineRunResponse, PipelinesService, RunItem } from '../../api/
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { isLive, statusVar } from '../../core/domain';
 import { LaneSegment, buildLanes } from '../../core/lane';
+import { auditTail } from '../../core/audit';
 import { humanAge } from '../../core/time';
 import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
@@ -75,9 +76,13 @@ export class Ingest {
     stream: ({ params }) => this.pipelines.getRun(params.id),
   });
 
+  /**
+   * Same tail fetch as the run screen: a 100-URL batch passes 500 events within minutes, and page 0
+   * of an ascending feed is the *oldest* window — the lanes being watched here are at the end.
+   */
   private readonly watchingAudit = rxResource({
     params: () => (this.result()?.runId ? { id: this.result()!.runId! } : undefined),
-    stream: ({ params }) => this.pipelines.auditRun(params.id, 0, 500),
+    stream: ({ params }) => auditTail(this.pipelines, params.id),
   });
 
   /** When nothing has been started yet, the column shows what was started last instead of nothing. */

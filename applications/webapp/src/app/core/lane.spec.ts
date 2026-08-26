@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLane, laneTotalMs } from './lane';
+import { buildLane, buildLanes, laneTotalMs } from './lane';
 import { RunItem, RunItemAuditEvent } from '../api/generated';
 
 /** Server timestamps are naive LocalDateTime in UTC. */
@@ -148,5 +148,42 @@ describe('buildLane', () => {
 
     const lane = buildLane(item, events, Date.parse('2026-08-26T15:00:00Z'));
     expect(lane.every((s) => s.ms === null)).toBe(true);
+  });
+});
+
+describe('buildLanes', () => {
+  /** Grouping is per item: mixing two items' trails would double-count time on both lanes. */
+  it('gives each item only its own events', () => {
+    const items: RunItem[] = [
+      { itemId: 'i1', status: 'COMPLETED', failedPhase: 'DONE', phaseUpdatedAt: at('30.000000'), attempt: 1 },
+      { itemId: 'i2', status: 'FAILED', failedPhase: 'DOWNLOAD', phaseUpdatedAt: at('40.000000'), attempt: 1 },
+    ];
+    const events = [
+      ev('ITEM_PHASE_ENTERED', 'METADATA', '21.000000', { itemId: 'i1' }),
+      ev('ITEM_PHASE_ENTERED', 'METADATA', '22.000000', { itemId: 'i2' }),
+      ev('ITEM_PHASE_COMPLETED', 'METADATA', '23.000000', { itemId: 'i1' }),
+      ev('ITEM_PHASE_ENTERED', 'DOWNLOAD', '24.000000', { itemId: 'i2' }),
+    ];
+
+    const lanes = buildLanes(items, events, Date.parse(`${at('45.000000')}Z`));
+
+    const first = lanes.get('i1')!;
+    const second = lanes.get('i2')!;
+    expect(first[0]).toMatchObject({ phase: 'METADATA', state: 'done', ms: 2000 });
+    // i2 never completed METADATA, so it must not borrow i1's ITEM_PHASE_COMPLETED.
+    expect(second[0].state).not.toBe('done');
+    expect(second[1]).toMatchObject({ phase: 'DOWNLOAD', state: 'failed' });
+  });
+
+  it('matches buildLane called directly, which is what the run screen used to do per item', () => {
+    const item: RunItem = { itemId: 'i1', status: 'FAILED', failedPhase: 'OCR', phaseUpdatedAt: at('53.000000'), attempt: 1 };
+    const events = [
+      ev('ITEM_PHASE_ENTERED', 'METADATA', '21.000000'),
+      ev('ITEM_PHASE_COMPLETED', 'METADATA', '22.000000'),
+      ev('ITEM_PHASE_ENTERED', 'OCR', '30.000000'),
+      ev('ITEM_PHASE_ENTERED', 'METADATA', '21.000000', { itemId: 'other' }),
+    ];
+
+    expect(buildLanes([item], events, 0).get('i1')).toEqual(buildLane(item, events, 0));
   });
 });
