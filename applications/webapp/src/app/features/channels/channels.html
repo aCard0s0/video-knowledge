@@ -1,0 +1,78 @@
+<h1 class="mono">channels</h1>
+<p class="sub prose">
+  Adding a channel fetches its upload catalog now, and the server refreshes it every half hour
+  after that. Nothing is downloaded until you pick videos to ingest.
+</p>
+
+<vk-problem [failure]="listFailure()" />
+
+<form class="panel add" [formGroup]="form" (ngSubmit)="add()">
+  <div class="fields">
+    <div class="field">
+      <label for="url">Channel URL</label>
+      <input id="url" type="url" formControlName="url" placeholder="https://www.youtube.com/@channel…" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="displayName">Name (optional)</label>
+      <input id="displayName" type="text" formControlName="displayName" maxlength="255" autocomplete="off" />
+    </div>
+    <button class="btn-primary" type="submit" [disabled]="form.invalid || busy() === 'add'">
+      {{ busy() ? 'Adding…' : 'Add & sync' }}
+    </button>
+  </div>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <span class="eyebrow">tracked channels</span>
+    <span class="eyebrow">{{ total() }} total</span>
+  </div>
+
+  @if (rows().length === 0) {
+    <vk-empty message="No channels tracked yet. Add one above to browse its uploads." />
+  } @else {
+    <div class="table-scroll">
+      <table class="grid" translate="no">
+        <thead>
+          <tr>
+            <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
+            <th scope="col">Status</th>
+            <th scope="col">Channel</th>
+            <th scope="col" class="num">Videos</th>
+            <th scope="col" class="num">Last sync</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (channel of rows(); track channel.id) {
+            <tr>
+              <td class="spine" [style.--spine]="statusVar(channel.status)"></td>
+              <td><vk-status [status]="channel.status" /></td>
+              <td>
+                <a [routerLink]="['/channels', channel.id]" class="truncate" [title]="channel.url">
+                  {{ channel.displayName || channel.url }}
+                </a>
+                @if (!blank(channel.lastError)) {
+                  <span class="err mono sm failed" [title]="channel.lastError">{{ channel.lastError }}</span>
+                }
+              </td>
+              <td class="num">{{ channel.videoCount ?? 0 }}</td>
+              <td class="num sm" [title]="absoluteTime(channel.lastSyncSuccessAt)">
+                {{ channel.lastSyncSuccessAt ? age(channel.lastSyncSuccessAt) : 'never' }}
+              </td>
+              <td>
+                <span class="row-actions">
+                  <button class="btn-sm" type="button" [disabled]="busy() === channel.id" (click)="sync(channel)">
+                    {{ busy() === channel.id ? 'Syncing…' : 'Sync now' }}
+                  </button>
+                </span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
+  }
+</section>

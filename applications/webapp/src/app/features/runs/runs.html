@@ -1,0 +1,120 @@
+<h1 class="mono">runs</h1>
+
+<vk-problem [failure]="failure()" />
+
+<section class="panel live">
+  <div class="panel-head">
+    <span class="eyebrow">moving now — {{ liveRuns().length }}</span>
+    <span class="mono muted note">polling every {{ liveRuns().length ? '2' : '15' }}s</span>
+  </div>
+
+  @if (liveRuns().length === 0) {
+    <p class="quiet mono muted">Nothing running. Submitted runs appear here within a couple of seconds.</p>
+  } @else {
+    <div class="table-scroll">
+      <table class="grid" translate="no">
+        <thead>
+          <tr>
+            <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
+            <th scope="col">Status</th>
+            <th scope="col">Phase</th>
+            <th scope="col">Run</th>
+            <th scope="col">Channel</th>
+            <th scope="col" class="num">Items</th>
+            <th scope="col" class="num">Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (run of liveRuns(); track run.id) {
+            <tr>
+              <td class="spine" [style.--spine]="statusVar(run.status)"></td>
+              <td><vk-status [status]="run.status" /></td>
+              <td class="mono sm">{{ marker(run).text }}</td>
+              <td>
+                <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
+                <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+              </td>
+              <td class="truncate">{{ run.channelName || '—' }}</td>
+              <td class="num">{{ run.videoCount }}</td>
+              <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+<section class="panel history">
+  <div class="panel-head">
+    <span class="eyebrow">history</span>
+    <div class="chips" role="group" aria-label="Filter runs by status">
+      @for (option of statuses; track option) {
+        <button
+          class="chip mono"
+          type="button"
+          [class.on]="status() === option"
+          [attr.aria-pressed]="status() === option"
+          (click)="setStatus(option)"
+        >
+          {{ option }}
+          @if (option === 'FAILED' && failed() > 0) {
+            <span class="count">{{ failed() }}</span>
+          }
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (historyRuns().length === 0) {
+    <vk-empty message="No runs match this filter.">
+      <a class="mono" routerLink="/ingest">Start an ingest →</a>
+    </vk-empty>
+  } @else {
+    <div class="table-scroll">
+      <table class="grid" translate="no">
+        <thead>
+          <tr>
+            <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
+            <th scope="col">Status</th>
+            <th scope="col">Phase / code</th>
+            <th scope="col">Run</th>
+            <th scope="col">Channel</th>
+            <th scope="col" class="num">Items</th>
+            <th scope="col" class="num">Created</th>
+            <th scope="col" class="num">Updated</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (run of historyRuns(); track run.id) {
+            <tr>
+              <td class="spine" [style.--spine]="statusVar(run.status)"></td>
+              <td><vk-status [status]="run.status" /></td>
+              <td class="mono sm" [class.failed]="marker(run).failed">{{ marker(run).text }}</td>
+              <td>
+                <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
+                <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+              </td>
+              <td class="truncate">{{ run.channelName || '—' }}</td>
+              <td class="num">{{ run.videoCount }}</td>
+              <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
+              <td class="num sm" [title]="absoluteTime(run.updatedAt)">{{ age(run.updatedAt) }}</td>
+              <td>
+                <span class="row-actions">
+                  @if (run.status === 'FAILED') {
+                    <button class="btn-sm" type="button" [disabled]="retrying() !== null" (click)="retry(run)">
+                      {{ retrying() === run.id ? 'Retrying…' : 'Retry' }}
+                    </button>
+                  }
+                </span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
+  }
+</section>

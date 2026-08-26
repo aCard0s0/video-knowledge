@@ -72,10 +72,12 @@ VidIngest is split into:
 - Disk-only download mode with channel folder structure
 - Pipeline run tracking for the ingestion pipeline
 - Database schema management via Liquibase
+- Operator web console (`../../applications/webapp/`, Angular) — see [Web UI](VidIngest%20-%20Web%20UI.md)
 
 **Out of scope (handled elsewhere or planned)**
 
-- Web UI (not part of this repository)
+- Authentication and multi-user access (the server has no Spring Security; the console assumes a
+  single operator on localhost)
 
 ## Key concepts
 
@@ -277,3 +279,4 @@ When modifying vidingest-cli:
 - [VidIngest - Test Scenarios](VidIngest%20-%20Test%20Scenarios.md)
 - [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
 - [VidIngest - Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md)
+- [VidIngest - Web UI](VidIngest%20-%20Web%20UI.md)

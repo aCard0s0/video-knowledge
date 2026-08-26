@@ -4,6 +4,7 @@
 # Build context: repository root (enables Maven reactor builds)
 
 # Build-time arguments with defaults (override via --build-arg or compose)
+ARG NODE_IMAGE=node:24-alpine
 ARG JDK_IMAGE=eclipse-temurin:26-jdk-alpine
 ARG JRE_IMAGE=eclipse-temurin:26-jre-alpine
 ARG MAVEN_VERSION=3.9.11
@@ -15,7 +16,26 @@ ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT_TIME=unknown
 
 # ============================================================================
-# Stage 1: Builder - Compile and package the application
+# Stage 1: Web - Build the Angular operator console
+# ----------------------------------------------------------------------------
+# The bundle is baked into the server jar's classpath:/static, so the console is same-origin with
+# the API and there is nothing extra to deploy or proxy. Built here rather than through Maven: the
+# Java build has no reason to know about npm, and this stage caches on applications/webapp alone.
+# ============================================================================
+FROM ${NODE_IMAGE} AS web
+WORKDIR /web
+
+COPY applications/webapp/package.json applications/webapp/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY applications/webapp/ ./
+# The server's context path is /vidingest, so the baked build must resolve its assets and router
+# base there. Dev keeps the default "/" because the dev server serves the app at the root and
+# proxies /vidingest to the API.
+RUN npm run build -- --base-href=/vidingest/
+
+# ============================================================================
+# Stage 2: Builder - Compile and package the application
 # ============================================================================
 FROM ${JDK_IMAGE} AS builder
 ARG MAVEN_VERSION
@@ -32,6 +52,10 @@ RUN chmod +x /usr/local/bin/install-maven && /usr/local/bin/install-maven "${MAV
 # Copy entire repository for Maven multi-module reactor build
 COPY . .
 
+# The console lands in the jar as static resources. Copied before packaging so a single artifact
+# carries both halves; SpaStaticResourceConfig serves index.html and forwards client routes to it.
+COPY --from=web /web/dist/webapp/browser/ applications/vidingest/vidingest-server/src/main/resources/static/
+
 # Provide git metadata for Spring Boot Actuator /info without copying .git into the Docker context.
 RUN printf "git.branch=%s\ngit.commit.id=%s\ngit.commit.time=%s\n" "$GIT_BRANCH" "$GIT_COMMIT" "$GIT_COMMIT_TIME" \
     > applications/vidingest/vidingest-server/src/main/resources/git.properties
@@ -44,7 +68,7 @@ RUN --mount=type=cache,target=/root/.m2/repository \
     mvn -ntp -pl applications/vidingest/vidingest-server -am clean package -DskipTests -Dmaven.gitcommitid.skip=true
 
 # ============================================================================
-# Stage 2: Runtime - Minimal JRE + Python/yt-dlp for video downloads
+# Stage 3: Runtime - Minimal JRE + Python/yt-dlp for video downloads
 # ============================================================================
 FROM ${JRE_IMAGE}
 

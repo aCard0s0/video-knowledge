@@ -24,7 +24,7 @@ public class HealthController {
 
     @GetMapping("/ready")
     @Operation(summary = "Readiness probe", description = "Returns 200 when DB and storage paths are usable; otherwise 503 with details.")
-    public ResponseEntity<?> readiness() {
+    public ResponseEntity<ReadinessResult> readiness() {
         ReadinessResult result = readinessService.checkReadiness();
         HttpStatus status = result.ready() ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
         return ResponseEntity.status(status).body(result);

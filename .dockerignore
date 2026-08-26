@@ -6,3 +6,6 @@ docs
 *.md
 .DS_Store
 data
+applications/webapp/node_modules
+applications/webapp/dist
+applications/webapp/.angular

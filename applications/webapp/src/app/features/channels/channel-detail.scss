@@ -1,0 +1,76 @@
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.head .sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-md);
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.sync-error,
+.started {
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.sync-error {
+  border-color: var(--st-failed-fill);
+  overflow-wrap: anywhere;
+}
+
+.started {
+  border-color: var(--accent);
+}
+
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+label.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-xs);
+  text-transform: none;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+td.pick,
+th.pick {
+  width: 32px;
+  padding-left: var(--space-md);
+  padding-right: 0;
+}
+
+tbody tr.on {
+  background: rgba(22, 163, 74, 0.08);
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.ingest-body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-md);
+  flex-wrap: wrap;
+}

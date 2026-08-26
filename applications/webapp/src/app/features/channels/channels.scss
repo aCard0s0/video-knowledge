@@ -1,0 +1,28 @@
+.add {
+  padding: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.fields {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.field {
+  min-width: 0;
+}
+
+.field input {
+  width: 34ch;
+  max-width: 100%;
+}
+
+.err {
+  display: block;
+  max-width: 48ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

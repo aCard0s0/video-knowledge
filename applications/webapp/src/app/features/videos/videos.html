@@ -1,0 +1,78 @@
+<h1 class="mono">videos</h1>
+<p class="sub">Everything the pipeline has persisted. Deleting a video removes its transcript, frames and knowledge with it.</p>
+
+<vk-problem [failure]="listFailure()" />
+
+<section class="panel">
+  <div class="panel-head">
+    <div class="filters">
+      <label class="sr-only" for="status">Status</label>
+      <select id="status" [value]="status()" (change)="setStatus($any($event.target).value)">
+        @for (option of statuses; track option) {
+          <option [value]="option">{{ option }}</option>
+        }
+      </select>
+
+      <label class="sr-only" for="channel">Channel</label>
+      <input
+        id="channel"
+        type="search"
+        placeholder="Channel name, e.g. LuxAlgo…"
+        autocomplete="off"
+        [value]="channel()"
+        (change)="setChannel($any($event.target).value)"
+      />
+    </div>
+    <span class="eyebrow">{{ total() }} total</span>
+  </div>
+
+  @if (rows().length === 0) {
+    <vk-empty message="No videos match this filter.">
+      <a class="mono" routerLink="/ingest">Ingest a URL →</a>
+    </vk-empty>
+  } @else {
+    <div class="table-scroll">
+      <table class="grid" translate="no">
+        <thead>
+          <tr>
+            <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
+            <th scope="col">Status</th>
+            <th scope="col">Title</th>
+            <th scope="col">Channel</th>
+            <th scope="col">Source</th>
+            <th scope="col" class="num">Ingested</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (video of rows(); track video.id) {
+            <tr>
+              <td class="spine" [style.--spine]="statusVar(video.status)"></td>
+              <td><vk-status [status]="video.status" /></td>
+              <td>
+                <a [routerLink]="['/videos', video.id]" class="truncate" [title]="video.title">{{ video.title || '—' }}</a>
+              </td>
+              <td class="truncate">{{ video.channelName || '—' }}</td>
+              <td class="mono sm muted">{{ video.source }}/{{ video.sourceVideoId }}</td>
+              <td class="num sm" [title]="absoluteTime(video.createdAt)">{{ age(video.createdAt) }}</td>
+              <td>
+                <span class="row-actions">
+                  @if (armed() === video.id) {
+                    <button class="btn-sm btn-danger" type="button" [disabled]="deleting()" (click)="remove(video)">
+                      {{ deleting() ? 'Deleting…' : 'Confirm delete' }}
+                    </button>
+                    <button class="btn-sm" type="button" (click)="armed.set(null)">Keep</button>
+                  } @else {
+                    <button class="btn-sm" type="button" (click)="remove(video)">Delete</button>
+                  }
+                </span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
+  }
+</section>

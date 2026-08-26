@@ -1,0 +1,131 @@
+// Form left, the run it starts right. Below 1200px the watch panel drops under the form, which is
+// also the order you read them in.
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 720px) minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.form {
+  padding: var(--space-md);
+}
+
+.field + .field {
+  margin-top: var(--space-lg);
+}
+
+textarea {
+  width: 100%;
+}
+
+.counts {
+  margin: var(--space-sm) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+}
+
+.actions {
+  margin-top: var(--space-lg);
+}
+
+.rejects {
+  margin: var(--space-lg) calc(-1 * var(--space-md)) calc(-1 * var(--space-md));
+  border-top: 1px solid var(--border);
+}
+
+caption {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.reason {
+  color: var(--st-failed);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  white-space: normal;
+}
+
+.watch {
+  position: sticky;
+  top: calc(var(--gutter-h) + var(--space-md));
+}
+
+.watch-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.watch-items,
+.recent {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.watch-items > li {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.watch-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  min-width: 0;
+}
+
+.spine-dot {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 14px;
+  border-radius: 1px;
+}
+
+.url {
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
+.recent > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.recent .url {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1199px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .watch {
+    position: static;
+  }
+
+  .watch-items,
+  .recent {
+    max-height: none;
+  }
+}

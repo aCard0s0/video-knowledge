@@ -40,7 +40,7 @@ public class SpeakerController {
     private final SpeakerService speakerService;
 
     @GetMapping(VidIngestApiPaths.VIDEO_SPEAKERS)
-    @Operation(summary = "List speakers for a video",
+    @Operation(operationId = "listVideoSpeakers", summary = "List speakers for a video",
             description = "Returns one row per pyannote-identified speaker, with the count of transcript "
                     + "segments tagged with that speaker.")
     public List<SpeakerDto> listForVideo(@PathVariable UUID videoId) {
@@ -48,7 +48,7 @@ public class SpeakerController {
     }
 
     @PatchMapping(value = VidIngestApiPaths.SPEAKER, consumes = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Rename a speaker",
+    @Operation(operationId = "renameSpeaker", summary = "Rename a speaker",
             description = "Sets or clears the operator-supplied displayName. The pyannote label is immutable. "
                     + "Pass an empty body or null displayName to clear the override.")
     @ResponseStatus(HttpStatus.OK)

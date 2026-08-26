@@ -1,0 +1,102 @@
+<h1 class="mono">audit</h1>
+<p class="sub prose">
+  Every phase transition across every run. Filter to <span class="mono">ITEM_FAILED</span> to see
+  what has been breaking, and which error code did it.
+</p>
+
+<vk-problem [failure]="failure()" />
+
+<section class="panel">
+  <div class="panel-head filters">
+    <div class="filter">
+      <label for="runId">Run id</label>
+      <input id="runId" type="search" class="mono" autocomplete="off" spellcheck="false" placeholder="710a9419…" translate="no" [value]="runId()" (change)="set('runId', $any($event.target).value)" />
+    </div>
+
+    <div class="filter">
+      <label for="eventType">Event</label>
+      <select id="eventType" [value]="eventType()" (change)="set('eventType', $any($event.target).value)">
+        <option value="">any</option>
+        @for (type of eventTypes; track type) {
+          <option [value]="type">{{ type }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter">
+      <label for="status">Status</label>
+      <select id="status" [value]="status()" (change)="set('status', $any($event.target).value)">
+        <option value="">any</option>
+        @for (option of statuses; track option) {
+          <option [value]="option">{{ option }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter">
+      <label for="from">From (local)</label>
+      <input id="from" type="datetime-local" [value]="from()" (change)="set('from', $any($event.target).value)" />
+    </div>
+
+    <div class="filter">
+      <label for="to">To (local)</label>
+      <input id="to" type="datetime-local" [value]="to()" (change)="set('to', $any($event.target).value)" />
+    </div>
+
+    @if (filtered()) {
+      <button class="btn-sm" type="button" (click)="clear()">Clear filters</button>
+    }
+  </div>
+
+  @if (rows().length === 0) {
+    <vk-empty message="No events match these filters." >
+      @if (filtered()) {
+        <button class="btn-sm" type="button" (click)="clear()">Clear filters</button>
+      }
+    </vk-empty>
+  } @else {
+    <div class="table-scroll">
+      <table class="grid" translate="no">
+        <thead>
+          <tr>
+            <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
+            <th scope="col" class="num">When</th>
+            <th scope="col">Event</th>
+            <th scope="col">Phase</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Attempt</th>
+            <th scope="col">Run</th>
+            <th scope="col">Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (event of rows(); track event.id) {
+            <tr>
+              <td class="spine" [style.--spine]="statusVar(event.status)"></td>
+              <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ age(event.occurredAt) }}</td>
+              <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
+              <td class="mono sm">{{ event.phase }}</td>
+              <td><vk-status [status]="event.status" /></td>
+              <td class="num">{{ event.attempt }}</td>
+              <td class="mono sm">
+                <a [routerLink]="['/runs', event.runId]">{{ event.runId?.slice(0, 8) }}</a>
+                @if (event.videoId) {
+                  · <a [routerLink]="['/videos', event.videoId]">video</a>
+                }
+              </td>
+              <td class="detail">
+                @if (!blank(event.errorCode) || !blank(event.error)) {
+                  <vk-fault [errorCode]="event.errorCode" [error]="event.error" />
+                } @else {
+                  <span class="muted">—</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
+  }
+</section>

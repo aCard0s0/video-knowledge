@@ -1,0 +1,36 @@
+.note {
+  font-size: var(--fs-xs);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  background: transparent;
+
+  &.on {
+    color: var(--fg);
+    border-color: var(--fg-muted);
+    background: var(--muted);
+  }
+}
+
+.chip .count {
+  color: var(--st-failed);
+  font-variant-numeric: tabular-nums;
+}
+
+.live tbody tr:hover,
+.history tbody tr:hover {
+  background: var(--muted);
+}

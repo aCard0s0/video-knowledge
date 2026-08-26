@@ -1,0 +1,37 @@
+.filters {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: var(--space-md);
+}
+
+.filter label {
+  margin-bottom: var(--space-xs);
+}
+
+.filter input,
+.filter select {
+  font-size: var(--fs-sm);
+  padding: 4px 8px;
+}
+
+.filter input[type='search'] {
+  width: 22ch;
+}
+
+.detail {
+  white-space: normal;
+  min-width: 28ch;
+}
+
+@media (max-width: 767px) {
+  .detail {
+    min-width: 0;
+    max-width: 24ch;
+  }
+}
+
+table.grid td.detail {
+  height: auto;
+  padding-bottom: var(--space-xs);
+}

@@ -1,0 +1,291 @@
+@if (video(); as v) {
+  <div class="head">
+    <div>
+      <h1 class="mono">{{ v.title || 'video' }}</h1>
+      <p class="sub mono sm">
+        <vk-status [status]="v.status" />
+        · {{ v.channelName || 'no channel' }} · {{ v.source }}/{{ v.sourceVideoId }}
+        @if (v.pipelineId) {
+          · <a [routerLink]="['/runs', v.pipelineId]">run {{ v.pipelineId.slice(0, 8) }}</a>
+        }
+      </p>
+    </div>
+    <div class="head-actions mono sm">
+      <a routerLink="/videos">← all videos</a>
+      <a [href]="txtUrl()">whisper.txt</a>
+      <a [href]="jsonUrl()">whisper.json</a>
+    </div>
+  </div>
+
+  <vk-problem [failure]="detailFailure()" />
+
+  <div class="split">
+    <section class="panel player-panel">
+      <!-- Range requests are served (verified 206 + Content-Range), so seeking works on the
+           original file with no transcode. -->
+      <video
+        #player
+        class="player"
+        controls
+        preload="metadata"
+        [src]="fileUrl()"
+        (timeupdate)="onTime()"
+      ></video>
+
+      <p class="cursor mono sm muted">at {{ timecode(cursor()) }} — click any row to jump</p>
+
+      <div class="reruns">
+        <span class="eyebrow">re-run a phase</span>
+        <div class="phase-buttons">
+          @for (phase of optionalPhases; track phase) {
+            <button
+              class="btn-sm mono"
+              type="button"
+              [disabled]="running() !== null"
+              [title]="'Wipes and rebuilds ' + produces[phase] + ' for this video'"
+              (click)="runPhase(phase)"
+            >
+              {{ running() === phase ? phase + '…' : phase }}
+            </button>
+          }
+        </div>
+        <p class="mono sm run-result" aria-live="polite">{{ lastRun() }}</p>
+      </div>
+
+      <!-- What is actually on disk for this video. Every number here comes from /detail, which the
+           screen was already fetching and then ignoring. -->
+      <dl class="dossier mono sm">
+        @if (transcription(); as t) {
+          <dt>transcript</dt>
+          <dd>
+            @if (t.present) {
+              {{ t.status }} · {{ t.provider || 'unknown provider' }} · {{ t.language || 'lang ?' }}
+              @if (t.fullTextChars) {
+                · {{ t.fullTextChars }} chars
+              }
+            } @else {
+              none
+            }
+          </dd>
+        }
+        @if (counts(); as c) {
+          <dt>artifacts</dt>
+          <dd>
+            {{ c.transcriptionSegments }} segments · {{ c.speakers }} speakers · {{ c.ocrFrames }} frames ·
+            {{ c.multimodalSegments }} fused · {{ c.knowledgeUnits }} units
+          </dd>
+        }
+        @if (v.filePath) {
+          <dt>file</dt>
+          <dd class="path" [title]="v.filePath">{{ v.filePath }}</dd>
+        }
+      </dl>
+    </section>
+
+    <section class="panel artifacts">
+      <div class="tabs" role="group" aria-label="Artifacts">
+        @for (tab of panes; track tab.key) {
+          <button
+            type="button"
+            class="tab mono"
+            [class.on]="pane() === tab.key"
+            [attr.aria-pressed]="pane() === tab.key"
+            (click)="show(tab.key)"
+          >
+            {{ tab.label }} <span class="count">{{ tab.count() }}</span>
+          </button>
+        }
+      </div>
+
+      <vk-problem [failure]="paneFailure()" />
+
+      @switch (pane()) {
+        @case ('transcript') {
+          @if (segments.isLoading()) {
+            <p class="quiet muted">Loading segments…</p>
+          } @else if (transcription()?.present === false || (segments.value()?.items ?? []).length === 0) {
+            <vk-empty message="No transcript segments for this video.">
+              <button class="btn-primary" type="button" (click)="runPhase('TRANSCRIBE')">Run TRANSCRIBE</button>
+            </vk-empty>
+          } @else {
+            <ol class="rows">
+              @for (seg of segments.value()?.items ?? []; track seg.id) {
+                <li>
+                  <button type="button" class="row" [class.playing]="active(seg.startSeconds, seg.endSeconds)" (click)="seek(seg.startSeconds)">
+                    <span class="tc mono">{{ timecode(seg.startSeconds) }}</span>
+                    <span class="text">{{ seg.text }}</span>
+                  </button>
+                </li>
+              }
+            </ol>
+            <vk-pager [page]="page()" [size]="50" [total]="segments.value()?.total ?? 0" (go)="page.set($event)" />
+          }
+        }
+
+        @case ('frames') {
+          @if (frames.isLoading()) {
+            <p class="quiet muted">Loading frames…</p>
+          } @else if ((frames.value()?.items ?? []).length === 0) {
+            <vk-empty message="No OCR frames for this video.">
+              <button class="btn-primary" type="button" (click)="runPhase('OCR')">Run OCR</button>
+              <span class="mono sm muted">OCR needs sampled frames — run FRAME_SAMPLE first if it has never run.</span>
+            </vk-empty>
+          } @else {
+            <ul class="frames-list">
+              @for (frame of frames.value()?.items ?? []; track frame.frameId) {
+                <li>
+                  <button type="button" class="frame" (click)="seek(frame.timestampSeconds)">
+                    <img
+                      [src]="frameUrl(frame.frameId)"
+                      [alt]="'Frame at ' + timecode(frame.timestampSeconds)"
+                      width="160"
+                      height="90"
+                      loading="lazy"
+                    />
+                    <span class="tc mono">{{ timecode(frame.timestampSeconds) }}</span>
+                  </button>
+                  <ul class="lines">
+                    @for (line of frame.lines ?? []; track line.id) {
+                      <li class="mono sm">
+                        {{ line.text }}
+                        <span class="muted">{{ line.confidence ? (line.confidence * 100).toFixed(0) + '%' : '' }}</span>
+                      </li>
+                    } @empty {
+                      <li class="muted sm">No text read from this frame.</li>
+                    }
+                  </ul>
+                </li>
+              }
+            </ul>
+            <vk-pager [page]="page()" [size]="25" [total]="frames.value()?.total ?? 0" (go)="page.set($event)" />
+          }
+        }
+
+        @case ('fused') {
+          @if (fused.isLoading()) {
+            <p class="quiet muted">Loading timeline…</p>
+          } @else if ((fused.value()?.items ?? []).length === 0) {
+            <vk-empty message="No fused segments for this video.">
+              <button class="btn-primary" type="button" (click)="runPhase('FUSE')">Run FUSE</button>
+            </vk-empty>
+          } @else {
+            <ol class="rows">
+              @for (seg of fused.value()?.items ?? []; track seg.id) {
+                <li>
+                  <button type="button" class="row fused-row" [class.playing]="active(seg.startSeconds, seg.endSeconds)" (click)="seek(seg.startSeconds)">
+                    <span class="tc mono">{{ timecode(seg.startSeconds) }}</span>
+                    <span class="text">
+                      <span class="line">{{ seg.transcriptText || '—' }}</span>
+                      @if (seg.ocrText) {
+                        <span class="ocr mono sm">on screen: {{ seg.ocrText }}</span>
+                      }
+                      @if ((seg.speakerIds ?? []).length) {
+                        <span class="spk mono sm muted">{{ (seg.speakerIds ?? []).length }} speaker(s)</span>
+                      }
+                    </span>
+                  </button>
+                </li>
+              }
+            </ol>
+            <vk-pager [page]="page()" [size]="50" [total]="fused.value()?.total ?? 0" (go)="page.set($event)" />
+          }
+        }
+
+        @case ('knowledge') {
+          <div class="chips-row">
+            <button class="btn-sm mono" type="button" [class.on]="!knowledgeType()" (click)="knowledgeType.set('')">ALL</button>
+            @for (type of knowledgeTypes; track type) {
+              <button class="btn-sm mono" type="button" [class.on]="knowledgeType() === type" (click)="knowledgeType.set(type)">
+                {{ type }}
+              </button>
+            }
+          </div>
+
+          @if (knowledge.isLoading()) {
+            <p class="quiet muted">Loading knowledge…</p>
+          } @else if (knowledgeAll().length === 0) {
+            <vk-empty message="No knowledge units for this video.">
+              <button class="btn-primary" type="button" (click)="runPhase('KNOWLEDGE')">Run KNOWLEDGE</button>
+              <span class="mono sm muted">Needs an ollama chat model loaded — check the gutter before starting.</span>
+            </vk-empty>
+          } @else {
+            @if (knowledgeCapped()) {
+              <p class="quiet warn mono sm">
+                Showing the first {{ KNOWLEDGE_CAP }} of {{ knowledgeAll().length }} units — this endpoint has no paging.
+              </p>
+            }
+            <ul class="units">
+              @for (unit of knowledgeShown(); track unit.id) {
+                <li>
+                  <button type="button" class="row unit" (click)="seek(unit.startSeconds)">
+                    <span class="tc mono">{{ unit.startSeconds === undefined ? '--:--' : timecode(unit.startSeconds) }}</span>
+                    <span class="text">
+                      <span class="line"><span class="kind mono">{{ unit.type }}</span> {{ unit.title }}</span>
+                      <span class="body">{{ unit.content }}</span>
+                    </span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        }
+
+        @case ('speakers') {
+          @if (speakers.isLoading()) {
+            <p class="quiet muted">Loading speakers…</p>
+          } @else if ((speakers.value() ?? []).length === 0) {
+            <vk-empty message="No speakers for this video.">
+              <button class="btn-primary" type="button" (click)="runPhase('DIARIZE')">Run DIARIZE</button>
+            </vk-empty>
+          } @else {
+            <table class="grid" translate="no">
+              <thead>
+                <tr>
+                  <th scope="col">Label</th>
+                  <th scope="col">Name</th>
+                  <th scope="col" class="num">Segments</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (speaker of speakers.value() ?? []; track speaker.id) {
+                  <tr>
+                    <td class="mono sm">{{ speaker.label }}</td>
+                    <td>
+                      <label class="sr-only" [attr.for]="'name-' + speaker.id">Name for {{ speaker.label }}</label>
+                      <input
+                        [id]="'name-' + speaker.id"
+                        type="text"
+                        maxlength="255"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="e.g. Interviewer…"
+                        [value]="speaker.displayName || ''"
+                        (keydown.enter)="rename(speaker, $any($event.target).value)"
+                        #nameInput
+                      />
+                    </td>
+                    <td class="num">{{ speaker.segmentCount }}</td>
+                    <td>
+                      <span class="row-actions">
+                        <button class="btn-sm" type="button" [disabled]="renaming() === speaker.id" (click)="rename(speaker, nameInput.value)">
+                          {{ renaming() === speaker.id ? 'Saving…' : 'Save name' }}
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        }
+      }
+    </section>
+  </div>
+} @else if (detail.error()) {
+  <h1 class="mono">video</h1>
+  <vk-problem [failure]="detailFailure()" />
+  <a class="mono sm" routerLink="/videos">← all videos</a>
+} @else {
+  <p class="quiet muted mono">Loading video…</p>
+}
