@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Build (Java 25 + Maven 3.9+ enforced by the root POM; `./mvnw` pins the build):
+Build (Java 26 + Maven 3.9+ enforced by the root POM; `./mvnw` pins the build):
 
 ```bash
 ./mvnw clean package

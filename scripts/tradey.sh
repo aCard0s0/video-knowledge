@@ -3,7 +3,7 @@
 # Tradey — VidIngest Docker Compose manager
 # ============================================================================
 # Orchestrates the VidIngest backend:
-#   - vidingest  (Spring Boot REST, Java 25)                       → :8051
+#   - vidingest  (Spring Boot REST, Java 26)                       → :8051
 #   - vidingest-mcp (MCP SSE server, opt-in)                       → :8055
 #   - vidingest-cli (Spring Shell console, opt-in)
 # plus the infra vidingest needs: timescaledb, ollama, whisper, and two

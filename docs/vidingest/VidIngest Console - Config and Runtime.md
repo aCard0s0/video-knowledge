@@ -43,7 +43,7 @@ Configuration is managed through Spring Boot property files and `@ConfigurationP
 | `spring.main.web-application-type` | `servlet` | Server uses Spring MVC; CLI uses `none` |
 | `server.port` | `8051` | HTTP port for server REST API |
 | `server.servlet.context-path` | `/vidingest` | Base context path |
-| `spring.threads.virtual.enabled` | `true` | Use virtual threads (Java 25) |
+| `spring.threads.virtual.enabled` | `true` | Use virtual threads (Java 26) |
 
 The server has no `spring-shell` dependency; the interactive shell lives only in
 `vidingest-cli`, which sets `spring.main.web-application-type=none` plus

@@ -6,7 +6,7 @@ extracts searchable knowledge units into PostgreSQL + pgvector.
 
 ## Modules
 
-`applications/vidingest` is a Maven reactor (Spring Boot 4, Java 25):
+`applications/vidingest` is a Maven reactor (Spring Boot 4, Java 26):
 
 | Module | Role |
 |---|---|
@@ -61,7 +61,7 @@ in [compose/ports.env](compose/ports.env).
 ./mvnw clean package
 ```
 
-The Maven wrapper (`./mvnw`) pins the build; no system Maven required. Java 25 is
+The Maven wrapper (`./mvnw`) pins the build; no system Maven required. Java 26 is
 enforced by the root POM.
 
 ## Docs
