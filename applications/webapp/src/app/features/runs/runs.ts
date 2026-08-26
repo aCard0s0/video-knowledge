@@ -6,7 +6,7 @@ import { PipelinesService, RunSummary } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { RUN_STATUSES, blank, isLive, statusVar } from '../../core/domain';
 import { humanAge, absoluteTime, parseServerTime } from '../../core/time';
-import { ApiFailure, toApiFailure } from '../../core/problem';
+import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -66,12 +66,12 @@ export class Runs {
   }
 
   protected readonly liveRuns = computed(() =>
-    [...(this.running.value()?.items ?? []), ...(this.pending.value()?.items ?? [])].sort(
+    [...(valueOf(this.running)?.items ?? []), ...(valueOf(this.pending)?.items ?? [])].sort(
       (a, b) => (parseServerTime(b.createdAt)?.getTime() ?? 0) - (parseServerTime(a.createdAt)?.getTime() ?? 0),
     ),
   );
-  protected readonly historyRuns = computed(() => this.history.value()?.items ?? []);
-  protected readonly total = computed(() => this.history.value()?.total ?? 0);
+  protected readonly historyRuns = computed(() => valueOf(this.history)?.items ?? []);
+  protected readonly total = computed(() => valueOf(this.history)?.total ?? 0);
   protected readonly failure = computed(() => {
     const err = this.history.error() ?? this.running.error() ?? this.pending.error();
     return err ? toApiFailure(err) : this.retryFailure();
@@ -100,7 +100,7 @@ export class Runs {
     return run.videoUrl ?? '—';
   }
 
-  protected readonly failed = computed(() => this.failedCount.value()?.total ?? 0);
+  protected readonly failed = computed(() => valueOf(this.failedCount)?.total ?? 0);
   protected readonly retrying = signal<string | null>(null);
   protected readonly retryFailure = signal<ApiFailure | null>(null);
 

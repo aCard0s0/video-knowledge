@@ -1,4 +1,10 @@
-@if (video(); as v) {
+@if (detail.error()) {
+  <!-- Before the value branch: reading value() on an errored resource throws, and the guard
+       throwing means this branch is never reached. -->
+  <h1 class="mono">video</h1>
+  <vk-problem [failure]="detailFailure()" />
+  <a class="mono sm" routerLink="/videos">← all videos</a>
+} @else if (video(); as v) {
   <div class="head">
     <div>
       <h1 class="mono">{{ v.title || 'video' }}</h1>
@@ -103,13 +109,13 @@
         @case ('transcript') {
           @if (segments.isLoading()) {
             <p class="quiet muted">Loading segments…</p>
-          } @else if (transcription()?.present === false || (segments.value()?.items ?? []).length === 0) {
+          } @else if (transcription()?.present === false || (valueOf(segments)?.items ?? []).length === 0) {
             <vk-empty message="No transcript segments for this video.">
               <button class="btn-primary" type="button" (click)="runPhase('TRANSCRIBE')">Run TRANSCRIBE</button>
             </vk-empty>
           } @else {
             <ol class="rows">
-              @for (seg of segments.value()?.items ?? []; track seg.id) {
+              @for (seg of valueOf(segments)?.items ?? []; track seg.id) {
                 <li>
                   <button type="button" class="row" [class.playing]="active(seg.startSeconds, seg.endSeconds)" (click)="seek(seg.startSeconds)">
                     <span class="tc mono">{{ timecode(seg.startSeconds) }}</span>
@@ -118,21 +124,21 @@
                 </li>
               }
             </ol>
-            <vk-pager [page]="page()" [size]="50" [total]="segments.value()?.total ?? 0" (go)="page.set($event)" />
+            <vk-pager [page]="page()" [size]="50" [total]="valueOf(segments)?.total ?? 0" (go)="page.set($event)" />
           }
         }
 
         @case ('frames') {
           @if (frames.isLoading()) {
             <p class="quiet muted">Loading frames…</p>
-          } @else if ((frames.value()?.items ?? []).length === 0) {
+          } @else if ((valueOf(frames)?.items ?? []).length === 0) {
             <vk-empty message="No OCR frames for this video.">
               <button class="btn-primary" type="button" (click)="runPhase('OCR')">Run OCR</button>
               <span class="mono sm muted">OCR needs sampled frames — run FRAME_SAMPLE first if it has never run.</span>
             </vk-empty>
           } @else {
             <ul class="frames-list">
-              @for (frame of frames.value()?.items ?? []; track frame.frameId) {
+              @for (frame of valueOf(frames)?.items ?? []; track frame.frameId) {
                 <li>
                   <button type="button" class="frame" (click)="seek(frame.timestampSeconds)">
                     <img
@@ -157,20 +163,20 @@
                 </li>
               }
             </ul>
-            <vk-pager [page]="page()" [size]="25" [total]="frames.value()?.total ?? 0" (go)="page.set($event)" />
+            <vk-pager [page]="page()" [size]="25" [total]="valueOf(frames)?.total ?? 0" (go)="page.set($event)" />
           }
         }
 
         @case ('fused') {
           @if (fused.isLoading()) {
             <p class="quiet muted">Loading timeline…</p>
-          } @else if ((fused.value()?.items ?? []).length === 0) {
+          } @else if ((valueOf(fused)?.items ?? []).length === 0) {
             <vk-empty message="No fused segments for this video.">
               <button class="btn-primary" type="button" (click)="runPhase('FUSE')">Run FUSE</button>
             </vk-empty>
           } @else {
             <ol class="rows">
-              @for (seg of fused.value()?.items ?? []; track seg.id) {
+              @for (seg of valueOf(fused)?.items ?? []; track seg.id) {
                 <li>
                   <button type="button" class="row fused-row" [class.playing]="active(seg.startSeconds, seg.endSeconds)" (click)="seek(seg.startSeconds)">
                     <span class="tc mono">{{ timecode(seg.startSeconds) }}</span>
@@ -187,7 +193,7 @@
                 </li>
               }
             </ol>
-            <vk-pager [page]="page()" [size]="50" [total]="fused.value()?.total ?? 0" (go)="page.set($event)" />
+            <vk-pager [page]="page()" [size]="50" [total]="valueOf(fused)?.total ?? 0" (go)="page.set($event)" />
           }
         }
 
@@ -233,7 +239,7 @@
         @case ('speakers') {
           @if (speakers.isLoading()) {
             <p class="quiet muted">Loading speakers…</p>
-          } @else if ((speakers.value() ?? []).length === 0) {
+          } @else if ((valueOf(speakers) ?? []).length === 0) {
             <vk-empty message="No speakers for this video.">
               <button class="btn-primary" type="button" (click)="runPhase('DIARIZE')">Run DIARIZE</button>
             </vk-empty>
@@ -248,7 +254,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (speaker of speakers.value() ?? []; track speaker.id) {
+                @for (speaker of valueOf(speakers) ?? []; track speaker.id) {
                   <tr>
                     <td class="mono sm">{{ speaker.label }}</td>
                     <td>
@@ -282,10 +288,6 @@
       }
     </section>
   </div>
-} @else if (detail.error()) {
-  <h1 class="mono">video</h1>
-  <vk-problem [failure]="detailFailure()" />
-  <a class="mono sm" routerLink="/videos">← all videos</a>
 } @else {
   <p class="quiet muted mono">Loading video…</p>
 }
