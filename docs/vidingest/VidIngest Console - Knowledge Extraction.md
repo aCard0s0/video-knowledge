@@ -367,6 +367,39 @@ WHERE video_id = '<videoId>' GROUP BY type;
   partial-batch failures log but don't fail; all-batch failure does. Check
   `VIDINGEST_KNOWLEDGE_BASE_URL` and that the daemon is reachable from the
   `vidingest-server` container.
+- **`Error while extracting response for type [byte[]] and content type
+  [application/octet-stream]`, with `elapsedMs` at exactly 600000** — that is not a codec
+  problem, it is `vidingest.knowledge.read-timeout` (default `10m`) expiring mid-read. The
+  message is the socket timeout surfacing as a decode failure.
+
+### The default chat model does not fit CPU-only Docker
+
+Measured on this repo's compose stack (Docker Desktop, Apple Silicon, 10 CPUs, no GPU):
+
+| | `qwen2.5:14b-instruct` | `qwen2.5:0.5b-instruct` |
+|---|---|---|
+| model load | **384 s** | 51 s |
+| one batch, 360 input chars | timed out at 600 s | 415 s |
+| result | phase FAILED | 1 unit, phase OK |
+
+`ollama ps` reports `size_vram 0.0 GB` — **Docker Desktop gives Linux containers no access to
+Apple Silicon's Metal GPU**, so all inference is CPU-only. The `qwen2.5:14b-instruct` default
+in `application.properties` therefore cannot complete a batch inside the 10-minute read
+timeout, and no amount of raising that timeout makes a 14b model on CPU practical for
+ingestion. `OLLAMA_KEEP_ALIVE=30s` compounds it: the chat and embed models evict each other,
+so a run pays a fresh load for each.
+
+Options, in the order worth trying:
+
+1. **Run ollama on the host instead of in the container** and point
+   `VIDINGEST_KNOWLEDGE_BASE_URL` / `VIDINGEST_OLLAMA_BASE_URL` at
+   `http://host.docker.internal:11434`. Host ollama uses Metal; this is the only option that
+   makes a 14b model viable on a Mac.
+2. **Use a small chat model** — `qwen2.5:3b-instruct` is a reasonable floor for structured
+   extraction. `0.5b` proves the wiring but its output is poor: on the sample above it
+   emitted `entity_type: ORGANIZATION` for the entity `elephant`.
+3. **Leave KNOWLEDGE off** for local work, as it is by default, and enable it only where a
+   GPU is available.
 
 ## Future work
 
