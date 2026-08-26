@@ -43,6 +43,7 @@ required field — append `· **Merge commit**: <sha>` only when writing one up 
 
 | PR | Date | Summary |
 |----|------|---------|
+| [#9](pr-009-process-liveness-and-atomicity.md) | 2026-08-26 | Every ffmpeg call bounded so a hung one stops wedging ingestion; run items orphaned as PENDING become recoverable; knowledge/OCR replaces commit atomically; yt-dlp out of every transaction |
 | [#8](pr-008-phase-toggle-and-read-model.md) | 2026-08-26 | Six positional skip booleans collapse into one `skipPhases` set; one writer for `PipelineRun` status; one copy of run-preview ranking; run items leased so instances stop reaping each other |
 | [#7](pr-007-reconciler-liveness-and-fanout-bounds.md) | 2026-08-25 | Reconciler stops failing live items; ffmpeg staged so a failure keeps the previous frames; youtube sync fan-out bounded |
 | [#6](pr-006-claude-md-and-pr-log.md) | 2026-08-25 | CLAUDE.md gains the transaction and run-status landmines; this PR log established |

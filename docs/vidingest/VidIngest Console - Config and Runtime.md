@@ -1,7 +1,7 @@
 # VidIngest Console - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
-- **Last reviewed**: 2026-08-25
+- **Last reviewed**: 2026-08-26
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -55,7 +55,7 @@ The server has no `spring-shell` dependency; the interactive shell lives only in
 |----------|---------|-------------|
 | `vidingest.ingestion.concurrency` | `4` | How many run items execute phases at once |
 | `vidingest.youtube.sync.concurrency` | `4` | Channels synced at once within a tick (each runs yt-dlp) |
-| `vidingest.reconciler.itemStaleAfter` | `PT1H` | An `IN_PROGRESS` item untouched for longer is failed — unless this JVM is still running it |
+| `vidingest.reconciler.itemStaleAfter` | `PT1H` | A `PENDING` or `IN_PROGRESS` item untouched for longer is failed — unless some process still claims it |
 | `vidingest.reconciler.intervalMs` | `300000` | Stuck-item sweep interval |
 | `vidingest.reconciler.initialDelayMs` | `60000` | Delay before the first sweep |
 
@@ -299,6 +299,16 @@ vidingest.diarization.min-overlap-seconds=${VIDINGEST_DIARIZATION_MIN_OVERLAP_SE
 Requires `HUGGINGFACE_TOKEN` on the `diarize-asr` sidecar — accept the
 `pyannote/speaker-diarization-3.1` EULA on HuggingFace first.
 
+### ffmpeg
+```properties
+vidingest.ffmpeg.timeout=${VIDINGEST_FFMPEG_TIMEOUT:PT20M}
+```
+Ceiling on the audio-extraction pass shared by TRANSCRIBE and DIARIZE. Frame sampling has its own
+(`vidingest.frames.ffmpeg-timeout`) because a full keyframe pass and a stream copy to WAV are not
+the same workload. Every invocation goes through `FfmpegRunner`, which drains the process output
+on a separate thread — draining on the waiting thread makes the timeout unreachable, since the
+output stream only reaches EOF when the process exits.
+
 ### Frame sampling (M3)
 ```properties
 vidingest.frames.enabled=${VIDINGEST_FRAMES_ENABLED:false}
@@ -307,6 +317,7 @@ vidingest.frames.scene-change-threshold=${VIDINGEST_FRAMES_SCENE_CHANGE_THRESHOL
 vidingest.frames.max-frames-per-video=${VIDINGEST_FRAMES_MAX_PER_VIDEO:600}
 vidingest.frames.frames-dir-name=frames
 vidingest.frames.jpeg-quality=2
+vidingest.frames.ffmpeg-timeout=${VIDINGEST_FRAMES_FFMPEG_TIMEOUT:PT20M}
 ```
 Pure-Java + ffmpeg — no sidecar.
 
@@ -425,24 +436,44 @@ already holds `FOR KEY SHARE` on the run row through its FK, which a plain `UPDA
 
 | Component | Trigger | What it does |
 |-----------|---------|--------------|
-| `StuckItemReconciler` | `@Scheduled`, every `vidingest.reconciler.intervalMs` | Fails items IN_PROGRESS whose `phase_updated_at` is older than `itemStaleAfter` **and** which this JVM is not currently running, then re-derives their run |
-| `ProgressPipelineRunReconciler` | `ApplicationReadyEvent` | Re-derives every IN_PROGRESS run from its items; only fails the ones still genuinely in progress |
+| `StuckItemReconciler` | `@Scheduled`, every `vidingest.reconciler.intervalMs` | Fails items PENDING or IN_PROGRESS whose `phase_updated_at` is older than `itemStaleAfter` **and** which no process claims, then re-derives their run |
+| `ProgressPipelineRunReconciler` | `ApplicationReadyEvent` | Re-derives every IN_PROGRESS run from its items; only fails the ones still genuinely in progress and unclaimed |
 
 `ProgressPipelineRunReconciler` re-derives first on purpose: a run left IN_PROGRESS by a lost
 aggregation update has all its items COMPLETED, and failing that run is the bug rather than the
 fix. It therefore also self-heals rows stranded before the lock landed.
 
-`StuckItemReconciler` asks `PipelineService.isItemInFlight` before failing anything, and that
-check — not `itemStaleAfter` — is what makes it safe. `phase_updated_at` moves only on a phase
-*transition*, so a phase that legitimately runs for hours (KNOWLEDGE and DIARIZE both do on a
-long video) is indistinguishable by timestamp from abandoned work. Failing a live item is not
-cosmetic: the worker later flips it back to COMPLETED, and an operator who sees FAILED and
-retries gets a second worker wipe-and-repopulating the same video alongside the first.
+`StuckItemReconciler` asks who owns the item before failing anything, and that check — not
+`itemStaleAfter` — is what makes it safe. `phase_updated_at` moves only on a phase *transition*,
+so a phase that legitimately runs for hours (KNOWLEDGE and DIARIZE both do on a long video) is
+indistinguishable by timestamp from abandoned work. Failing a live item is not cosmetic: the
+worker later flips it back to COMPLETED, and an operator who sees FAILED and retries gets a
+second worker wipe-and-repopulating the same video alongside the first.
 
-Items abandoned by a *previous* process are absent from that set, which is exactly the work the
-reconciler exists to reap. `itemStaleAfter` therefore no longer bounds how long a healthy phase
-may run, and the `PT1H` default is safe to leave alone. The set is per-JVM: a multi-instance
-deployment would need a shared lease instead.
+Ownership has two answers, because they fail in opposite directions:
+
+- `PipelineService.isItemOwned` — items this JVM has claimed, queued behind the concurrency gate
+  as well as executing. Blind to other instances, never wrong about this one.
+- `RunItemLeaseService` (`lease_owner` / `lease_expires_at`, renewed by a heartbeat) — visible to
+  every instance, but goes stale if the owner stops heartbeating, which is the signature of a
+  process that died.
+
+An item is abandoned only when neither claims it. The sweep covers `PENDING` because an item
+whose owner died while it was still queued never reaches `IN_PROGRESS` — and nothing else in the
+system would look at it again, leaving its run `IN_PROGRESS` forever with no retry path. That is
+also why the ownership set is claimed *before* the executor submit while the lease is taken after
+the gate: a queued item has not started and holds no lease, so the lease alone would call it
+abandoned.
+
+`itemStaleAfter` therefore no longer bounds how long a healthy phase may run, and the `PT1H`
+default is safe to leave alone. It does bound how long an orphan waits before becoming
+retryable — recovery after a restart is not immediate.
+
+**Retry eligibility** follows the same question rather than a status match: `POST
+/pipelines/{id}/retry` re-runs any item that is not COMPLETED, not CANCELLED (a deliberate
+terminal state for duplicate videos), and not currently claimed. The run itself must still be
+FAILED — that is a separate, run-level gate answered first, and a retry that accepts no items
+leaves the run FAILED rather than moving it out of the only state from which it can be retried.
 
 ## Related pages
 

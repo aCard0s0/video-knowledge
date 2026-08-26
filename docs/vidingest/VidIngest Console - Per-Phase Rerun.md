@@ -1,7 +1,7 @@
 # VidIngest Console — Per-Phase Rerun
 
 **Owner**: TradingLabs Platform
-**Last reviewed**: 2026-08-25
+**Last reviewed**: 2026-08-26
 **Status**: stable
 
 **Applies to**:
@@ -144,21 +144,32 @@ split on purpose:
 | TRANSCRIBE    | `TranscriptionSegmentRepository.deleteByTranscriptionId` (then re-persists segments) | **atomic** |
 | DIARIZE       | `SpeakerRepository.deleteByVideo_Id` + clears `speaker_id` on segments | **atomic** |
 | FRAME_SAMPLE  | `VideoFrameRepository.deleteByVideo_Id` (cascades to ocr rows + removes JPGs) | **atomic** |
-| OCR           | `OcrResultRepository.deleteByVideoId` | separate — see below |
+| OCR           | `OcrResultRepository.deleteByVideoId` | **atomic** — see below |
 | FUSE          | `MultimodalSegmentRepository.deleteByVideo_Id` | **atomic** |
-| KNOWLEDGE     | `KnowledgeUnitRepository.deleteByVideo_Id` | separate — see below |
+| KNOWLEDGE     | `KnowledgeUnitRepository.deleteByVideo_Id` | **atomic** — see below |
 | CONTEXT       | `ContextChunkRepository.deleteByVideoId` | **atomic** |
 
-The five atomic phases do all their slow work first — ffmpeg and the sidecar have already
-returned, or fusion is pure Java — so `TransactionOperations` wraps just the two statements
-and a failure can never leave a video with its old rows gone and its new ones unwritten.
+Every phase does all its slow work first — ffmpeg and the sidecar have already returned, or
+fusion is pure Java — so `TransactionOperations` wraps just the two statements and a failure can
+never leave a video with its old rows gone and its new ones unwritten.
 
-`OCR` and `KNOWLEDGE` deliberately keep the wipe and the persist in separate transactions:
-each wipes *before* a minutes-long loop (PaddleOCR per frame, the LLM per batch) and persists
-after, and one transaction over that would hold a pooled connection for the whole loop. The
-trade is stated in the code — empty rows plus a FAILED run beat stale rows interleaved with
-fresh ones — and the phase fails loudly when nothing was produced rather than reporting a
-successful zero.
+`OCR` and `KNOWLEDGE` are the two whose slow work sits *between* the read and the write: a
+minutes-long loop (PaddleOCR per frame, the LLM per batch). They used to answer that by
+committing the wipe before the loop, which made every failure in it a silent data loss — the
+video's rows were gone and whatever partial result survived took their place. Since Aug 2026 the
+wipe moved to *after* the loop and into the same transaction as the insert. The loop still holds
+no pooled connection, which is the constraint that put the wipe up front originally; the
+difference is that nothing is destroyed until there is something complete to replace it with.
+
+Their failure policies differ, deliberately:
+
+- **OCR tolerates a bad frame.** One frame failing the sidecar or having lost its JPG is logged
+  and skipped, because a single bad frame must not fail an otherwise good video. It throws only
+  when *no* frame was readable, since replacing a video's OCR with nothing is the loss this
+  guards against.
+- **KNOWLEDGE tolerates nothing.** A batch is ~40 segments of coverage, not one frame, so
+  salvaging the batches that worked would silently narrow the extraction. Any failed batch fails
+  the phase and leaves the existing units untouched.
 
 All `deleteBy*` repos use explicit `@Modifying @Transactional @Query` so they run cleanly
 from REST entrypoints that lack an ambient transaction. See "Gotchas" below.
@@ -200,8 +211,8 @@ from REST entrypoints that lack an ambient transaction. See "Gotchas" below.
 - **Phase prerequisites.** Calling a phase without its inputs is a no-op or a soft-fail.
   Example: `FUSE` on a video with no transcription returns 0 segments; `OCR` on a video
   with no frames returns 0 rows. The exception is `OCR` when *no* frame was readable — every
-  frame either failed the sidecar or has lost its JPG. That throws, because the prior rows
-  are already wiped by then and returning 0 would destroy them silently.
+  frame either failed the sidecar or has lost its JPG. That throws rather than replacing the
+  video's OCR with nothing.
 - **Transactional self-invocation.** `@Transactional` on a `protected`, self-invoked method
   does nothing, twice over: `AnnotationTransactionAttributeSource` is `publicMethodsOnly`, so
   a non-public method never gets a transaction attribute, and `this.` calls bypass the proxy
