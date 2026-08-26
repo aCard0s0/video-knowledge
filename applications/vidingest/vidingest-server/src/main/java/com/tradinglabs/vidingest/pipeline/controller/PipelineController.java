@@ -99,7 +99,7 @@ public class PipelineController {
     }
 
     @GetMapping("/{runId}/audit")
-    @Operation(summary = "List audit events for a pipeline run", description = "Returns the ordered, append-only event timeline for every run item in this run.")
+    @Operation(operationId = "auditRun", summary = "List audit events for a pipeline run", description = "Returns the ordered, append-only event timeline for every run item in this run.")
     public PageResponse<RunItemAuditEvent> auditRun(
             @PathVariable UUID runId,
             @RequestParam(name = "page", required = false) Integer page,
@@ -109,7 +109,7 @@ public class PipelineController {
     }
 
     @GetMapping("/{runId}/items/{itemId}/audit")
-    @Operation(summary = "List audit events for a single run item", description = "Returns the ordered, append-only event timeline for one run item.")
+    @Operation(operationId = "auditItem", summary = "List audit events for a single run item", description = "Returns the ordered, append-only event timeline for one run item.")
     public PageResponse<RunItemAuditEvent> auditItem(
             @PathVariable UUID runId,
             @PathVariable UUID itemId,

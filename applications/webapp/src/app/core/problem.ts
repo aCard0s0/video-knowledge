@@ -73,3 +73,17 @@ export function toApiFailure(err: unknown): ApiFailure {
     instance: body.instance ?? null,
   };
 }
+
+/**
+ * A resource's value, or undefined while it is loading *or* has errored.
+ *
+ * `ResourceRef.value()` **throws** `ResourceValueError` once the resource is in its error state,
+ * so every read has to be gated. Reading one unguarded takes the whole template down with it: the
+ * screen sits on its loading text and the error panel it already has never renders, because the
+ * `@if` guarding it threw before the `@else if (r.error())` branch could be reached.
+ *
+ * Guard the read, and check `error()` *before* the value branch in the template.
+ */
+export function valueOf<T>(resource: { hasValue: () => boolean; value: () => T }): T | undefined {
+  return resource.hasValue() ? resource.value() : undefined;
+}

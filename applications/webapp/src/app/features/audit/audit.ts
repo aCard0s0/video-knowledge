@@ -6,7 +6,7 @@ import { AuditService } from '../../api/generated';
 import { EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
-import { toApiFailure } from '../../core/problem';
+import { toApiFailure, valueOf } from '../../core/problem';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -73,8 +73,8 @@ export class Audit {
     );
   }
 
-  protected readonly rows = computed(() => this.list.value()?.items ?? []);
-  protected readonly total = computed(() => this.list.value()?.total ?? 0);
+  protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
+  protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
   protected readonly failure = computed(() => {
     const err = this.list.error();
     return err ? toApiFailure(err) : null;

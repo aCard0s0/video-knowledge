@@ -14,7 +14,7 @@ import { blank } from '../core/domain';
     @if (shown()) {
       <div class="wrap">
         @if (!blankCode()) {
-          <span class="code mono" [class.calm]="tone() === 'cancelled'">{{ errorCode() }}</span>
+          <span class="code mono" [class.calm]="cancelled()">{{ errorCode() }}</span>
         }
         <span class="msg">{{ error() || 'No message recorded.' }}</span>
       </div>
@@ -54,17 +54,26 @@ import { blank } from '../core/domain';
       user-select: text;
       max-width: 92ch;
     }
+
+    /* Side by side the badge is a nowrap chip, so on a phone it takes half the row and squeezes
+       the message that explains it into a ~14ch column. Stack instead. */
+    @media (max-width: 640px) {
+      .wrap {
+        flex-direction: column;
+        gap: var(--space-xs);
+      }
+    }
   `,
 })
 export class Fault {
   readonly errorCode = input<string | undefined>();
   readonly error = input<string | undefined>();
   /**
-   * `cancelled` drops the red. A CANCELLED item carries an errorCode like any other
-   * (`DUPLICATE_VIDEO`), but it is a decision the pipeline made on purpose, and the failure ramp
-   * says an operator has something to fix.
+   * Drops the red. A CANCELLED item carries an errorCode like any other (`DUPLICATE_VIDEO`), but
+   * it is a decision the pipeline made on purpose, and the failure ramp says an operator has
+   * something to fix.
    */
-  readonly tone = input<'failed' | 'cancelled'>('failed');
+  readonly cancelled = input(false);
 
   protected readonly blankCode = computed(() => blank(this.errorCode()));
   protected readonly shown = computed(() => !this.blankCode() || !blank(this.error()));

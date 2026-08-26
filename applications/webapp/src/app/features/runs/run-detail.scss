@@ -16,7 +16,15 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin: 0 0 var(--space-md);
 }
 
 .opts {
@@ -79,6 +87,20 @@ summary {
   padding: 0;
 }
 
+// A 40-item run pushed the trail thousands of pixels down, so the panel a phase click filters was
+// never on screen when you clicked. Scrolling to it on click is not the fix: the router runs
+// `scrollPositionRestoration: 'top'` and syncing the filter into the URL is a navigation, so it
+// yanks the page back to the top afterwards every time. Capping the list keeps the trail one
+// screen away instead, with no timing to lose — and only past the point where the run is too tall
+// to read at once, so the common few-item run still renders whole.
+//
+// No overscroll containment: reaching the end of the list should carry on scrolling the page,
+// which is what stops a nested scroller feeling stuck, on touch especially.
+.items.capped {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 .item {
   padding: var(--space-md);
   border-bottom: 1px solid var(--border);
@@ -122,6 +144,9 @@ summary {
   flex: 1 1 24ch;
   min-width: 0;
   font-size: var(--fs-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta {
@@ -135,22 +160,23 @@ summary {
   margin-left: auto;
 }
 
-.detail {
-  white-space: normal;
-  min-width: 32ch;
-}
-
-table.grid td.detail {
-  padding-top: 0;
-  padding-bottom: var(--space-xs);
-  height: auto;
-}
-
 .trail-head {
   display: flex;
   align-items: baseline;
   gap: var(--space-sm);
   min-width: 0;
+}
+
+.trail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex: 0 0 auto;
+}
+
+// 16 events inside 32 seconds are 3ms apart; a wrapped timestamp costs three lines to say so.
+table.grid td.when {
+  white-space: nowrap;
 }
 
 .trail-url {
@@ -160,9 +186,26 @@ table.grid td.detail {
   white-space: nowrap;
 }
 
+// The message row belongs to the event above it, so it loses the gap between them and wraps.
+table.grid .detail-row td {
+  padding-top: 0;
+  white-space: normal;
+}
+
 @media (max-width: 767px) {
-  table.grid th:last-child,
-  table.grid td.detail {
+  // Drop From and Status. `previousPhase` repeats the phase of the row below it and the status is
+  // implied by the event type. errorCode and its message stay: they are the reason the screen gets
+  // opened, and they are on their own row rather than in a column that would sit off the edge.
+  table.grid th.from,
+  table.grid td.from,
+  table.grid th.st,
+  table.grid td.st {
     display: none;
+  }
+
+  // The label is already the URL's tail; let it wrap rather than clipping the part that identifies it.
+  .url {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }

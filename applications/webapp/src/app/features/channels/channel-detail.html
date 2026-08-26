@@ -1,4 +1,10 @@
-@if (channel.value(); as ch) {
+@if (channel.error()) {
+  <!-- Before the value branch: reading value() on an errored resource throws, and the guard
+       throwing means this branch is never reached. -->
+  <h1 class="mono">channel</h1>
+  <vk-problem [failure]="listFailure()" />
+  <a class="mono sm" routerLink="/channels">← all channels</a>
+} @else if (valueOf(channel); as ch) {
   <div class="head">
     <div>
       <h1 class="mono">{{ ch.displayName || 'channel' }}</h1>
@@ -118,10 +124,6 @@
       </button>
     </div>
   </section>
-} @else if (channel.error()) {
-  <h1 class="mono">channel</h1>
-  <vk-problem [failure]="listFailure()" />
-  <a class="mono sm" routerLink="/channels">← all channels</a>
 } @else {
   <p class="quiet muted mono">Loading channel…</p>
 }

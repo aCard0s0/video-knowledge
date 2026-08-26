@@ -12,7 +12,7 @@ import {
 } from '../../api/generated';
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
 import { humanDuration, timecode } from '../../core/time';
-import { ApiFailure, toApiFailure } from '../../core/problem';
+import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
 import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -99,6 +99,7 @@ export class VideoDetail {
   protected readonly optionalPhases = OPTIONAL_PHASES;
   protected readonly knowledgeTypes = KNOWLEDGE_TYPES;
   protected readonly statusVar = statusVar;
+  protected readonly valueOf = valueOf;
   protected readonly timecode = timecode;
 
   /**
@@ -107,12 +108,12 @@ export class VideoDetail {
    * ponytail: a cap, not virtualization — add paging server-side if this becomes the main view.
    */
   protected readonly KNOWLEDGE_CAP = 200;
-  protected readonly knowledgeAll = computed(() => this.knowledge.value() ?? []);
+  protected readonly knowledgeAll = computed(() => valueOf(this.knowledge) ?? []);
   protected readonly knowledgeShown = computed(() => this.knowledgeAll().slice(0, this.KNOWLEDGE_CAP));
 
-  protected readonly video = computed(() => this.detail.value()?.video);
-  protected readonly counts = computed(() => this.detail.value()?.counts);
-  protected readonly transcription = computed(() => this.detail.value()?.transcription);
+  protected readonly video = computed(() => valueOf(this.detail)?.video);
+  protected readonly counts = computed(() => valueOf(this.detail)?.counts);
+  protected readonly transcription = computed(() => valueOf(this.detail)?.transcription);
 
   // Media and artifact URLs are bound straight into <video>, <img> and <a>, bypassing the
   // generated client, so they carry the API prefix themselves.

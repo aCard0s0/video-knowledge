@@ -37,6 +37,7 @@ public class FrameArtifactsController {
 
     @GetMapping(VidIngestApiPaths.FRAME_IMAGE)
     @Operation(
+            operationId = "frameImage",
             summary = "Get the JPG bytes for a sampled frame",
             description = "Returns the on-disk frame JPG inline (not an attachment) so the UI can render <img> tags."
     )

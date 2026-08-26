@@ -12,7 +12,7 @@ import { humanAge } from '../../core/time';
 import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
 import { StatusBadge } from '../../ui/status-badge';
-import { ApiFailure, toApiFailure } from '../../core/problem';
+import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
 import { Problem } from '../../ui/problem';
 import { PhasePicker } from '../../ui/phase-picker';
 
@@ -35,7 +35,17 @@ export class Ingest {
   private readonly raw = toSignal(this.urls.valueChanges, { initialValue: '' });
   protected readonly skipped = signal<string[]>([]);
   protected readonly submitting = signal(false);
-  protected readonly failure = signal<ApiFailure | null>(null);
+  /**
+   * The submit error wins — it is the thing the operator just did — but a load failure has to
+   * surface too. With the server down this screen used to render its form and its empty
+   * "last five runs" column and say nothing at all about why.
+   */
+  private readonly submitFailure = signal<ApiFailure | null>(null);
+  protected readonly failure = computed(() => {
+    if (this.submitFailure()) return this.submitFailure();
+    const err = this.recent.error() ?? this.watching.error() ?? this.watchingAudit.error();
+    return err ? toApiFailure(err) : null;
+  });
   protected readonly result = signal<CreatePipelineRunResponse | null>(null);
 
   /** Recomputed on every keystroke so the count and the rejects are visible before submitting. */
@@ -73,16 +83,16 @@ export class Ingest {
   /** When nothing has been started yet, the column shows what was started last instead of nothing. */
   protected readonly recent = rxResource({ stream: () => this.pipelines.listRuns('ALL', 0, 5) });
 
-  protected readonly watched = computed(() => this.watching.value());
+  protected readonly watched = computed(() => valueOf(this.watching));
   protected readonly watchedItems = computed<RunItem[]>(() => this.watched()?.items ?? []);
-  protected readonly recentRuns = computed(() => this.recent.value()?.items ?? []);
+  protected readonly recentRuns = computed(() => valueOf(this.recent)?.items ?? []);
 
   private readonly clock = computed(() =>
     this.watchedItems().some((i) => isLive(i.status)) ? this.poller.now() : 0,
   );
 
   private readonly lanes = computed(() =>
-    buildLanes(this.watchedItems(), this.watchingAudit.value()?.items ?? [], this.clock()),
+    buildLanes(this.watchedItems(), valueOf(this.watchingAudit)?.items ?? [], this.clock()),
   );
 
   protected readonly statusVar = statusVar;
@@ -114,7 +124,7 @@ export class Ingest {
   protected submit(): void {
     if (!this.canSubmit()) return;
     this.submitting.set(true);
-    this.failure.set(null);
+    this.submitFailure.set(null);
     this.result.set(null);
 
     this.pipelines.createRuns({ urls: this.parsed().valid, skipPhases: this.skipped() }).subscribe({
@@ -126,7 +136,7 @@ export class Ingest {
         this.urls.setValue(rejects.join('\n'));
       },
       error: (err: unknown) => {
-        this.failure.set(toApiFailure(err));
+        this.submitFailure.set(toApiFailure(err));
         this.submitting.set(false);
       },
     });

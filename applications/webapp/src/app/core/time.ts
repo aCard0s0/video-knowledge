@@ -52,6 +52,26 @@ export function absoluteTime(value: string | null | undefined): string {
   return d ? d.toLocaleString() : '';
 }
 
+const CLOCK = new Intl.DateTimeFormat(undefined, {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  fractionalSecondDigits: 3,
+  hour12: false,
+});
+
+/**
+ * Time of day with milliseconds, for rows that all share one age.
+ *
+ * Sixteen events inside a 32-second run every read "6h 42m ago", so a relative age can neither
+ * order them nor tell them apart — and the phase transitions that matter are 3ms apart. The
+ * relative age still answers "is this run stale?", which is a question the header asks once.
+ */
+export function clockTime(value: string | null | undefined): string {
+  const d = parseServerTime(value);
+  return d ? CLOCK.format(d) : '—';
+}
+
 /** Seconds → mm:ss / h:mm:ss, matching the player's own readout. */
 export function timecode(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '--:--';

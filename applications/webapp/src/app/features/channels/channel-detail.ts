@@ -6,7 +6,7 @@ import { CreatePipelineRunResponse, YoutubeChannelVideoSummary, YoutubeService }
 import { blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { Poller } from '../../core/poller';
-import { ApiFailure, toApiFailure } from '../../core/problem';
+import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
@@ -53,11 +53,11 @@ export class ChannelDetail {
     stream: ({ params }) => this.youtube.listChannelVideos(params.id, params.page, PAGE_SIZE),
   });
 
-  protected readonly allRows = computed(() => this.videos.value()?.items ?? []);
+  protected readonly allRows = computed(() => valueOf(this.videos)?.items ?? []);
   protected readonly rows = computed(() =>
     this.onlyNew() ? this.allRows().filter((v) => !v.ingested) : this.allRows(),
   );
-  protected readonly total = computed(() => this.videos.value()?.total ?? 0);
+  protected readonly total = computed(() => valueOf(this.videos)?.total ?? 0);
   protected readonly newOnPage = computed(() => this.allRows().filter((v) => !v.ingested).length);
   protected readonly pickedCount = computed(() => this.picked().size);
   protected readonly overLimit = computed(() => this.pickedCount() > MAX_PER_RUN);
@@ -68,6 +68,7 @@ export class ChannelDetail {
   });
 
   protected readonly statusVar = statusVar;
+  protected readonly valueOf = valueOf;
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
 

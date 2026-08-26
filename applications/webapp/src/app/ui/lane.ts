@@ -74,6 +74,16 @@ import { humanDuration } from '../core/time';
       container-type: inline-size;
     }
 
+    /* Width is proportional to duration, which buries the one thing the lane exists to show: a
+       75ms OCR failure beside a successful 18.5s DIARIZE gets 26px and 3% of the track. Every
+       other segment stays proportional — the outcome ones just get a floor wide enough to read
+       their own label, which is also the width the container query needs to keep the duration. */
+    .seg.failed,
+    .seg.cancelled,
+    .seg.live {
+      min-width: 76px;
+    }
+
     .seg.skipped,
     .seg.pending {
       flex: 0 0 26px;

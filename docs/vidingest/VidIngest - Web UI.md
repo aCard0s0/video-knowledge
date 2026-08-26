@@ -278,6 +278,14 @@ the console filling once per poll. Check `error()` **first**, and route every ot
 indefinitely; the other screens survived only because their error panel sits outside the guard.
 There is no `@else if` in Angular that runs after a throwing `@if`.
 
+**The router scrolls to top on every `syncQueryParams` write.** `provideRouter` is configured
+with `withInMemoryScrolling({ scrollPositionRestoration: 'top' })`, and putting a filter in the
+URL is a navigation — `replaceUrl` included. So any attempt to scroll the page from a handler that
+also changes a URL-backed signal is undone a moment later, whichever hook it runs in
+(`afterNextRender` and a deferred macrotask were both measured losing the race). Screens that need
+something to stay in view lay it out that way instead of scrolling to it: the run screen caps its
+item list past five items so the trail is never more than a screen down.
+
 **`linkedSignal(() => …)` resets whenever anything it reads changes identity.** A selection
 seeded from `items()` is thrown away on every poll, because the resource hands back a fresh
 array each time. Either give it an explicit `source` that is stable (the route id), or keep the

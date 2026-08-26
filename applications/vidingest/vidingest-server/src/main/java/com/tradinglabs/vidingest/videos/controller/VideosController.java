@@ -94,14 +94,14 @@ public class VideosController {
     }
 
     @GetMapping("/{videoId}/detail")
-    @Operation(summary = "Get video detail read model",
+    @Operation(operationId = "getVideoDetail", summary = "Get video detail read model",
             description = "Aggregate read model for UI consumption: video summary, transcription details, and lightweight artifact counts.")
     public VideoDetail getVideoDetail(@PathVariable UUID videoId) {
         return videoDetailQueryService.getVideoDetail(videoId);
     }
 
     @GetMapping("/{videoId}/transcription")
-    @Operation(summary = "Get transcription for a video", description = "Returns transcription metadata and a short snippet if present.")
+    @Operation(operationId = "getTranscription", summary = "Get transcription for a video", description = "Returns transcription metadata and a short snippet if present.")
     public VideoTranscriptionDetails getTranscription(@PathVariable UUID videoId) {
         // Existence check only — ensureExists skips hydrating the entity and its JSONB metadata.
         videoQueryService.ensureExists(videoId);
@@ -109,7 +109,7 @@ public class VideosController {
     }
 
     @GetMapping("/{videoId}/transcription/segments")
-    @Operation(summary = "List transcription segments for a video")
+    @Operation(operationId = "listTranscriptionSegments", summary = "List transcription segments for a video")
     public PageResponse<TranscriptionSegmentSummary> listTranscriptionSegments(
             @PathVariable UUID videoId,
             @RequestParam(name = "page", required = false) Integer page,
@@ -129,7 +129,7 @@ public class VideosController {
 
     @PostMapping("/{videoId}/context/regenerate")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Regenerate context chunks for a video", description = "Uses the configured embeddings provider to generate context chunks for semantic search.")
+    @Operation(operationId = "regenerateContext", summary = "Regenerate context chunks for a video", description = "Uses the configured embeddings provider to generate context chunks for semantic search.")
     public RegenerateContextResult regenerateContext(@PathVariable UUID videoId) throws IOException {
         Video video = videoQueryService.getById(videoId);
         log.info("REST regenerate context: videoId={}", videoId);

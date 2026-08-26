@@ -7,7 +7,7 @@ import { YoutubeChannelSummary, YoutubeService } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
-import { ApiFailure, toApiFailure } from '../../core/problem';
+import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
@@ -50,8 +50,8 @@ export class Channels {
     );
   }
 
-  protected readonly rows = computed(() => this.list.value()?.items ?? []);
-  protected readonly total = computed(() => this.list.value()?.total ?? 0);
+  protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
+  protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
   protected readonly listFailure = computed(() => {
     const err = this.list.error();
     return err ? toApiFailure(err) : this.failure();
