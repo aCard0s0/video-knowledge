@@ -10,10 +10,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,6 +61,21 @@ class SearchControllerWebMvcTest {
         // value that will not convert to the declared type
         mockMvc.perform(get("/api/v1/search").param("query", "q").param("limit", "abc"))
                 .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Same gap as the binding failures above, one family over: these implement {@code ErrorResponse}
+     * without extending {@code ErrorResponseException}, so they answered 500 too. 405 must carry
+     * {@code Allow} per RFC 9110, which is why the handler copies the exception's headers.
+     */
+    @Test
+    void protocolMismatchesKeepTheirOwnStatus() throws Exception {
+        mockMvc.perform(post("/api/v1/search").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().exists("Allow"));
+
+        mockMvc.perform(get("/api/v1/search").param("query", "q").accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotAcceptable());
     }
 }
 
