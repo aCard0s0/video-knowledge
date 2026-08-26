@@ -1,6 +1,7 @@
 package com.tradinglabs.vidingest.core.knowledge.service;
 
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
+import com.tradinglabs.vidingest.commons.ConflictException;
 import com.tradinglabs.vidingest.config.KnowledgeExtractionConfig;
 import com.tradinglabs.vidingest.core.fusion.domain.MultimodalSegment;
 import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
@@ -31,6 +32,7 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -373,4 +375,22 @@ class KnowledgeExtractionServiceTest {
     private static KnowledgeUnitDraft draft(KnowledgeUnitType type, String content, double salience) {
         return new KnowledgeUnitDraft(type, content, content, salience, List.of(0), 0.0, 30.0, null);
     }
+    /**
+     * The master switch used to be checked only by {@code KnowledgePhase.applies()}, so
+     * {@code POST /videos/{id}/knowledge/regenerate} bypassed it and called the model anyway —
+     * with a 14b model on CPU that meant hanging for the full 10-minute read timeout before
+     * failing. The guard names the property, because a 409 that does not say which flag to flip
+     * is a worse answer than the hang.
+     */
+    @Test
+    void extractionIsRefusedWhileTheFeatureIsDisabled() {
+        config.setEnabled(false);
+
+        assertThatThrownBy(() -> service.extractKnowledge(video()))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("vidingest.knowledge.enabled");
+
+        verifyNoInteractions(chatClient);
+    }
+
 }
