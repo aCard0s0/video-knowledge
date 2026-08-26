@@ -245,8 +245,16 @@ configured this way; the server is now consistent with it.
 - Health check: `GET /vidingest/api/v1/health/ready` from inside the container
 - Build context is the repository root so the Maven reactor can resolve sibling modules
 
-An OpenTelemetry Java agent (pinned 2.26.1) is downloaded into `/otel` by all three
-Dockerfiles but is **not** wired into `JAVA_TOOL_OPTIONS`, so nothing loads it at runtime.
+**There is no OpenTelemetry agent.** All three Dockerfiles used to `curl` a pinned 2.26.1
+javaagent into `/otel` — 24 MB per image, downloaded on every uncached build, and never loaded:
+the entrypoints are a plain `java -jar /app/app.jar`, confirmed from `/proc/1/cmdline`. There is
+no collector in the compose stack for it to export to either, so it was removed rather than
+wired. To add tracing, add a collector service first, then `-javaagent` plus `OTEL_*` config —
+re-adding the download alone just restores the dead weight.
+
+Metrics do not depend on it: `/actuator/prometheus` carries
+`vidingest.pipeline.phase.duration{phase,outcome}`, `vidingest.pipeline.items.*`,
+`http.server.requests` and the Hikari pool gauges.
 
 ### Running with Docker
 
