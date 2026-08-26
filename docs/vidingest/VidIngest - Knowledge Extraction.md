@@ -1,14 +1,14 @@
-# VidIngest Console — Knowledge Extraction (M2–M8)
+# VidIngest — Knowledge Extraction (M2–M8)
 
 - **Owner**: TradingLabs Platform
 - **Last reviewed**: 2026-08-26
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
-- **Related**: [Data Model](VidIngest%20Console%20-%20Data%20Model.md),
-  [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md),
-  [MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md),
-  [CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
+- **Related**: [Data Model](VidIngest%20-%20Data%20Model.md),
+  [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md),
+  [MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md),
+  [CLI Commands](VidIngest%20-%20CLI%20Commands.md)
 
 ## What this is
 
@@ -191,12 +191,12 @@ All under `/vidingest/api/v1`. Existing endpoints unchanged; new endpoints:
 | `GET`   | `/videos/{videoId}/multimodal-timeline?fromSeconds=&toSeconds=` | Fused timeline rows, optional time clip |
 | `GET`   | `/videos/{videoId}/ocr`                            | OCR detections grouped by frame |
 | `GET`   | `/frames/{frameId}/image`                          | Inline JPG bytes for a sampled frame (UI `<img src>`) |
-| `POST`  | `/videos/{videoId}/phases/{phase}/run`             | Re-run one phase against an existing video. See [Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md) |
+| `POST`  | `/videos/{videoId}/phases/{phase}/run`             | Re-run one phase against an existing video. See [Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md) |
 
 ## MCP tools (M8)
 
 Seven tools added on top of the original nine. See
-[MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md) for the full
+[MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md) for the full
 list and parameter reference.
 
 - `searchKnowledge(query, type, limit)`
@@ -218,7 +218,7 @@ speakers --video-id <UUID>
 
 ## Configuration
 
-See [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md) for the
+See [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) for the
 full property reference. Key environment variables:
 
 ```bash
@@ -413,9 +413,9 @@ Options, in the order worth trying:
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md) (overview)
-- [Data Model](VidIngest%20Console%20-%20Data%20Model.md)
-- [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- [MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md)
-- [CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
-- [YouTube Channels](VidIngest%20Console%20-%20YouTube%20Channels.md)
+- [VidIngest](VidIngest.md) (overview)
+- [Data Model](VidIngest%20-%20Data%20Model.md)
+- [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
+- [MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md)
+- [CLI Commands](VidIngest%20-%20CLI%20Commands.md)
+- [YouTube Channels](VidIngest%20-%20YouTube%20Channels.md)

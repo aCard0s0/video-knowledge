@@ -1,4 +1,4 @@
-# VidIngest Console - Config and Runtime
+# VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
 - **Last reviewed**: 2026-08-26
@@ -312,7 +312,7 @@ Adds verbose SQL/transaction tracing on top of defaults:
 
 All disabled by default (fusion is the exception — pure-Java, defaults on). Full
 description and operational notes in
-[Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md).
+[Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md).
 
 ### Speaker diarization (M2)
 ```properties
@@ -445,7 +445,7 @@ Drop it back to `30s` before enabling KNOWLEDGE — `qwen2.5:14b` (~9 GB) plus t
 Once a video is past PERSIST, individual phases can be re-run via
 `POST /api/v1/videos/{videoId}/phases/{phase}/run`. Useful after a model swap or sidecar
 upgrade — no need to re-download / re-transcribe. See
-[Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md).
+[Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md).
 
 ## Concurrency and run-status aggregation
 
@@ -515,8 +515,8 @@ leaves the run FAILED rather than moving it out of the only state from which it 
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - Download Pipeline](VidIngest%20Console%20-%20Download%20Pipeline.md)
-- [VidIngest Console - Data Model](VidIngest%20Console%20-%20Data%20Model.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
-- [VidIngest Console - Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - Download Pipeline](VidIngest%20-%20Download%20Pipeline.md)
+- [VidIngest - Data Model](VidIngest%20-%20Data%20Model.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
+- [VidIngest - Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md)

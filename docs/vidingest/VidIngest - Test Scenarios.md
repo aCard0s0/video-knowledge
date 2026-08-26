@@ -1,4 +1,4 @@
-# VidIngest Console - Test Scenarios
+# VidIngest - Test Scenarios
 
 - **Last reviewed**: 2026-03-15
 - **Status**: stable
@@ -105,5 +105,5 @@ These classes should have dedicated unit tests:
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - CLI Commands](VidIngest%20-%20CLI%20Commands.md)

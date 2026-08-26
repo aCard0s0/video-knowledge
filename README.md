@@ -35,7 +35,7 @@ Shared Java libraries live in [libraries](libraries) (`common-logging`, `common-
 ```
 
 ```bash
-./scripts/tradey.sh cli               # open the VidIngest console
+./scripts/tradey.sh cli               # open the VidIngest CLI
 ```
 
 ```bash

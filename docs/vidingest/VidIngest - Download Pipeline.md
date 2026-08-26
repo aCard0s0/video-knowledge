@@ -136,13 +136,13 @@ METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE �
 
 All new phases are disabled by default and individually opt-in via config (master
 switch) and per-run skip flags. See
-[Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md) for the
+[Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) for the
 detailed responsibility, wire contract, and configuration of each new phase and the
 sidecars they depend on (`diarize-asr`, `paddleocr-server`, plus Ollama for the chat
 model).
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)

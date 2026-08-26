@@ -1,4 +1,4 @@
-# VidIngest Console - CLI Commands
+# VidIngest - CLI Commands
 
 - **Primary package**: `com.tradinglabs.vidingest.cli`
 - **Last reviewed**: 2026-03-15
@@ -306,11 +306,11 @@ The `ingest` and `retry` commands also gained `--skip-diarize`, `--skip-frames`,
 `--skip-ocr`, `--skip-knowledge` flags (defaulting to `true`) — flip individual ones to
 `false` to opt in to the corresponding M2–M6 phase for that run.
 
-See [Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md) for the
+See [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) for the
 underlying pipeline phases and how to enable them.
 
 ## Related pages
 
-- [VidIngest Console](VidIngest%20Console.md)
-- [VidIngest Console - Download Pipeline](VidIngest%20Console%20-%20Download%20Pipeline.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
+- [VidIngest](VidIngest.md)
+- [VidIngest - Download Pipeline](VidIngest%20-%20Download%20Pipeline.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)

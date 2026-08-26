@@ -1,4 +1,4 @@
-# VidIngest Console - YouTube channels
+# VidIngest - YouTube channels
 
 **Owner**: TradingLabs Platform  
 **Last reviewed**: 2026-05-12  

@@ -7,7 +7,7 @@
 - **Capabilities**: download + transcription + semantic chunk search (stable);
   speaker diarization + frame sampling + OCR + multimodal fusion + LLM-driven knowledge
   extraction (M2–M8, disabled by default — see
-  [Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md))
+  [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md))
 - **Source of truth**:
   - Server: `applications/vidingest/vidingest-server/`
   - MCP: `applications/vidingest/vidingest-mcp/`
@@ -27,7 +27,7 @@ VidIngest is split into:
 
 | Area | Path |
 |------|------|
-| Server main class | `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/VidIngestConsoleApp.java` |
+| Server main class | `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/VidIngestApp.java` |
 | Server pipeline service | `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/service/PipelineService.java` |
 | Server config | `applications/vidingest/vidingest-server/src/main/resources/application.properties` |
 | Server schema | `applications/vidingest/vidingest-server/src/main/resources/db/changelog/db.changelog-master.yaml` |
@@ -148,7 +148,7 @@ VidIngest exposes its capabilities as MCP tools over SSE from the standalone `vi
 
 **Implementation**: `applications/vidingest/vidingest-mcp/src/main/java/com/tradinglabs/vidingest/mcp/tools/McpIngestTools.java`
 
-See [VidIngest Console - MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md) for setup details.
+See [VidIngest - MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md) for setup details.
 
 ## Configuration
 
@@ -169,7 +169,7 @@ Property classes:
 - `VideoStorageConfig` (`vidingest.storage.*`)
 - `VideoSearchConfig` (`vidingest.search.*`)
 
-See [VidIngest Console - Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md) for details.
+See [VidIngest - Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) for details.
 
 ## Semantic search (pgvector + embeddings)
 
@@ -253,27 +253,27 @@ shell:> retry --pipeline-id <FAILED_PIPELINE_UUID>
 shell:> search --query "support zone breakout" --limit 3
 ```
 
-See [VidIngest Console - Test Scenarios](VidIngest%20Console%20-%20Test%20Scenarios.md) for full scenarios.
+See [VidIngest - Test Scenarios](VidIngest%20-%20Test%20Scenarios.md) for full scenarios.
 
 ## Change checklist (agent-friendly)
 
 When modifying vidingest-cli:
 
 - [ ] Update this overview if responsibilities or architecture change
-- [ ] Update [CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md) if shell commands change
-- [ ] Update [Download Pipeline](VidIngest%20Console%20-%20Download%20Pipeline.md) if yt-dlp integration changes
-- [ ] Update [Data Model](VidIngest%20Console%20-%20Data%20Model.md) if entities or schema change
-- [ ] Update [Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md) if properties change
+- [ ] Update [CLI Commands](VidIngest%20-%20CLI%20Commands.md) if shell commands change
+- [ ] Update [Download Pipeline](VidIngest%20-%20Download%20Pipeline.md) if yt-dlp integration changes
+- [ ] Update [Data Model](VidIngest%20-%20Data%20Model.md) if entities or schema change
+- [ ] Update [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) if properties change
 - [ ] Update diagrams (SVG + Mermaid source) if flow or architecture changes
 - [ ] Add test scenarios for new or changed commands
 
 ## Pages
 
-- [VidIngest Console - CLI Commands](VidIngest%20Console%20-%20CLI%20Commands.md)
-- [VidIngest Console - Download Pipeline](VidIngest%20Console%20-%20Download%20Pipeline.md)
-- [VidIngest Console - Data Model](VidIngest%20Console%20-%20Data%20Model.md)
-- [VidIngest Console - Config and Runtime](VidIngest%20Console%20-%20Config%20and%20Runtime.md)
-- [VidIngest Console - MCP with LM Studio](VidIngest%20Console%20-%20MCP%20with%20LM%20Studio.md)
-- [VidIngest Console - Test Scenarios](VidIngest%20Console%20-%20Test%20Scenarios.md)
-- [VidIngest Console - Knowledge Extraction](VidIngest%20Console%20-%20Knowledge%20Extraction.md)
-- [VidIngest Console - Per-Phase Rerun](VidIngest%20Console%20-%20Per-Phase%20Rerun.md)
+- [VidIngest - CLI Commands](VidIngest%20-%20CLI%20Commands.md)
+- [VidIngest - Download Pipeline](VidIngest%20-%20Download%20Pipeline.md)
+- [VidIngest - Data Model](VidIngest%20-%20Data%20Model.md)
+- [VidIngest - Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
+- [VidIngest - MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md)
+- [VidIngest - Test Scenarios](VidIngest%20-%20Test%20Scenarios.md)
+- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
+- [VidIngest - Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md)
