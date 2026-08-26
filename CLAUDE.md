@@ -35,6 +35,12 @@ Running one test with `-am` fails the build on the sibling modules that have no 
 ./mvnw -pl applications/vidingest/vidingest-server test -Dtest='*IntegrationTest'
 ```
 
+**Always pair `clean` with `-am`.** `./mvnw -pl <module> clean test` resolves the sibling
+`vidingest-*` modules from `~/.m2` instead of the reactor, so a stale installed jar makes the
+build compile against yesterday's API. That fails as **BUILD SUCCESS** over source that does not
+compile — incremental `test-compile` skips work it thinks is up to date, and the errors only
+appear once something forces a real recompile.
+
 Run the stack (`scripts/tradey.sh --help` for the full command/target list; infra starts
 automatically as a dependency of the server):
 
