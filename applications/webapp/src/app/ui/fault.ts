@@ -14,7 +14,7 @@ import { blank } from '../core/domain';
     @if (shown()) {
       <div class="wrap">
         @if (!blankCode()) {
-          <span class="code mono">{{ errorCode() }}</span>
+          <span class="code mono" [class.calm]="tone() === 'cancelled'">{{ errorCode() }}</span>
         }
         <span class="msg">{{ error() || 'No message recorded.' }}</span>
       </div>
@@ -39,6 +39,11 @@ import { blank } from '../core/domain';
       white-space: nowrap;
     }
 
+    .code.calm {
+      color: var(--fg-muted);
+      border-color: var(--st-cancelled);
+    }
+
     .msg {
       font-family: var(--font-mono);
       font-size: var(--fs-sm);
@@ -54,6 +59,12 @@ import { blank } from '../core/domain';
 export class Fault {
   readonly errorCode = input<string | undefined>();
   readonly error = input<string | undefined>();
+  /**
+   * `cancelled` drops the red. A CANCELLED item carries an errorCode like any other
+   * (`DUPLICATE_VIDEO`), but it is a decision the pipeline made on purpose, and the failure ramp
+   * says an operator has something to fix.
+   */
+  readonly tone = input<'failed' | 'cancelled'>('failed');
 
   protected readonly blankCode = computed(() => blank(this.errorCode()));
   protected readonly shown = computed(() => !this.blankCode() || !blank(this.error()));

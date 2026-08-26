@@ -1,4 +1,10 @@
-@if (run.value(); as detail) {
+@if (run.error()) {
+  <!-- Before the value branch, not after it: reading value() on an errored resource throws, so an
+       error checked second is an error never rendered. -->
+  <h1 class="mono">run</h1>
+  <vk-problem [failure]="failure()" />
+  <a class="mono sm" routerLink="/runs">← all runs</a>
+} @else if (detail(); as detail) {
   <div class="head">
     <div>
       <h1 class="mono">run <span class="id">{{ detail.id?.slice(0, 8) }}</span></h1>
@@ -25,13 +31,27 @@
   <vk-problem [failure]="failure()" />
   <vk-problem [failure]="retryFailure()" />
 
+  @if (retryRejects().length) {
+    <div class="panel rejects" role="status">
+      <p class="eyebrow">not retried</p>
+      <dl class="mono sm">
+        @for (reject of retryRejects(); track reject.itemId ?? reject.url) {
+          <!-- Not truncated: every YouTube URL shares a prefix, so a clipped one names no item. -->
+          <dt>{{ reject.url }}</dt>
+          <dd>{{ reject.reason }}</dd>
+        }
+      </dl>
+    </div>
+  }
+
   @if (retryable()) {
     <details class="panel opts">
       <summary class="eyebrow">retry options</summary>
       <div class="opts-body">
         <vk-phase-picker [(skipped)]="retrySkips" />
         <p class="mono muted sm">
-          Applies to both buttons below. A retry re-runs every phase the item has not completed.
+          Applies to Retry run and to every Retry item. A retry re-runs every phase the item has
+          not completed.
         </p>
       </div>
     </details>
@@ -42,7 +62,7 @@
       <span class="eyebrow">items — click a phase to filter the trail</span>
       @if (auditTruncated()) {
         <span class="mono warn sm">
-          showing {{ events().length }} of {{ auditTotal() }} events — durations may be partial
+          newest {{ events().length }} of {{ auditTotal() }} events — earlier phases are missing
         </span>
       }
     </div>
@@ -60,8 +80,8 @@
 
             <span class="meta mono sm muted">
               attempt {{ item.attempt }} · {{ laneTotal(item) }}
-              @if (!blank(item.failedPhase) && item.failedPhase !== 'DONE') {
-                · died in <span class="failed">{{ item.failedPhase }}</span>
+              @if (death(item); as death) {
+                · <span [class.failed]="item.status !== 'CANCELLED'">{{ death }}</span>
               }
             </span>
 
@@ -69,18 +89,25 @@
               @if (item.videoId) {
                 <a class="mono sm" [routerLink]="['/videos', item.videoId]">video →</a>
               }
-              @if (item.status !== 'COMPLETED' && !live(item)) {
+              @if (retryableItem(item)) {
                 <button class="btn-sm" type="button" [disabled]="retrying()" (click)="retryItem(item)">Retry item</button>
               }
             </span>
           </div>
 
-          <vk-lane [segments]="lane(item)" (pick)="pickPhase(item, $event)" />
+          <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="pickPhase(item, $event)" />
 
-          <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+          <vk-fault
+            [errorCode]="item.errorCode"
+            [error]="item.error"
+            [tone]="item.status === 'CANCELLED' ? 'cancelled' : 'failed'"
+          />
         </li>
       } @empty {
-        <li class="quiet muted">This run has no items — nothing was accepted when it was created.</li>
+        <li class="quiet muted">
+          This run has no items — nothing was accepted when it was created.
+          <vk-fault [errorCode]="detail.errorCode" [error]="detail.error" />
+        </li>
       }
     </ul>
   </section>
@@ -102,7 +129,11 @@
     </div>
 
     @if (timeline().length === 0) {
-      <p class="quiet muted">No events recorded for this item yet.</p>
+      @if (phaseFilter(); as phase) {
+        <p class="quiet muted">No {{ phase }} events on this item — only the newest attempt is drawn.</p>
+      } @else {
+        <p class="quiet muted">No events recorded for this item yet.</p>
+      }
     } @else {
       <div class="table-scroll">
         <table class="grid" translate="no">
@@ -123,12 +154,17 @@
                 <td class="mono sm" [title]="absoluteTime(event.occurredAt)">{{ age(event.occurredAt) }}</td>
                 <td class="num sm muted">{{ gap(event, i) }}</td>
                 <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
-                <td class="mono sm">{{ event.phase }}</td>
-                <td class="mono sm muted">{{ event.previousPhase || '—' }}</td>
+                <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
+                <td class="mono sm">{{ orDash(event.phase) }}</td>
+                <td class="mono sm muted">{{ orDash(event.previousPhase) }}</td>
                 <td><vk-status [status]="event.status" /></td>
                 <td class="detail">
                   @if (!blank(event.errorCode) || !blank(event.error)) {
-                    <vk-fault [errorCode]="event.errorCode" [error]="event.error" />
+                    <vk-fault
+                      [errorCode]="event.errorCode"
+                      [error]="event.error"
+                      [tone]="event.status === 'CANCELLED' ? 'cancelled' : 'failed'"
+                    />
                   } @else {
                     <span class="muted">—</span>
                   }
@@ -140,10 +176,6 @@
       </div>
     }
   </section>
-} @else if (run.error()) {
-  <h1 class="mono">run</h1>
-  <vk-problem [failure]="failure()" />
-  <a class="mono sm" routerLink="/runs">← all runs</a>
 } @else {
   <p class="quiet muted mono">Loading run…</p>
 }

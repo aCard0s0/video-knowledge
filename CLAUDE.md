@@ -272,11 +272,26 @@ What the generator cannot give us, and therefore lives by hand in `src/app/core/
 - `time.ts` — server timestamps are naive `LocalDateTime`; the container runs UTC and the browser
   may not, so they are parsed as UTC. Without that, ages read an hour off.
 
-Three API facts worth not rediscovering: a **FAILED run still reports `phase: "DONE"`** (use
-`item.failedPhase`); **`?live=true` on `/pipelines` is only honoured together with `ids`** — alone
-it silently returns every run, so the board queries `status=IN_PROGRESS` and `status=PENDING`; and
-**`POST /pipelines` answers 400 with a `CreatePipelineRunResponse` body** (not a ProblemDetail)
-when every URL was rejected.
+API facts worth not rediscovering: a **FAILED run still reports `phase: "DONE"`** (use
+`item.failedPhase` — but see below); **`?live=true` on `/pipelines` is only honoured together with
+`ids`** — alone it silently returns every run, so the board queries `status=IN_PROGRESS` and
+`status=PENDING`; **`POST /pipelines` answers 400 with a `CreatePipelineRunResponse` body** (not a
+ProblemDetail) when every URL was rejected; and **a 202 on either retry endpoint does not mean the
+work was queued** — the same body carries `REJECTED` items with a reason ("already running",
+"was cancelled"), so the response is read, never discarded.
+
+**`failedPhase` is not always a phase.** It is `CREATED` for an item reaped while still queued and
+`DONE` on a clean finish, so `LANE_PHASES.indexOf` answers `-1` — call `isLanePhase()` before
+treating it as a position. And **audit `size` is clamped to 500** server-side
+(`PipelineAuditQueryService.MAX_PAGE_SIZE`) on an **ascending** feed, so page 0 is the oldest
+window: anything past the cap must fetch the last page or it drops the `ITEM_FAILED`.
+
+Two Angular signal traps this app has already paid for: **`resource.value()` throws
+`ResourceValueError` in the error state**, so `@if (r.value())` must never sit before the
+`@else if (r.error())` branch that would render the failure — check `error()` first and guard
+every other read with `hasValue()`. And **`linkedSignal(() => …)` resets whenever anything it
+reads changes identity**, so seeding a selection from a polled array throws the user's pick away
+on every tick; pass an explicit stable `source`.
 
 The container runs `-Duser.timezone=UTC` (see the Dockerfile), which is what makes the
 parse-as-UTC rule in `core/time.ts` correct rather than a guess.

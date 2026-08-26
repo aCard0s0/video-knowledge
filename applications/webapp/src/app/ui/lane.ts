@@ -12,31 +12,42 @@ import { humanDuration } from '../core/time';
  * answers where the item is, where it died, and whether a phase is hung or merely slow.
  *
  * Segments are buttons: clicking one filters the audit timeline to that phase, which is also why
- * a 26px floor matters — a 200ms phase still has to be clickable.
+ * a 26px floor matters — a 200ms phase still has to be clickable. Voids are not: a phase that
+ * never ran has no events, so filtering to it can only ever empty the trail.
  */
 @Component({
   selector: 'vk-lane',
   template: `
-    <ul class="lane" [attr.aria-label]="'Phase timeline, ' + total()">
+    <ul
+      class="lane"
+      [class.dead]="dead()"
+      [class.stopped-cancelled]="status() === 'CANCELLED'"
+      [attr.aria-label]="'Phase timeline, ' + total()"
+    >
       @for (seg of display(); track seg.phase) {
         <li
           class="seg"
           [class.done]="seg.state === 'done'"
           [class.live]="seg.state === 'live'"
           [class.failed]="seg.state === 'failed'"
+          [class.cancelled]="seg.state === 'cancelled'"
           [class.skipped]="seg.state === 'skipped'"
           [class.pending]="seg.state === 'pending'"
           [class.many]="seg.merged > 1"
           [style.flexGrow]="grow(seg)"
         >
-          <button type="button" (click)="pick.emit(seg.phase)" [attr.aria-label]="describe(seg)" [title]="describe(seg)">
+          <button
+            type="button"
+            [disabled]="!clickable(seg)"
+            (click)="pick.emit(seg.phase)"
+            [attr.aria-label]="describe(seg)"
+            [title]="describe(seg)"
+          >
             @if (seg.merged > 1) {
               <span class="merged mono">{{ seg.merged }}</span>
             } @else {
               <span class="ph mono">{{ seg.phase }}</span>
-              <span class="dur mono">
-                {{ seg.ms === null ? (seg.state === 'skipped' ? 'skipped' : 'not reached') : humanDuration(seg.ms) }}
-              </span>
+              <span class="dur mono">{{ seg.ms === null ? label(seg) : humanDuration(seg.ms) }}</span>
             }
           </button>
         </li>
@@ -61,12 +72,6 @@ import { humanDuration } from '../core/time';
       overflow: hidden;
       /* A 300ms phase only has room for one line; clipping "52ms" to "52i" looks like a bug. */
       container-type: inline-size;
-    }
-
-    @container (max-width: 74px) {
-      .dur {
-        display: none;
-      }
     }
 
     .seg.skipped,
@@ -100,6 +105,13 @@ import { humanDuration } from '../core/time';
       overflow: hidden;
     }
 
+    /* A void is not a broken control, so it does not get the "not-allowed" cursor, and the global
+       disabled rule must not strip the hatching that says which phases were turned off. */
+    button:disabled {
+      cursor: default;
+      background: inherit;
+    }
+
     .ph,
     .dur {
       display: block;
@@ -116,6 +128,15 @@ import { humanDuration } from '../core/time';
 
     .dur {
       color: var(--fg-muted);
+    }
+
+    /* After .ph/.dur, not before: at equal specificity the later rule wins, so declaring this
+       first left the display:block above standing and every narrow segment showed a clipped
+       duration — the exact "52ms rendered as 52i" this rule exists to prevent. */
+    @container (max-width: 74px) {
+      .dur {
+        display: none;
+      }
     }
 
     .done button {
@@ -137,6 +158,16 @@ import { humanDuration } from '../core/time';
 
     .failed .ph {
       color: var(--st-failed);
+    }
+
+    .cancelled button {
+      background: rgba(100, 116, 139, 0.2);
+      border-color: var(--st-cancelled);
+      border-right-width: 3px;
+    }
+
+    .cancelled .ph {
+      color: var(--fg-muted);
     }
 
     .skipped button {
@@ -162,6 +193,22 @@ import { humanDuration } from '../core/time';
       color: transparent;
     }
 
+    /* Stopped before the first drawn phase: no segment can carry the outcome, so the whole track
+       does. The row's own "never started" text is what actually says it — this is the echo. */
+    .lane.dead .pending button {
+      border-color: var(--st-failed-fill);
+      background: rgba(220, 38, 38, 0.1);
+    }
+
+    .lane.dead.stopped-cancelled .pending button {
+      border-color: var(--st-cancelled);
+      background: rgba(100, 116, 139, 0.14);
+    }
+
+    .lane.dead .merged {
+      color: var(--fg);
+    }
+
     @keyframes breathe {
       from {
         opacity: 0.72;
@@ -180,6 +227,8 @@ import { humanDuration } from '../core/time';
 })
 export class Lane {
   readonly segments = input.required<LaneSegment[]>();
+  /** The run item's status, for the case no segment can express: it stopped before phase one. */
+  readonly status = input<string | undefined>();
   readonly pick = output<string>();
 
   protected readonly humanDuration = humanDuration;
@@ -203,11 +252,26 @@ export class Lane {
     return out;
   });
 
+  /**
+   * The item is over and nothing on the track ran — reaped while it was still queued, so
+   * `failedPhase` is the CREATED marker and there is no segment to cap. Without this the lane
+   * announced "complete" for an item that had failed.
+   */
+  protected readonly dead = computed(
+    () =>
+      (this.status() === 'FAILED' || this.status() === 'CANCELLED') &&
+      this.segments().every((s) => s.state === 'pending'),
+  );
+
   protected readonly total = computed(() => {
-    const failed = this.segments().find((s) => s.state === 'failed');
-    if (failed) return `failed in ${failed.phase}`;
+    const stopped = this.segments().find((s) => s.state === 'failed' || s.state === 'cancelled');
+    if (stopped) return `${stopped.state === 'cancelled' ? 'cancelled in' : 'failed in'} ${stopped.phase}`;
     const live = this.segments().find((s) => s.state === 'live');
-    return live ? `running ${live.phase}` : 'complete';
+    if (live) return `running ${live.phase}`;
+    if (this.dead()) {
+      return this.status() === 'CANCELLED' ? 'cancelled before any phase ran' : 'failed before any phase ran';
+    }
+    return this.status() === 'PENDING' ? 'not started' : 'complete';
   });
 
   /** Width ∝ measured time. Unmeasured phases keep their fixed 26px void. */
@@ -215,9 +279,19 @@ export class Lane {
     return seg.ms && seg.ms > 0 ? seg.ms : 1;
   }
 
+  /** A phase that never ran has no audit events, so filtering the trail to it always empties it. */
+  protected clickable(seg: LaneSegment): boolean {
+    return seg.state !== 'skipped' && seg.state !== 'pending';
+  }
+
+  protected label(seg: LaneSegment): string {
+    return seg.state === 'skipped' ? 'skipped' : 'not reached';
+  }
+
   protected describe(seg: LaneSegment & { merged?: number }): string {
     if ((seg.merged ?? 1) > 1) {
-      return `${seg.merged} phases from ${seg.phase} onwards were never reached`;
+      const never = `${seg.merged} phases from ${seg.phase} onwards were never reached`;
+      return this.dead() ? `${never} — the item stopped before it ran` : never;
     }
     return this.describeOne(seg);
   }
@@ -230,6 +304,8 @@ export class Lane {
         return `${seg.phase} running for ${humanDuration(seg.ms)}`;
       case 'failed':
         return `${seg.phase} failed after ${humanDuration(seg.ms)}`;
+      case 'cancelled':
+        return `${seg.phase} cancelled after ${humanDuration(seg.ms)}`;
       case 'skipped':
         return `${seg.phase} skipped — turned off for this run, or disabled on the server`;
       default:

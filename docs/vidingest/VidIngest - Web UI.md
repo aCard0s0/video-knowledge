@@ -88,6 +88,13 @@ Observed on a real failed run: `status FAILED`, `phase DONE`, `items[0].failedPh
 run-level `phase` must **never** be rendered as "where it died" — the phase rail is driven by
 `item.failedPhase` plus the audit trail.
 
+**And `failedPhase` is not always a phase.** An item the reconciler sweeps while it is still
+queued blames `CREATED` (`"reconciler: stuck PENDING in phase CREATED since …"`), and a clean
+finish reports `DONE`. Both are run markers, so `LANE_PHASES.indexOf` answers `-1` for them —
+which is how three FAILED items once rendered as ten blank boxes announcing "complete". Anything
+that treats `failedPhase` as a position asks `isLanePhase()` first; the console renders that case
+as "never started", not as a place.
+
 ### 4. The audit trail is the only source of per-phase durations
 
 `ITEM_PHASE_ENTERED` / `ITEM_PHASE_COMPLETED` pairs (ascending, paged) reconstruct how long each
@@ -156,6 +163,13 @@ switching those three to `inline` is a one-line server fix.
 document no default and fall back to server-side defaults. The non-paged `GET /videos/{videoId}/ocr`
 can return up to `vidingest.ocr.max-results-per-video` (10 000) rows — the UI always uses
 `/ocr/frames`, and always sends explicit `page` and `size`.
+
+**`size` is silently clamped.** `PipelineAuditQueryService` caps every audit page at
+`MAX_PAGE_SIZE = 500` and defaults to 100, so the run screen's old `size=1000` was never
+honoured and its "showing 500 of N" banner blamed a limit the client did not set. The trail is
+also **ascending**, so page 0 is the *oldest* window: past the cap, the run screen fetches the
+**last** page instead, because losing the early phases of a long run costs a duration while
+losing the tail costs the `ITEM_FAILED` the screen exists to show.
 
 ### 11. Three more spec defects — two fixed
 
@@ -255,6 +269,19 @@ Angular 22, zoneless (no zone.js), standalone components, signals, `@if`/`@for`,
 the console is seven screens of tables, and a library's opinions would have to be overridden
 everywhere. No GSAP — the only motion is a CSS breath on the live lane segment plus 150ms
 hover/focus transitions, both off under `prefers-reduced-motion`.
+
+**`resource.value()` throws once the resource is in its error state.** Angular raises
+`ResourceValueError`, so `@if (r.value(); as v) { … } @else if (r.error()) { … }` never reaches
+the error branch: the guard itself throws and the screen sits on its loading text forever with
+the console filling once per poll. Check `error()` **first**, and route every other read through
+`hasValue()`. The run screen shipped with the wrong order and a 404 run showed "Loading run…"
+indefinitely; the other screens survived only because their error panel sits outside the guard.
+There is no `@else if` in Angular that runs after a throwing `@if`.
+
+**`linkedSignal(() => …)` resets whenever anything it reads changes identity.** A selection
+seeded from `items()` is thrown away on every poll, because the resource hands back a fresh
+array each time. Either give it an explicit `source` that is stable (the route id), or keep the
+manual pick in a plain signal and resolve the default in a `computed`.
 
 ```
 applications/webapp/

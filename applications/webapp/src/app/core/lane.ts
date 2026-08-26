@@ -1,8 +1,8 @@
 import { RunItem, RunItemAuditEvent } from '../api/generated';
-import { LANE_PHASES, LanePhase, isLive } from './domain';
+import { LANE_PHASES, LanePhase, blank, isLanePhase, isLive } from './domain';
 import { msBetween, parseServerTime } from './time';
 
-export type SegmentState = 'done' | 'live' | 'failed' | 'skipped' | 'pending';
+export type SegmentState = 'done' | 'live' | 'failed' | 'cancelled' | 'skipped' | 'pending';
 
 export interface LaneSegment {
   phase: LanePhase;
@@ -36,12 +36,26 @@ export function buildLane(item: RunItem, events: RunItemAuditEvent[], nowMs: num
   }
 
   const live = isLive(item.status);
-  const failedPhase = item.failedPhase && item.failedPhase !== 'DONE' ? item.failedPhase : null;
+
+  // CANCELLED is a decision, not a death: DUPLICATE_VIDEO stops an item on purpose, and painting
+  // it in the failure red says an operator has something to fix when they do not.
+  const stopState: SegmentState = item.status === 'CANCELLED' ? 'cancelled' : 'failed';
+
+  // Where it stopped — but only when that is a phase the lane actually draws. An item reaped
+  // while it was still queued blames CREATED, which is a run marker: `indexOf` answers -1, and a
+  // -1 frontier used to make every phase "not reached" *and* leave the lane with no cap at all,
+  // so a FAILED item rendered as ten blank boxes reading "complete". Handled explicitly instead.
+  const stoppedAt = isLanePhase(item.failedPhase) ? item.failedPhase : null;
+  const stoppedBeforeLane = !blank(item.failedPhase) && item.failedPhase !== 'DONE' && !stoppedAt;
 
   // Everything past the frontier was never reached; everything before it that has no ENTERED
   // event was deliberately skipped. Same absence, opposite meaning.
-  const frontierName = failedPhase ?? (live ? lastEntered(current) : null);
-  const frontier = frontierName ? LANE_PHASES.indexOf(frontierName as LanePhase) : LANE_PHASES.length - 1;
+  const frontierName = stoppedAt ?? (live ? lastEntered(current) : null);
+  const frontier = stoppedBeforeLane
+    ? -1
+    : frontierName
+      ? LANE_PHASES.indexOf(frontierName as LanePhase)
+      : LANE_PHASES.length - 1;
 
   return LANE_PHASES.map((phase, index) => {
     const start = entered.get(phase);
@@ -53,16 +67,16 @@ export function buildLane(item: RunItem, events: RunItemAuditEvent[], nowMs: num
     if (end) {
       return { phase, state: 'done', ms: msBetween(start, end) };
     }
-    if (phase === failedPhase) {
-      return { phase, state: 'failed', ms: msBetween(start, item.phaseUpdatedAt) };
+    if (phase === stoppedAt) {
+      return { phase, state: stopState, ms: msBetween(start, item.phaseUpdatedAt) };
     }
     if (live) {
       const from = parseServerTime(start);
       return { phase, state: 'live', ms: from ? nowMs - from.getTime() : null };
     }
     // Entered, never completed, and the item is not live and did not blame this phase: the
-    // process died mid-phase. Draw it as failed rather than silently as complete.
-    return { phase, state: 'failed', ms: msBetween(start, item.phaseUpdatedAt) };
+    // process died mid-phase. Draw it as stopped rather than silently as complete.
+    return { phase, state: stopState, ms: msBetween(start, item.phaseUpdatedAt) };
   });
 }
 

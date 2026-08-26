@@ -39,6 +39,18 @@ export const LANE_PHASES: LanePhase[] = ALL_PHASES.filter(
 );
 
 /**
+ * True for the ten real steps only.
+ *
+ * `failedPhase` is not always one of them: an item reaped while it was still queued blames
+ * `CREATED`, and a clean finish reports `DONE`. Both are run markers, so anything that treats
+ * `failedPhase` as a position — the lane frontier, the "died in X" line — has to ask this first
+ * rather than call `indexOf` and get -1.
+ */
+export function isLanePhase(phase: string | null | undefined): phase is LanePhase {
+  return !!phase && (LANE_PHASES as string[]).includes(phase);
+}
+
+/**
  * `PipelineRunPhase.isOptional()` — the same set answers "can a run skip this?" and "can it be
  * rerun on its own?", because an optional phase consumes the persisted video row while
  * METADATA/DOWNLOAD/PERSIST consume the source URL. Confirmed live: the server 400s with
@@ -118,4 +130,9 @@ export function isLive(status: string | null | undefined): boolean {
 /** The API returns "" for absent values, not null. */
 export function blank(value: string | null | undefined): boolean {
   return value === null || value === undefined || value.trim() === '';
+}
+
+/** Renders an absent value as an em dash, so a "" never reaches the page as an empty cell. */
+export function orDash(value: string | null | undefined): string {
+  return blank(value) ? '—' : value!;
 }

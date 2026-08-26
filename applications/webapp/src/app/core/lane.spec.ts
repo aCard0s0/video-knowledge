@@ -84,7 +84,7 @@ describe('buildLane', () => {
   it('draws a phase that died without blame as failed, never as complete', () => {
     const item: RunItem = {
       itemId: 'i1',
-      status: 'CANCELLED',
+      status: 'FAILED',
       phase: 'DOWNLOAD',
       phaseUpdatedAt: at('30.000000'),
     };
@@ -95,6 +95,48 @@ describe('buildLane', () => {
 
     expect(download.state).toBe('failed');
     expect(download.ms).toBeCloseTo(10000, 0);
+  });
+
+  it('marks a cancelled item cancelled, not failed — DUPLICATE_VIDEO is a decision', () => {
+    const item: RunItem = {
+      itemId: 'i1',
+      status: 'CANCELLED',
+      phase: 'DONE',
+      failedPhase: 'METADATA',
+      phaseUpdatedAt: at('30.000000'),
+      attempt: 1,
+    };
+    const events = [ev('ITEM_PHASE_ENTERED', 'METADATA', '20.000000')];
+
+    const lane = buildLane(item, events, Date.parse('2026-08-26T15:00:00Z'));
+    const metadata = lane.find((s) => s.phase === 'METADATA')!;
+
+    expect(metadata.state).toBe('cancelled');
+    expect(metadata.ms).toBeCloseTo(10000, 0);
+    expect(lane.some((s) => s.state === 'failed')).toBe(false);
+  });
+
+  it('never reaches for a frontier at CREATED — a reaped item is unreached, not skipped', () => {
+    // A run item the reconciler swept while it was still queued blames the CREATED run marker.
+    // indexOf answers -1 for it, which used to leave every phase "not reached" AND no cap at all,
+    // so the lane of a FAILED item announced itself complete.
+    const item: RunItem = {
+      itemId: 'i1',
+      status: 'FAILED',
+      phase: 'DONE',
+      failedPhase: 'CREATED',
+      phaseUpdatedAt: at('30.000000'),
+      attempt: 1,
+    };
+    const events = [ev('ITEM_CREATED', 'CREATED', '20.000000')];
+
+    const lane = buildLane(item, events, Date.parse('2026-08-26T15:00:00Z'));
+
+    expect(lane).toHaveLength(10);
+    expect(lane.every((s) => s.state === 'pending')).toBe(true);
+    // Not "skipped": nothing was turned off, the item simply never got to run.
+    expect(lane.some((s) => s.state === 'skipped')).toBe(false);
+    expect(laneTotalMs(lane)).toBe(0);
   });
 
   it('keeps other items out of this item’s lane', () => {
