@@ -38,11 +38,24 @@ public interface OcrResultRepository extends JpaRepository<OcrResult, UUID> {
             + "ORDER BY f.timestampSeconds ASC, o.createdAt ASC")
     List<OcrResult> findByVideoIdOrderByFrameTimestamp(@Param("videoId") UUID videoId);
 
+    /**
+     * One page of frame ids for a video, restricted to frames that actually carry OCR rows and
+     * ordered by frame timestamp.
+     *
+     * <p>Deliberately a semi-join over {@code VideoFrame} rather than {@code select distinct f.id
+     * from OcrResult o join o.frame f}. That form is invalid on PostgreSQL: {@code SELECT DISTINCT}
+     * requires every {@code ORDER BY} expression to appear in the select list, and
+     * {@code timestampSeconds} does not, so it failed with SQLState 42P10 for any video that had
+     * OCR rows at all. {@code OcrQueryService} short-circuits when the frame count is zero, which
+     * is why it only ever surfaced on videos with visual text. {@code exists} needs no
+     * {@code distinct} — one row per frame by construction — so the ordering column stays legal,
+     * and it is the cheaper plan besides.
+     */
     @Query("""
-            select distinct f.id
-            from OcrResult o
-            join o.frame f
+            select f.id
+            from VideoFrame f
             where f.video.id = :videoId
+              and exists (select 1 from OcrResult o where o.frame = f)
             order by f.timestampSeconds asc
             """)
     List<UUID> findOcrFrameIdsByVideoIdOrderByTimestamp(@Param("videoId") UUID videoId, Pageable pageable);
