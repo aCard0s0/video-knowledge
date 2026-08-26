@@ -23,7 +23,7 @@ public class HealthController {
     private final OllamaStatusService ollamaStatusService;
 
     @GetMapping("/ready")
-    @Operation(summary = "Readiness probe", description = "Returns 200 when DB and storage paths are usable; otherwise 503 with details.")
+    @Operation(operationId = "readiness", summary = "Readiness probe", description = "Returns 200 when DB and storage paths are usable; otherwise 503 with details.")
     public ResponseEntity<ReadinessResult> readiness() {
         ReadinessResult result = readinessService.checkReadiness();
         HttpStatus status = result.ready() ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
@@ -31,7 +31,7 @@ public class HealthController {
     }
 
     @GetMapping("/ollama")
-    @Operation(summary = "Ollama status", description = "Probes the configured Ollama server for reachability and running/installed models.")
+    @Operation(operationId = "ollama", summary = "Ollama status", description = "Probes the configured Ollama server for reachability and running/installed models.")
     public OllamaStatus ollama() {
         return ollamaStatusService.probe();
     }

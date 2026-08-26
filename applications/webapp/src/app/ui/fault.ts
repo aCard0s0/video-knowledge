@@ -54,6 +54,15 @@ import { blank } from '../core/domain';
       user-select: text;
       max-width: 92ch;
     }
+
+    /* Side by side the badge is a nowrap chip, so on a phone it takes half the row and squeezes
+       the message that explains it into a ~14ch column. Stack instead. */
+    @media (max-width: 640px) {
+      .wrap {
+        flex-direction: column;
+        gap: var(--space-xs);
+      }
+    }
   `,
 })
 export class Fault {

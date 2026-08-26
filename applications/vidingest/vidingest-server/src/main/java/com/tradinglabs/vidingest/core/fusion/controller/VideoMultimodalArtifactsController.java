@@ -41,7 +41,7 @@ public class VideoMultimodalArtifactsController {
     private final OcrQueryService ocrQueryService;
 
     @GetMapping(VidIngestApiPaths.VIDEO_MULTIMODAL_TIMELINE)
-    @Operation(summary = "Get the fused multimodal timeline for a video",
+    @Operation(operationId = "multimodalTimeline", summary = "Get the fused multimodal timeline for a video",
             description = "Returns vidingest_multimodal_segments rows in segment_index order. Optional "
                     + "fromSeconds/toSeconds window the result to a temporal slice.")
     public List<MultimodalSegmentDto> multimodalTimeline(
@@ -53,7 +53,7 @@ public class VideoMultimodalArtifactsController {
     }
 
     @GetMapping(VidIngestApiPaths.VIDEO_MULTIMODAL_TIMELINE_PAGE)
-    @Operation(summary = "Get the fused multimodal timeline for a video (paged)",
+    @Operation(operationId = "multimodalTimelinePage", summary = "Get the fused multimodal timeline for a video (paged)",
             description = "Returns a paged view of vidingest_multimodal_segments in segment_index order. Optional "
                     + "fromSeconds/toSeconds window the result to a temporal slice.")
     public PageResponse<MultimodalSegmentDto> multimodalTimelinePage(
@@ -67,7 +67,7 @@ public class VideoMultimodalArtifactsController {
     }
 
     @GetMapping(VidIngestApiPaths.VIDEO_OCR)
-    @Operation(summary = "Get OCR results for a video, grouped by frame",
+    @Operation(operationId = "ocrResults", summary = "Get OCR results for a video, grouped by frame",
             description = "Returns one OcrFrameGroup per frame that had at least one detection. Frames "
                     + "are ordered by timestamp ascending.")
     public List<OcrFrameGroup> ocrResults(@PathVariable UUID videoId) {
@@ -75,7 +75,7 @@ public class VideoMultimodalArtifactsController {
     }
 
     @GetMapping(VidIngestApiPaths.VIDEO_OCR_FRAMES)
-    @Operation(summary = "Get OCR results for a video, grouped by frame (paged)",
+    @Operation(operationId = "ocrResultsByFramePage", summary = "Get OCR results for a video, grouped by frame (paged)",
             description = "Returns a paged list of OcrFrameGroup records ordered by frame timestamp ascending.")
     public PageResponse<OcrFrameGroup> ocrResultsByFramePage(
             @PathVariable UUID videoId,

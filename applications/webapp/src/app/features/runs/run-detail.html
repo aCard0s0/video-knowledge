@@ -12,10 +12,19 @@
         <vk-status [status]="detail.status" />
         · {{ items().length }} item(s) · started
         <span [title]="absoluteTime(detail.createdAt)">{{ age(detail.createdAt) }}</span>
+        <!-- Started 21h ago but last moved 8h ago is the difference between slow and abandoned. -->
+        · last moved <span [title]="absoluteTime(detail.updatedAt)">{{ age(detail.updatedAt) }}</span>
         @if (detail.channelName) {
           · {{ detail.channelName }}
         }
       </p>
+      @if (items().length > 1) {
+        <p class="tally mono sm">
+          @for (count of tally(); track count.status) {
+            <span [style.color]="statusVar(count.status)">{{ count.n }} {{ count.status }}</span>
+          }
+        </p>
+      }
     </div>
 
     <div class="head-actions">
@@ -46,7 +55,10 @@
 
   @if (retryable()) {
     <details class="panel opts">
-      <summary class="eyebrow">retry options</summary>
+      <summary class="eyebrow">
+        retry options —
+        {{ retrySkips().length ? retrySkips().length + ' phase(s) skipped' : 'all optional phases on' }}
+      </summary>
       <div class="opts-body">
         <vk-phase-picker [(skipped)]="retrySkips" />
         <p class="mono muted sm">
@@ -67,7 +79,7 @@
       }
     </div>
 
-    <ul class="items">
+    <ul class="items" [class.capped]="items().length > 5">
       @for (item of items(); track item.itemId) {
         <li class="item" [class.on]="item.itemId === selectedId()">
           <div class="item-head">
@@ -76,7 +88,7 @@
               <vk-status [status]="item.status" />
             </button>
 
-            <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+            <span class="url" [title]="item.url">{{ label(item) }}</span>
 
             <span class="meta mono sm muted">
               attempt {{ item.attempt }} · {{ laneTotal(item) }}
@@ -87,7 +99,9 @@
 
             <span class="item-actions">
               @if (item.videoId) {
-                <a class="mono sm" [routerLink]="['/videos', item.videoId]">video →</a>
+                <a class="mono sm" [routerLink]="['/videos', item.videoId]" [queryParams]="paneFor(item)">
+                  video →
+                </a>
               }
               @if (retryableItem(item)) {
                 <button class="btn-sm" type="button" [disabled]="retrying()" (click)="retryItem(item)">Retry item</button>
@@ -112,7 +126,7 @@
     </ul>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="trail">
     <div class="panel-head">
       <span class="trail-head">
         <span class="eyebrow">trail</span>
@@ -123,9 +137,14 @@
           <span class="mono sm">{{ phase }}</span>
         }
       </span>
-      @if (phaseFilter()) {
-        <button class="btn-sm" type="button" (click)="phaseFilter.set(null)">Clear phase filter</button>
-      }
+      <span class="trail-actions">
+        @if (phaseFilter()) {
+          <button class="btn-sm" type="button" (click)="phaseFilter.set('')">Clear phase filter</button>
+        }
+        <!-- The trail here is one item's, newest attempt, capped. The audit screen is all of it,
+             paged and filterable — the way out when this panel is not enough. -->
+        <a class="mono sm" [routerLink]="['/audit']" [queryParams]="{ runId: detail.id }">full audit →</a>
+      </span>
     </div>
 
     @if (timeline().length === 0) {
@@ -143,21 +162,21 @@
               <th scope="col" class="num">Gap</th>
               <th scope="col">Event</th>
               <th scope="col">Phase</th>
-              <th scope="col">From</th>
-              <th scope="col">Status</th>
-              <th scope="col">Detail</th>
+              <th scope="col" class="from">From</th>
+              <th scope="col" class="st">Status</th>
+              <th scope="col" class="detail">Detail</th>
             </tr>
           </thead>
           <tbody>
             @for (event of timeline(); track event.id; let i = $index) {
               <tr>
-                <td class="mono sm" [title]="absoluteTime(event.occurredAt)">{{ age(event.occurredAt) }}</td>
+                <td class="mono sm when" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
                 <td class="num sm muted">{{ gap(event, i) }}</td>
                 <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
                 <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
                 <td class="mono sm">{{ orDash(event.phase) }}</td>
-                <td class="mono sm muted">{{ orDash(event.previousPhase) }}</td>
-                <td><vk-status [status]="event.status" /></td>
+                <td class="mono sm muted from">{{ orDash(event.previousPhase) }}</td>
+                <td class="st"><vk-status [status]="event.status" /></td>
                 <td class="detail">
                   @if (!blank(event.errorCode) || !blank(event.error)) {
                     <vk-fault
@@ -170,6 +189,19 @@
                   }
                 </td>
               </tr>
+              <!-- Narrow only. As a seventh column the message sits past the right edge of a phone
+                   screen; as its own row it is the one thing that never needs scrolling to. -->
+              @if (!blank(event.errorCode) || !blank(event.error)) {
+                <tr class="detail-row">
+                  <td colspan="7">
+                    <vk-fault
+                      [errorCode]="event.errorCode"
+                      [error]="event.error"
+                      [tone]="event.status === 'CANCELLED' ? 'cancelled' : 'failed'"
+                    />
+                  </td>
+                </tr>
+              }
             }
           </tbody>
         </table>

@@ -28,6 +28,7 @@ public class PipelineAuditController {
 
     @GetMapping("/events")
     @Operation(
+            operationId = "listEvents",
             summary = "List audit events across runs",
             description = "Query pipeline item audit events with optional filters. Results are sorted by occurredAt DESC."
     )
