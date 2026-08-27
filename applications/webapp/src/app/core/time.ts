@@ -71,6 +71,23 @@ export function clockTime(value: string | null | undefined): string {
   return d ? CLOCK.format(d) : '—';
 }
 
+const DAY = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+/**
+ * The local calendar day, for a feed that spans several of them: `clockTime` alone cannot say which
+ * midnight 21:22:07 is on. Doubles as the grouping key — same day, same string — so nothing else
+ * has to define "same day", and local like the clock it sits beside.
+ */
+export function dayLabel(value: string | null | undefined): string {
+  const d = parseServerTime(value);
+  return d ? DAY.format(d) : '';
+}
+
 /** Seconds → mm:ss / h:mm:ss, matching the player's own readout. */
 export function timecode(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '--:--';

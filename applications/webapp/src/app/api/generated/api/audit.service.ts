@@ -37,11 +37,13 @@ export class AuditService extends BaseService {
 
     /**
      * List audit events across runs
-     * Query pipeline item audit events with optional filters. Results are sorted by occurredAt DESC.
+     * Query pipeline item audit events with optional filters. Results are sorted by occurredAt DESC. An unrecognised eventType, status, phase or errorCode matches nothing rather than failing the request.
      * @endpoint get /api/v1/audit/events
      * @param runId 
      * @param eventType 
      * @param status 
+     * @param phase 
+     * @param errorCode 
      * @param fromDate 
      * @param toDate 
      * @param page 
@@ -50,10 +52,10 @@ export class AuditService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listEvents(runId?: string, eventType?: string, status?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PageResponseRunItemAuditEvent>;
-    public listEvents(runId?: string, eventType?: string, status?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PageResponseRunItemAuditEvent>>;
-    public listEvents(runId?: string, eventType?: string, status?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PageResponseRunItemAuditEvent>>;
-    public listEvents(runId?: string, eventType?: string, status?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listEvents(runId?: string, eventType?: string, status?: string, phase?: string, errorCode?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PageResponseRunItemAuditEvent>;
+    public listEvents(runId?: string, eventType?: string, status?: string, phase?: string, errorCode?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PageResponseRunItemAuditEvent>>;
+    public listEvents(runId?: string, eventType?: string, status?: string, phase?: string, errorCode?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PageResponseRunItemAuditEvent>>;
+    public listEvents(runId?: string, eventType?: string, status?: string, phase?: string, errorCode?: string, fromDate?: string, toDate?: string, page?: number, size?: number, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
 
         let localVarQueryParameters = new OpenApiHttpParams(this.encoder);
 
@@ -79,6 +81,24 @@ export class AuditService extends BaseService {
             localVarQueryParameters,
             'status',
             <any>status,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'phase',
+            <any>phase,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'errorCode',
+            <any>errorCode,
             QueryParamStyle.Form,
             true,
         );

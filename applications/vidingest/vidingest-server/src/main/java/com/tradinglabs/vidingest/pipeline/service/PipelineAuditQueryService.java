@@ -4,7 +4,9 @@ import com.tradinglabs.vidingest.api.common.PageResponse;
 import com.tradinglabs.vidingest.api.pipeline.RunItemAuditEvent;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItemEvent;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineErrorCode;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItemEventType;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunItemNotFoundException;
 import com.tradinglabs.vidingest.pipeline.exceptions.RunNotFoundException;
@@ -42,6 +44,8 @@ public class PipelineAuditQueryService {
             UUID runId,
             String eventType,
             String status,
+            String phase,
+            String errorCode,
             OffsetDateTime fromDate,
             OffsetDateTime toDate
     ) {}
@@ -88,6 +92,22 @@ public class PipelineAuditQueryService {
                 try {
                     RunStatus typed = RunStatus.valueOf(filters.status().trim().toUpperCase());
                     predicates.add(cb.equal(root.get("status"), typed));
+                } catch (IllegalArgumentException ex) {
+                    predicates.add(cb.disjunction());
+                }
+            }
+            if (filters.phase() != null && !filters.phase().isBlank()) {
+                try {
+                    PipelineRunPhase typed = PipelineRunPhase.valueOf(filters.phase().trim().toUpperCase());
+                    predicates.add(cb.equal(root.get("phase"), typed));
+                } catch (IllegalArgumentException ex) {
+                    predicates.add(cb.disjunction());
+                }
+            }
+            if (filters.errorCode() != null && !filters.errorCode().isBlank()) {
+                try {
+                    PipelineErrorCode typed = PipelineErrorCode.valueOf(filters.errorCode().trim().toUpperCase());
+                    predicates.add(cb.equal(root.get("errorCode"), typed));
                 } catch (IllegalArgumentException ex) {
                     predicates.add(cb.disjunction());
                 }
