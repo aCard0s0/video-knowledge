@@ -72,7 +72,9 @@ svg.icon {
   padding: var(--space-md) var(--space-sm);
   border-right: 1px solid var(--border);
   height: 100vh;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   background: var(--card);
 }
 
@@ -312,6 +314,7 @@ nav {
 }
 
 .stamp {
+  // `time` is inline by default; the stamp is a two-line block.
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -354,8 +357,9 @@ nav {
   }
 }
 
-.prefs {
-  padding-top: var(--space-xs);
+// The last row, and the only one that is neither status nor ambient.
+.nav-toggle {
+  margin-top: var(--space-xs);
 }
 
 .nav-btn {

@@ -92,6 +92,7 @@ const THEME_KEY = 'vk.theme';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
   styleUrl: './app.scss',
+  host: { '(document:keydown)': 'onKey($event)' },
 })
 export class App {
   private readonly health = inject(HealthService);
@@ -141,6 +142,25 @@ export class App {
         this.ollama.reload();
       },
     );
+  }
+
+  /**
+   * `Alt+1`…`Alt+5`, which is what the ordinals in the rail are for. Keyed on `event.code`, not
+   * `event.key`: macOS turns Alt+1 into `¡` and Alt+2 into `™`, so the character is not the digit
+   * that was pressed. A focused text field keeps the combination — the ingest screen is a large
+   * textarea, and stealing a keystroke someone is typing into it is worse than a missing shortcut.
+   */
+  protected onKey(event: KeyboardEvent): void {
+    if (!event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? ''))
+      return;
+
+    const section = SECTIONS[Number(event.code.replace('Digit', '')) - 1];
+    if (!section || !event.code.startsWith('Digit')) return;
+
+    event.preventDefault();
+    void this.router.navigate(['/', section.path]);
   }
 
   protected toggleTheme(): void {
@@ -225,6 +245,9 @@ export class App {
 
   protected readonly utcTime = computed(() => UTC_TIME.format(this.instant()));
   protected readonly utcDate = computed(() => UTC_DATE.format(this.instant()));
+
+  /** What `<time datetime>` wants: the same instant, machine-readable. */
+  protected readonly utcIso = computed(() => this.instant().toISOString());
 
   /** `01`, `02`, … beside each section: the rail reads as the menu it is. */
   protected readonly ordinal = (i: number) => String(i + 1).padStart(2, '0');

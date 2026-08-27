@@ -9,10 +9,6 @@
 <div class="frame" [class.collapsed]="collapsed()">
   <header class="rail">
     <!--
-      Not a link: /ingest is the first section below it, and two controls for one route means two
-      things claiming the active state. It names the console and nothing else.
-    -->
-    <!--
       Mark, descriptor, name. Not a link: /ingest is the first section below it, and two controls
       for one route means two things claiming the active state.
 
@@ -37,7 +33,12 @@
     -->
     <nav aria-label="Sections">
       @for (section of sections; track section.path; let i = $index) {
-        <a [routerLink]="'/' + section.path" routerLinkActive="on" [title]="section.label">
+        <a
+          [routerLink]="'/' + section.path"
+          routerLinkActive="on"
+          [title]="section.label + ' (Alt+' + (i + 1) + ')'"
+          [attr.aria-keyshortcuts]="'Alt+' + (i + 1)"
+        >
           <span class="idx" aria-hidden="true">{{ ordinal(i) }}</span>
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
             @for (d of section.d; track d) {
@@ -121,10 +122,10 @@
         stamp is the first thing to go when the rail collapses; the switch is not.
       -->
       <div class="clock">
-        <span class="stamp mono" translate="no">
-          <span class="time">{{ utcTime() }} <span class="zone">UTC</span></span>
+        <time class="stamp mono" [attr.datetime]="utcIso()" translate="no">
+          <span class="time">{{ utcTime() }}&nbsp;<span class="zone">UTC</span></span>
           <span class="date">{{ utcDate() }}</span>
-        </span>
+        </time>
 
         <!-- The icon is the theme you are switching *to*, which is what the label says too. -->
         <button
@@ -151,20 +152,18 @@
         </button>
       </div>
 
-      <div class="prefs">
-        <button
-          class="nav-btn nav-toggle"
-          type="button"
-          (click)="toggleNav()"
-          [attr.aria-expanded]="!collapsed()"
-          [title]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
-        >
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />
-          </svg>
-          <span>{{ collapsed() ? 'Expand' : 'Collapse' }}</span>
-        </button>
-      </div>
+      <button
+        class="nav-btn nav-toggle"
+        type="button"
+        (click)="toggleNav()"
+        [attr.aria-expanded]="!collapsed()"
+        [title]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      >
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />
+        </svg>
+        <span>{{ collapsed() ? 'Expand' : 'Collapse' }}</span>
+      </button>
 
       <!--
         Inside the rail so it can read `--nav-now` and open flush against whatever width the rail
