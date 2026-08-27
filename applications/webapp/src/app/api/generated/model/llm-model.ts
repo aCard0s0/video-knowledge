@@ -9,7 +9,7 @@
  */
 
 
-export interface OllamaModel { 
+export interface LlmModel { 
     name?: string;
     digest?: string;
     sizeBytes?: number;

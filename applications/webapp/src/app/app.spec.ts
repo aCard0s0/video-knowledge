@@ -58,7 +58,8 @@ class Stub {}
 
 const HEALTH = {
   readiness: () => of({ ready: true, checks: { db: 'ok' } }),
-  ollama: () => of({ reachable: true, baseUrl: 'http://ollama:11434', runningModels: [] }),
+  llmStatus: () =>
+    of({ reachable: true, provider: 'ollama', baseUrl: 'http://llm:11434', runningModels: [] }),
 };
 
 function shell() {

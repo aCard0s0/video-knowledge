@@ -1,6 +1,6 @@
 package com.tradinglabs.vidingest.health;
 
-import com.tradinglabs.vidingest.api.health.OllamaStatus;
+import com.tradinglabs.vidingest.api.health.LlmStatus;
 import com.tradinglabs.vidingest.api.health.ReadinessResult;
 import com.tradinglabs.vidingest.api.paths.VidIngestApiPaths;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class HealthController {
 
     private final ReadinessService readinessService;
-    private final OllamaStatusService ollamaStatusService;
+    private final LlmStatusService llmStatusService;
 
     @GetMapping("/ready")
     @Operation(operationId = "readiness", summary = "Readiness probe", description = "Returns 200 when DB and storage paths are usable; otherwise 503 with details.")
@@ -30,10 +30,14 @@ public class HealthController {
         return ResponseEntity.status(status).body(result);
     }
 
-    @GetMapping("/ollama")
-    @Operation(operationId = "ollama", summary = "Ollama status", description = "Probes the configured Ollama server for reachability and running/installed models.")
-    public OllamaStatus ollama() {
-        return ollamaStatusService.probe();
+    // Sub-path literals rather than VidIngestApiPaths.HEALTH_* — those constants are absolute
+    // and the class-level @RequestMapping already contributes HEALTH.
+    @GetMapping("/llm")
+    @Operation(operationId = "llmStatus", summary = "LLM runtime status",
+            description = "Probes the configured model runtime (Ollama, LM Studio, llama.cpp, mlx, vLLM, ...) "
+                    + "for reachability and its installed/loaded models.")
+    public LlmStatus llmStatus() {
+        return llmStatusService.probe();
     }
 }
 

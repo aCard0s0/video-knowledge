@@ -14,7 +14,7 @@ public final class VidIngestApiPaths {
     public static final String SEARCH = API_V1 + "/search";
     public static final String HEALTH = API_V1 + "/health";
     public static final String HEALTH_READY = HEALTH + "/ready";
-    public static final String HEALTH_OLLAMA = HEALTH + "/ollama";
+    public static final String HEALTH_LLM = HEALTH + "/llm";
     public static final String YOUTUBE = API_V1 + "/youtube";
     public static final String YOUTUBE_CHANNELS = YOUTUBE + "/channels";
 

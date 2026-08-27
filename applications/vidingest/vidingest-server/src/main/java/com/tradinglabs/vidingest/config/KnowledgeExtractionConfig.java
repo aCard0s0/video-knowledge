@@ -18,9 +18,11 @@ import java.util.List;
  * existing {@code EmbeddingsClient}, and persists with the ivfflat index for fast semantic
  * search (M8).
  *
- * <p>Provider is selected by {@link #provider}. Today the only impl is {@code ollama}; the
- * design leaves room for {@code openai} / {@code anthropic} swap-ins as a future
- * improvement (zero code change in calling code).
+ * <p>Provider is selected by {@link #provider}: {@code ollama} speaks Ollama's own
+ * {@code /api/chat}, {@code openai-compatible} speaks {@code /chat/completions} and therefore
+ * covers LM Studio, {@code llama-server}, mlx-lm, vLLM and hosted APIs alike. Both read the same
+ * {@code base-url} / {@code chat-model} / {@code temperature} settings below, so switching runtime
+ * is a property change and nothing else.
  *
  * <p>Defaults to {@code enabled = false} because the LLM call is the most expensive thing
  * in the pipeline — operators opt in once Ollama (or a cloud provider) is wired up and
@@ -39,8 +41,14 @@ public class KnowledgeExtractionConfig {
     private boolean enabled = false;
 
     /**
-     * LLM provider selector. Supported values: {@code ollama}. Other providers reserved for
-     * future M9+ milestones.
+     * Wire-protocol selector, not a vendor name. Supported values:
+     * <ul>
+     *   <li>{@code ollama} (default) — Ollama's native {@code POST /api/chat}</li>
+     *   <li>{@code openai-compatible} — {@code POST {base-url}/chat/completions}; point
+     *       {@code base-url} at any server speaking that format, including a remote host</li>
+     * </ul>
+     * An unrecognised value leaves no {@code KnowledgeChatClient} bean and fails the context at
+     * startup, which beats discovering the typo ten minutes into a run.
      */
     private String provider = "ollama";
 
@@ -52,10 +60,19 @@ public class KnowledgeExtractionConfig {
     private String chatModel = "qwen2.5:14b-instruct";
 
     /**
-     * Provider base URL. Defaults to the Ollama service that the existing embeddings
-     * client also uses — both consume the same daemon, just different models.
+     * Base URL of the model runtime. The default is the local Ollama daemon, which the
+     * embeddings client also talks to — same daemon, different model. For
+     * {@code provider=openai-compatible} this must include the API prefix the server exposes,
+     * usually {@code /v1} (LM Studio: {@code http://localhost:1234/v1}).
      */
     private String baseUrl = "http://localhost:11434";
+
+    /**
+     * Optional bearer token, sent as {@code Authorization: Bearer <api-key>} by the
+     * OpenAI-compatible client. Local runtimes ignore it; hosted endpoints need it. Unused by the
+     * Ollama client, which has no auth.
+     */
+    private String apiKey = "";
 
     private Duration connectTimeout = Duration.ofSeconds(5);
 
