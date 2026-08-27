@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { AuditService, RunItemAuditEvent } from '../../api/generated';
+import { AuditService } from '../../api/generated';
 import { EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
 import { absoluteTime, clockTime, dayLabel } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
@@ -25,7 +25,7 @@ const PAGE_SIZE = 50;
 })
 export class Audit {
   private readonly audit = inject(AuditService);
-  protected readonly poller = inject(Poller);
+  private readonly poller = inject(Poller);
 
   protected readonly eventTypes = EVENT_TYPES;
   protected readonly statuses = RUN_STATUSES;
@@ -80,17 +80,11 @@ export class Audit {
   protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
   protected readonly failure = computed(() => firstFailure(this.list));
 
-  private readonly days = computed(() => dayMarks(this.rows()));
-
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
   protected readonly clockTime = clockTime;
+  protected readonly dayLabel = dayLabel;
   protected readonly blank = blank;
-
-  /** The day heading to draw above this row, or '' for every row that is not a day's first. */
-  protected dayFor(id: string | undefined): string {
-    return (id && this.days().get(id)) || '';
-  }
 
   protected set(which: 'runId' | 'eventType' | 'status' | 'from' | 'to', value: string): void {
     this[which].set(value);
@@ -112,33 +106,10 @@ export class Audit {
 }
 
 /**
- * Event id → the day heading to draw above it, for the first row of each calendar day only.
- *
- * Exported for the spec: this is the half of the When column that a clock cannot carry, and it is
- * ordering logic, not markup.
- */
-export function dayMarks(events: RunItemAuditEvent[]): Map<string, string> {
-  const marks = new Map<string, string>();
-  let seen = '';
-  for (const event of events) {
-    const day = dayLabel(event.occurredAt);
-    if (day && day !== seen && event.id) marks.set(event.id, day);
-    seen = day;
-  }
-  return marks;
-}
-
-/**
- * `<input type="datetime-local">` yields local wall clock ("2026-08-26T10:00"); `fromDate` and
- * `toDate` are `OffsetDateTime` on the server. `toISOString()` is both halves of that in one call:
- * the local wall clock as the UTC instant it names, carrying the offset that says so.
- *
- * It used to `.slice(0, 19)` off the trailing `Z`, back when the server compared against naive
- * `LocalDateTime` and an offset would not parse. That was inverted by the `OffsetDateTime`
- * migration and every date filter answered
- * `400 Failed to convert value of type 'java.lang.String' to required type 'java.time.OffsetDateTime'`
- * — with the table replaced by the panel reporting it, re-fired every poll. A zoneless timestamp
- * is a bug at both ends now, which is the same rule `core/time.ts` states for the read path.
+ * `<input type="datetime-local">` yields local wall clock; `fromDate`/`toDate` are
+ * `OffsetDateTime`. `toISOString()` is both halves in one call: that wall clock as the UTC instant
+ * it names, carrying the offset that says so. Trimming the `Z` off — right only while the server
+ * compared naive `LocalDateTime` — 400ed every date filter.
  */
 export function isoOrEmpty(value: string): string {
   if (!value) return '';

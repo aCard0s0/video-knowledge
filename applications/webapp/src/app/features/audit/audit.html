@@ -77,18 +77,16 @@
         </thead>
         <tbody>
           @for (event of rows(); track event.id) {
+            @let day = dayLabel(event.occurredAt);
             <!-- The clock cannot say which midnight a row is on, and this feed spans days. -->
-            @if (dayFor(event.id); as day) {
+            @if (day !== dayLabel(rows()[$index - 1]?.occurredAt)) {
               <tr class="day-row">
-                <td class="spine"></td>
-                <td colspan="7" class="mono">{{ day }}</td>
+                <td colspan="8" class="mono">{{ day }}</td>
               </tr>
             }
             <tr>
               <td class="spine" [style.--spine]="statusVar(event.status)"></td>
-              <!-- Not an age: nine transitions of one item all read "43h 29m ago", which can
-                   neither order them nor separate the 3ms between two of them. The absolute
-                   local time stays in the title, as it does on every other age in the console. -->
+              <!-- A clock, not an age: see the trail on the run screen, and `clockTime`. -->
               <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
               <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
               <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
@@ -110,10 +108,8 @@
                 }
               </td>
             </tr>
-            <!-- Full width under its event, not a ninth column: 325 of 359 events carry nothing
-                 here and paid 28ch for it, while the 34 that do were squeezed into a column whose
-                 tail — the half that separates one yt-dlp failure from the next — ran off a phone
-                 entirely. The shape the runs board and the channels list already use. -->
+            <!-- Full width under its event, not a ninth column — the shared `fault-row` shape the
+                 runs board and the channels list already use, for the reason their comments give. -->
             @if (!blank(event.errorCode) || !blank(event.error)) {
               <tr class="fault-row">
                 <td class="spine" [style.--spine]="statusVar(event.status)"></td>
