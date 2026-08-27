@@ -44,7 +44,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 
 | Screen | Endpoints |
 |---|---|
-| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /health/ready`, `GET /health/ollama` |
+| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /health/ready`, `/health/ollama`, `/health/phases` |
 | **Channels** | `GET/POST /youtube/channels`, `POST /{id}/sync`, `GET /{id}/videos`, `POST /{id}/pipelines` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry` |
@@ -237,6 +237,29 @@ rejects out of either shape.
   returns `200`. All are treated as fire-then-poll regardless.
 - `GET /pipelines?live=true` is the cheap poll for the live zone of the runs board.
 
+### 15. Deployment phase toggles were invisible — added `GET /health/phases`
+
+`vidingest.<phase>.enabled` decides whether an optional phase runs at all, and the compose defaults
+turn **DIARIZE, FRAME_SAMPLE, OCR and KNOWLEDGE off**. Nothing in the API exposed that, so the ingest
+picker rendered all seven ticked and "will run", four of them falsely, and the lane afterwards drew
+those four as hatched voids — which reads as "the operator turned these off".
+
+`PhaseAvailabilityService` answers from **`PipelinePhase.applies(ctx)` itself**, with a probe context
+carrying an empty skip set, rather than re-reading the six config beans: that gate is the one thing
+that decides, and a second reader of the same properties drifts the first time a phase grows a
+condition. Every `applies` override reads only its config bean and `ctx.skipped(...)`, so a context
+with no run, item, url or video is safe to hand it.
+
+```json
+{"phases":{"TRANSCRIBE":true,"DIARIZE":false,"FRAME_SAMPLE":false,"OCR":false,"FUSE":true,"KNOWLEDGE":false,"CONTEXT":true}}
+```
+
+The dependent-phase gates are mirrored client-side in `core/domain.ts` as `PHASE_REQUIRES` (OCR needs
+FRAME_SAMPLE, DIARIZE needs TRANSCRIBE) — the server skips those silently too, so unticking
+FRAME_SAMPLE while OCR stayed ticked was the same lie one gate over. **A phase the server has off is
+never added to `skipPhases`**: that set records what the *operator* chose, and a retry inherits it as
+a deliberate opt-out.
+
 ## Design direction
 
 Style and palette candidates came from `.claude/skills/ui-ux-pro-max/scripts/search.py`
@@ -406,6 +429,16 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   and left the operator to find it again on the runs board. Nothing else on the screen is URL state:
   the textarea is a draft and the picker configures the next run, but the run in flight is the thing
   someone would want to reopen. With no `?run` the column falls back to the last five runs.
+- **A ticked phase chip means the phase will run.** The picker reads `GET /health/phases` (finding
+  15) and renders what the deployment has off as struck-through and unpickable, with the reason in
+  text rather than in a `title` no touch device can reach — and it does the same for a phase whose
+  upstream the operator just unticked. The other two screens carrying a picker pass no `disabled`
+  list, so they are unchanged.
+- **The recent-runs column says what happened, in words.** Status was a 3px coloured bar with
+  `aria-hidden`, so five FAILED runs read as five unremarkable rows; `errorCode` and `error` are on
+  every `RunSummary` and neither was rendered at all. Labels go through `shortUrl` (`core/url.ts`),
+  because `.truncate` clips the tail at a fixed 34ch and a watch URL spends its first 32 characters
+  on boilerplate — what got cut was the video id.
 - **Nothing the operator pasted is deleted for them.** The client filters non-http(s) lines out of
   the request, and used to then overwrite the textarea with only the *server's* rejects — so a
   batch of 100 with three typos ran 97 and erased the three, with no record they had ever been
@@ -465,7 +498,9 @@ Skipped phases render as hatched voids and stay individually visible (which ones
 is information); consecutive *unreached* phases collapse into a single void carrying their count,
 because an item that dies in METADATA otherwise renders as nine identical empty boxes. The failed
 phase takes a red cap, and the live one keeps growing against the poll clock. Clicking a segment filters the audit
-trail to that phase. `CREATED` and `DONE` never appear — they are run markers.
+trail to that phase — on ingest, which has no trail of its own, that opens the run screen with
+`?item=…&phase=…` already applied; unwired, the segments were focusable buttons that did nothing,
+ten per completed item. `CREATED` and `DONE` never appear — they are run markers.
 
 **`[status]` is not optional on `<vk-lane>`.** It is the input for the one outcome no segment can
 express: an item reaped while still queued blames `CREATED`, so every segment reads `pending` and

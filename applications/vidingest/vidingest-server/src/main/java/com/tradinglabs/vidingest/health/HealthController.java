@@ -1,6 +1,7 @@
 package com.tradinglabs.vidingest.health;
 
 import com.tradinglabs.vidingest.api.health.OllamaStatus;
+import com.tradinglabs.vidingest.api.health.PhaseAvailability;
 import com.tradinglabs.vidingest.api.health.ReadinessResult;
 import com.tradinglabs.vidingest.api.paths.VidIngestApiPaths;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,6 +22,7 @@ public class HealthController {
 
     private final ReadinessService readinessService;
     private final OllamaStatusService ollamaStatusService;
+    private final PhaseAvailabilityService phaseAvailabilityService;
 
     @GetMapping("/ready")
     @Operation(operationId = "readiness", summary = "Readiness probe", description = "Returns 200 when DB and storage paths are usable; otherwise 503 with details.")
@@ -28,6 +30,15 @@ public class HealthController {
         ReadinessResult result = readinessService.checkReadiness();
         HttpStatus status = result.ready() ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
         return ResponseEntity.status(status).body(result);
+    }
+
+    @GetMapping("/phases")
+    @Operation(
+            operationId = "phaseAvailability", summary = "Optional phase availability",
+            description = "Which optional phases this deployment will execute, ignoring any run's own skipPhases. "
+                    + "A phase reported false is disabled server-side and cannot be turned on per run.")
+    public PhaseAvailability phases() {
+        return phaseAvailabilityService.availability();
     }
 
     @GetMapping("/ollama")

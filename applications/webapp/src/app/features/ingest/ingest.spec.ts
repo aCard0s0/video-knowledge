@@ -6,8 +6,8 @@ import { Router, RouterOutlet, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { Ingest, rejectsOf } from './ingest';
-import { ItemResultStatusEnum, PipelinesService } from '../../api/generated';
+import { Ingest, parseUrls, rejectsOf } from './ingest';
+import { HealthService, ItemResultStatusEnum, PipelinesService } from '../../api/generated';
 
 describe('rejectsOf', () => {
   it('keeps only the declined items, and gives a blank reason something to say', () => {
@@ -28,6 +28,32 @@ describe('rejectsOf', () => {
 
   it('has nothing to say before a request has answered', () => {
     expect(rejectsOf(null)).toEqual([]);
+  });
+});
+
+describe('parseUrls', () => {
+  it('counts lines, not tokens — three words on one line were reported as three lines', () => {
+    expect(parseUrls('some junk text').invalid).toEqual(['some junk text']);
+  });
+
+  it('takes several URLs off one line, because a paste is not always one per line', () => {
+    expect(parseUrls('https://a, https://b').valid).toEqual(['https://a', 'https://b']);
+  });
+
+  it('leaves a mixed line out whole rather than ingesting half of it', () => {
+    const parsed = parseUrls('https://a junk');
+    expect(parsed.valid).toEqual([]);
+    expect(parsed.invalid).toEqual(['https://a junk']);
+  });
+
+  it('drops repeats and says how many', () => {
+    const parsed = parseUrls('https://a\nhttps://a\nhttps://b');
+    expect(parsed.valid).toEqual(['https://a', 'https://b']);
+    expect(parsed.duplicates).toBe(1);
+  });
+
+  it('ignores blank lines and surrounding whitespace', () => {
+    expect(parseUrls('\n  https://a  \n\n').valid).toEqual(['https://a']);
   });
 });
 
@@ -86,7 +112,10 @@ function stubPipelines(overrides: Record<string, unknown> = {}) {
   return service;
 }
 
-async function screen(pipelines: ReturnType<typeof stubPipelines>) {
+async function screen(
+  pipelines: ReturnType<typeof stubPipelines>,
+  phases: Record<string, boolean> = { TRANSCRIBE: true, DIARIZE: true, FRAME_SAMPLE: true, OCR: true, FUSE: true, KNOWLEDGE: true, CONTEXT: true },
+) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter([
@@ -95,6 +124,7 @@ async function screen(pipelines: ReturnType<typeof stubPipelines>) {
       ]),
       provideLocationMocks(),
       { provide: PipelinesService, useValue: pipelines },
+      { provide: HealthService, useValue: { phaseAvailability: () => of({ phases }) } },
     ],
   });
   const fixture = TestBed.createComponent(Host);
@@ -220,5 +250,88 @@ describe('Ingest', () => {
 
     const panel = el.querySelector('vk-problem')!.textContent!;
     expect(panel).toContain('Only a FAILED run may be retried.');
+  });
+  it('names the lines it will leave out, and warns rather than reporting them as a count', async () => {
+    const { el } = await screen(stubPipelines());
+
+    type(el, ['https://www.youtube.com/watch?v=xxxxxxxxxxx', 'www.youtube.com/watch?v=TYPO'].join('\n'));
+
+    expect(el.querySelector('.not-http')!.textContent).toContain('www.youtube.com/watch?v=TYPO');
+    expect(el.querySelector('.counts')!.classList.contains('warn')).toBe(true);
+    // On the field, not in a live region: this changes on every keystroke.
+    expect(el.querySelector('#urls')!.getAttribute('aria-describedby')).toBe('url-counts');
+  });
+
+  it('says which phases this deployment will not run, instead of ticking them', async () => {
+    const { el } = await screen(stubPipelines(), {
+      TRANSCRIBE: true, DIARIZE: false, FRAME_SAMPLE: false, OCR: false, FUSE: true, KNOWLEDGE: false, CONTEXT: true,
+    });
+
+    const unavailable = [...el.querySelectorAll('label.chip.unavailable')].map((c) => c.textContent?.trim());
+    expect(unavailable).toEqual(['DIARIZE', 'FRAME_SAMPLE', 'OCR', 'KNOWLEDGE']);
+  });
+
+  it('does not report an unanswered list as an empty one', async () => {
+    const { el } = await screen(stubPipelines({ listRuns: () => throwError(() => new HttpErrorResponse({ status: 500 })) }));
+
+    expect(el.querySelector('.quiet')?.textContent).not.toContain('Nothing ingested yet');
+    expect(el.querySelector('vk-problem')!.textContent).toContain('500');
+  });
+
+  it('reads the per-URL reasons out of the 400 that carries them, not as a bare HTTP fault', async () => {
+    // POST /pipelines answers 400 with a CreatePipelineRunResponse — not a ProblemDetail — when
+    // every URL was rejected.
+    const { el } = await screen(stubPipelines({
+      createRuns: () =>
+        throwError(() => new HttpErrorResponse({
+          status: 400,
+          error: { runId: null, items: [{ url: 'https://a', status: ItemResultStatusEnum.Rejected, reason: 'duplicate url in request' }] },
+        })),
+    }));
+
+    type(el, 'https://a');
+    press(el, 'button[type=submit]');
+
+    expect(el.querySelector('.rejects')!.textContent).toContain('duplicate url in request');
+    expect(el.querySelector('vk-problem')!.textContent!.trim()).toBe('');
+  });
+
+  it('gives the recent list a status in words, not only a coloured bar', async () => {
+    const pipelines = stubPipelines({
+      listRuns: () => of({
+        items: [{ id: 'run-9', status: 'FAILED', errorCode: 'UPSTREAM_TOOL_FAILURE', error: 'yt-dlp failed', videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', videoTitle: '', createdAt: '2026-08-27T15:43:56.094678Z' }],
+        page: 0, size: 5, total: 1,
+      }),
+    });
+    const { el } = await screen(pipelines);
+
+    const row = el.querySelector('.recent li')!;
+    expect(row.querySelector('vk-status')!.textContent).toContain('FAILED');
+    // errorCode and error are on every RunSummary and neither used to be rendered.
+    expect(row.querySelector('vk-fault')!.textContent).toContain('UPSTREAM_TOOL_FAILURE');
+    // …and the label keeps the video id a 34ch tail-clip was eating.
+    expect(row.querySelector('.url')!.textContent).toContain('dQw4w9WgXcQ');
+  });
+
+  it('sends a lane segment to the run screen with the trail filtered to that phase', async () => {
+    // A lane needs a segment that actually ran: the CREATED case collapses to one disabled void.
+    const { el, router } = await screen(stubPipelines({
+      getRun: () => of({
+        ...FAILED_RUN,
+        items: [{ ...FAILED_RUN.items[0], failedPhase: 'METADATA' }],
+      }),
+      auditRun: () => of({
+        items: [{ itemId: 'item-1', attempt: 1, eventType: 'ITEM_PHASE_ENTERED', phase: 'METADATA', occurredAt: '2026-08-27T15:43:56.094678Z' }],
+        page: 0, size: 500, total: 1,
+      }),
+    }));
+
+    type(el, 'https://www.youtube.com/watch?v=xxxxxxxxxxx');
+    press(el, 'button[type=submit]');
+    // The only enabled segment: the merged void is not clickable.
+    press(el, 'vk-lane .lane button:not([disabled])');
+    await settle();
+
+    expect(router.url).toBe('/runs/run-1?item=item-1&phase=METADATA');
   });
 });

@@ -10,16 +10,29 @@
   <form class="panel form" [formGroup]="form" (ngSubmit)="submit()">
     <div class="field">
       <label for="urls">Source URLs</label>
+      <!--
+        Ctrl/Cmd+Enter submits. Enter has to keep inserting a newline in a box whose whole point is
+        one URL per line, so without a shortcut the only way to fire a paste from the keyboard was
+        seven tabs through the phase chips.
+      -->
       <textarea
         id="urls"
         rows="8"
         spellcheck="false"
         autocomplete="off"
+        aria-describedby="url-counts"
         placeholder="https://www.youtube.com/watch?v=…"
         formControlName="urls"
+        (keydown.control.enter)="submit()"
+        (keydown.meta.enter)="submit()"
       ></textarea>
 
-      <p class="counts mono" [class.warn]="tooMany()">
+      <!--
+        Not aria-live: this changes on every keystroke, and a live region would read the whole
+        line back each time. aria-describedby puts it on the field, where a screen reader reaches
+        it on focus and on demand.
+      -->
+      <p id="url-counts" class="counts mono" [class.warn]="hasDiscards()">
         {{ parsed().valid.length }} URL(s) ready
         @if (parsed().duplicates > 0) {
           · {{ parsed().duplicates }} duplicate(s) dropped
@@ -31,16 +44,26 @@
           · over the {{ maxUrls }}-URL limit for one run
         }
       </p>
+
+      @if (parsed().invalid.length) {
+        <!-- Naming them is the point: "3 line(s)" in a 100-line paste is not findable. -->
+        <ul class="not-http mono" translate="no">
+          @for (line of parsed().invalid; track $index) {
+            <li>{{ line }}</li>
+          }
+        </ul>
+      }
     </div>
 
     <div class="field">
-      <vk-phase-picker [(skipped)]="skipped" />
+      <vk-phase-picker [(skipped)]="skipped" [disabled]="disabledPhases()" />
     </div>
 
     <div class="actions">
       <button class="btn-primary" type="submit" [disabled]="!canSubmit()">
         {{ submitting() ? 'Starting…' : 'Ingest ' + parsed().valid.length + ' URL(s)' }}
       </button>
+      <span class="hint mono muted">or ⌘/Ctrl + Enter</span>
     </div>
 
     @if (rejected().length) {
@@ -58,7 +81,7 @@
           <tbody>
             @for (item of rejected(); track item.url) {
               <tr>
-                <td class="mono truncate" [title]="item.url">{{ item.url }}</td>
+                <td class="mono truncate" [title]="item.url">{{ shortUrl(item.url) }}</td>
                 <td class="reason">{{ item.reason }}</td>
               </tr>
             }
@@ -70,9 +93,11 @@
 
   <!--
     The run you just started, advancing in place. Same lane component as the run screen, so what
-    you learn to read here is what you read when something breaks.
+    you learn to read here is what you read when something breaks. `tabindex="-1"` so a finished
+    submit can put the keyboard here — the submit button disables itself and the browser would
+    otherwise drop focus to <body>.
   -->
-  <section class="panel watch">
+  <section class="panel watch" #watchPanel tabindex="-1">
     @if (watched(); as run) {
       <div class="panel-head">
         <span class="eyebrow">{{ headline() }}</span>
@@ -98,7 +123,7 @@
         <ul class="retry-rejects mono sm" aria-live="polite">
           @for (item of retryRejects(); track item.url) {
             <li>
-              <span class="truncate" [title]="item.url">{{ item.url || 'run' }}</span>
+              <span class="truncate" [title]="item.url">{{ shortUrl(item.url) || 'run' }}</span>
               <span class="reason">{{ item.reason }}</span>
             </li>
           }
@@ -110,14 +135,18 @@
           <li>
             <div class="watch-item-head">
               <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
-              <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+              <span class="url" [title]="item.url">{{ label(item) }}</span>
+              <vk-status [status]="item.status" />
             </div>
             <!--
               `status` is what tells the lane an item stopped before phase one: with it absent the
               lane cannot distinguish "reaped while queued" from "finished", and announced a FAILED
               item as complete. The run screen has always passed it.
+
+              A segment opens the run screen with the trail filtered to that phase. Unwired, these
+              were focusable buttons that did nothing — ten per completed item.
             -->
-            <vk-lane [segments]="lane(item)" [status]="item.status" />
+            <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="openPhase(item, $event)" />
             <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
           </li>
         }
@@ -128,7 +157,9 @@
         <a class="mono sm" routerLink="/runs">all runs →</a>
       </div>
 
-      @if (recentRuns().length === 0) {
+      @if (!recentLoaded()) {
+        <p class="quiet muted">Loading…</p>
+      } @else if (recentRuns().length === 0) {
         <p class="quiet muted">Nothing ingested yet. The run you start appears here and keeps advancing.</p>
       } @else {
         <ul class="recent">
@@ -136,10 +167,18 @@
             <li>
               <span class="spine-dot" [style.background]="statusVar(run.status)" aria-hidden="true"></span>
               <a class="mono sm" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-              <span class="url truncate" [title]="run.videoTitle || run.videoUrl">
-                {{ run.videoTitle || run.videoUrl }}
-              </span>
-              <span class="mono sm muted">{{ age(run.createdAt) }}</span>
+              <span class="url" [title]="run.videoTitle || run.videoUrl">{{ label(run) }}</span>
+              <!--
+                The status was a 3px coloured bar and nothing else — aria-hidden, so five FAILED
+                runs read to a screen reader as five unremarkable rows, and to anyone else as five
+                rows distinguishable only by hue.
+              -->
+              <vk-status [status]="run.status" />
+              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span>
+              <!-- `errorCode` and `error` are on every RunSummary and neither was ever rendered. -->
+              @if (!blank(run.errorCode) || !blank(run.error)) {
+                <vk-fault class="recent-fault" [errorCode]="run.errorCode" [error]="run.error" />
+              }
             </li>
           }
         </ul>
