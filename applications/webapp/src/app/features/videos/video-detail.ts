@@ -24,7 +24,7 @@ import { absoluteTime, humanAge, humanDuration, timecode } from '../../core/time
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
 import { Capabilities } from '../../core/capabilities';
-import { Poller } from '../../core/poller';
+import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -32,7 +32,8 @@ import { Empty } from '../../ui/empty';
 import { Problem } from '../../ui/problem';
 import { syncQueryParams } from '../../core/url-state';
 
-type Pane = 'transcript' | 'frames' | 'fused' | 'knowledge' | 'speakers';
+const PANE_KEYS = ['transcript', 'frames', 'fused', 'knowledge', 'speakers'] as const;
+type Pane = (typeof PANE_KEYS)[number];
 
 type PaneTab = { key: Pane; label: string; count: () => number; resource: { reload(): void } };
 
@@ -84,14 +85,58 @@ export class VideoDetail {
   private ticker: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
-    syncQueryParams({ pane: this.pane, page: this.page, type: this.knowledgeType });
+    /*
+      Both params reach something that refuses an unknown value, so both are allow-listed — the
+      rule the audit screen's four selects already follow. `?pane=BOGUS` matched no `@switch` case
+      and rendered an artifact column that was simply blank, with no tab lit and nothing saying
+      why; `?type=BOGUS` goes into `listVideoKnowledge` and comes back a 400 carrying a raw Java
+      enum name. An unlisted value is ignored, so the signal keeps its default and the effect drops
+      the key from the URL.
+    */
+    syncQueryParams(
+      { pane: this.pane, page: this.page, type: this.knowledgeType },
+      { pane: PANE_KEYS, type: ['', ...KNOWLEDGE_TYPES] },
+    );
     // One page signal, three paged panes. A pane that is not visible has undefined params, so its
     // resource is idle and holds no page — only the visible one's clamp is ever live.
     clampPage(this.page, SEG_SIZE, this.segments);
     clampPage(this.page, FRAME_SIZE, this.frames);
     clampPage(this.page, FUSED_SIZE, this.fused);
+    /*
+      This screen used to fetch once and never again.
+
+      The videos list was corrected for exactly this: a row left TRANSCRIBING stayed TRANSCRIBING
+      for as long as the screen was open. Opening that row made it worse, not better — the status,
+      the artifact counts and the dossier are all on `/detail`, and a video the pipeline is actively
+      working on sat frozen while the rail underneath ticked "updated 2.0s ago" and every age on the
+      page moved. `Poller` was injected here only to drive those ages.
+
+      Fast only while this video can still change, which is the same question the two list screens
+      ask of their rows. The visible pane comes with it: a phase that finishes writes rows the pane
+      is already showing a stale count of.
+    */
+    this.poller.every(
+      () => (this.moving() ? POLL_LIVE : POLL_IDLE),
+      () => {
+        // Not while a rerun is in flight: that request answers with the counts itself and reloads
+        // both, and a poll landing mid-wipe would show the artifacts half-deleted.
+        if (this.running()) return;
+        this.detail.reload();
+        this.reloadPane();
+      },
+    );
     inject(DestroyRef).onDestroy(() => this.stopTicking());
   }
+
+  /**
+   * This video can still change, so the cadence is worth the requests. Stated as *not finished*
+   * rather than as a list of what moves, so a `VideoStatus` the server adds counts as moving —
+   * polling a settled video costs one request, freezing a live one is the defect this closes.
+   */
+  private readonly moving = computed(() => {
+    const status = this.video()?.status;
+    return !!status && status !== 'COMPLETED' && status !== 'FAILED';
+  });
 
   protected readonly detail = rxResource({
     params: () => ({ id: this.videoId() }),

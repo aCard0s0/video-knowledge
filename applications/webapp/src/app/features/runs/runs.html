@@ -1,4 +1,8 @@
 <h1 class="mono">runs</h1>
+<p class="sub prose">
+  Every pipeline run, newest first. Retrying a FAILED run re-runs the phases its items never
+  completed, keeping the phase set it was created with.
+</p>
 
 <vk-problem [failure]="failure()" />
 <vk-rejects [items]="retryRejects()" />
@@ -18,7 +22,9 @@
     running" used to be the screen's answer to a request that never came back — under a problem
     panel already saying so. Same guard the three list screens carry.
   -->
-  @if (running.hasValue() && pending.hasValue() && liveRuns().length === 0) {
+  @if (running.isLoading() && pending.isLoading() && !running.hasValue() && !pending.hasValue()) {
+    <p class="quiet mono muted">Loading runs…</p>
+  } @else if (running.hasValue() && pending.hasValue() && liveRuns().length === 0) {
     <p class="quiet mono muted">Nothing running. Submitted runs appear here within a couple of seconds.</p>
   } @else if (liveElsewhere().length === 0) {
     <!-- The history below is already listing every one of them; repeating the rows here put the
@@ -89,13 +95,18 @@
     }
   </div>
 
-  @if (history.hasValue() && historyRuns().length === 0) {
+  <!-- The guarded loading line the videos list carries: on an errored resource `isLoading()` is
+       false, so the panel above is still the whole answer, and `hasValue()` keeps the 2s poll from
+       replacing the table with "Loading…" on every tick. -->
+  @if (history.isLoading() && !history.hasValue()) {
+    <p class="quiet mono muted">Loading history…</p>
+  } @else if (history.hasValue() && historyRuns().length === 0) {
     <vk-empty message="No runs match this filter.">
       <a class="mono" routerLink="/ingest">Start an ingest →</a>
     </vk-empty>
   } @else if (historyRuns().length) {
     <div class="table-scroll">
-      <table class="grid" translate="no">
+      <table class="grid grid-pinned" translate="no">
         <thead>
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>

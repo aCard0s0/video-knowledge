@@ -5,28 +5,9 @@
 /* `.chips` / `.chip` / `.chip .count` moved to `styles.scss` when the videos list grew the same
    status row — one home rather than two copies drifting. */
 
-/* Retry rides the right edge instead of the far end of a table five columns wider than a phone.
-   At 390px the grid is 792px, so the button the screen exists for sat 412px past the viewport and
-   cost a horizontal scroll per row. `background: inherit` rather than a token, so the row's hover
-   wash reaches it — a sticky cell painted `--card` would sit on top of it. Inert at any width where
-   the table already fits. */
-.history .stick {
-  position: sticky;
-  right: 0;
-  background: inherit;
-  /* A hairline, so the row scrolling underneath reads as covered rather than mangled — without it
-     a clipped `youtube.com/watch?…` ends behind the button as `youtube.cc` and looks like data.
-     Inset, because a sticky cell in a `border-collapse: collapse` table does not keep a border. */
-  box-shadow: inset 1px 0 0 var(--border);
-}
-
-/* A sticky cell needs something opaque behind it, and `inherit` only reaches a row that has a
-   background of its own — so the rows carry the surface the panel used to provide, and hovering
-   either half of a run lights both. */
-.history tbody tr {
-  background: var(--card);
-}
-
+/* `.stick` on the actions column and `.grid-pinned` on the table are in `styles.scss`: the videos
+   list carries the identical pin, and the two had it as two copies. What is only true here is that
+   a run and its fault row are one record, so hovering either half lights both. */
 .history tbody tr:hover,
 .history tr:has(+ .fault-row:hover),
 .history tr:hover + .fault-row {

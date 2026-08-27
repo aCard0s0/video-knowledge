@@ -30,6 +30,10 @@ export class Channels {
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
   protected readonly busy = signal<string | null>(null);
+  /** Two-step remove: the first press arms the row, the second sends it. */
+  protected readonly armed = signal<string | null>(null);
+  /** What the last press did, for the `role="status"` line. Empty is the resting state. */
+  protected readonly said = signal('');
   private readonly actionFailure = signal<ApiFailure | null>(null);
   /** Errors appear on submit, not while the operator is still typing the first character. */
   private readonly submitted = signal(false);
@@ -86,6 +90,7 @@ export class Channels {
     const { url, displayName } = this.form.getRawValue();
     this.busy.set('add');
     this.actionFailure.set(null);
+    this.said.set('');
     this.youtube.createChannel({ url, displayName: displayName || undefined }).subscribe({
       next: (channel) => {
         this.form.reset();
@@ -113,6 +118,9 @@ export class Channels {
     this.youtube.syncChannel(channel.id).subscribe({
       next: () => {
         this.busy.set(null);
+        // A sync that discovers nothing new changes no cell on the row, so the button flipping back
+        // from "Syncing…" is otherwise the whole answer.
+        this.said.set(`Synced ${channel.displayName || channel.url}.`);
         this.list.reload();
       },
       error: (err: unknown) => {
@@ -123,28 +131,42 @@ export class Channels {
   }
 
   /**
-   * Stop tracking a channel.
+   * Stop tracking a channel. First press arms the row, second sends it.
    *
    * Without this a mistyped URL was permanent: nothing in the API reached the `DISABLED` status,
    * so the row sat `ERROR` while the server's half-hour sweep re-ran yt-dlp against a dead URL
-   * forever. Confirmed first because it drops the discovered catalog — but not the videos already
-   * ingested from it, which is what the prompt says.
+   * forever. It needs confirming because it drops the discovered catalog — but not the videos
+   * already ingested from it, which is what the armed line says.
+   *
+   * The same arm-then-confirm shape the videos list and the video screen's rerun chips use, rather
+   * than the native `confirm()` this shipped with: that dialog blocks the thread, takes focus out
+   * of the document and hands it back to `<body>`, and is the one modal in a console that has
+   * otherwise never had one. The consequence it was carrying is not lost — it moves into the
+   * `role="status"` line, where a screen reader reaches it and where it is also on screen.
    */
   protected remove(channel: YoutubeChannelSummary): void {
-    if (!channel.id) return;
+    if (!channel.id || this.busy() === channel.id) return;
     const name = channel.displayName || channel.url;
-    if (!confirm(`Stop tracking ${name}?\n\nIts discovered catalog goes too. Videos already ingested from it are kept.`)) {
+    if (this.armed() !== channel.id) {
+      this.armed.set(channel.id);
+      this.said.set(
+        `Press Confirm remove to stop tracking ${name}. Its discovered catalog goes too; videos already ingested from it are kept.`,
+      );
       return;
     }
+    this.armed.set(null);
     this.busy.set(channel.id);
     this.actionFailure.set(null);
     this.youtube.deleteChannel(channel.id).subscribe({
       next: () => {
         this.busy.set(null);
+        // The row leaves the table, which on its own looks exactly like a press that did nothing.
+        this.said.set(`Stopped tracking ${name}.`);
         this.list.reload();
       },
       error: (err: unknown) => {
         this.busy.set(null);
+        this.said.set('');
         this.actionFailure.set(toApiFailure(err));
       },
     });

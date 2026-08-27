@@ -17,43 +17,8 @@
   min-width: 12ch;
 }
 
-/* Delete rides the right edge, the same fix the runs board carries for the same table shape. The
-   grid ran 131px past its panel at 1440px and 882px at 390px, so the only write action on the
-   screen sat 52px and 804px past the viewport respectively — reachable only by scrolling a row
-   sideways, once per row. `background: inherit` rather than a token, so the row's hover wash
-   reaches it; a cell painted `--card` would sit on top of it. Inert wherever the table fits. */
-.stick {
-  position: sticky;
-  right: 0;
-  z-index: 1;
-  background: inherit;
-  /* Inset, because a sticky cell in a `border-collapse: collapse` table keeps no border of its
-     own — and without the hairline a title clipped underneath reads as data, not as covered. */
-  box-shadow: inset 1px 0 0 var(--border);
-}
-
-/* A sticky cell must not cover the focused element, and at 390px it did: the title cell runs to
-   319px while the pinned column starts at 300, so 15px of the ring on a short title was painted
-   behind Delete. Lifting the focused link over it costs the ring crossing the hairline for those
-   few pixels, which is the direction to fail in — the cell's own `overflow: hidden` still stops
-   the ring at the column edge, so it cannot reach the button. */
-table.grid td a:focus-visible {
-  position: relative;
-  z-index: 2;
-}
-
-/* `inherit` only reaches a row that has a background of its own, so the rows carry the surface
-   the panel used to provide. Same colour, so nothing looks different where nothing is sticky. */
-table.grid tbody tr {
-  background: var(--card);
-}
-
-/* ...and the wash has to be restated here. The global rule is `table.grid tbody tr:hover`, which
-   ties this one on specificity once Angular's scoping attribute is added, and component styles are
-   injected last — so declaring the rest state silently took the hover off all 25 rows. */
-table.grid tbody tr:hover {
-  background: var(--muted);
-}
+/* `.stick` on the actions column and `.grid-pinned` on the table are in `styles.scss`: the runs
+   history carries the identical pin, and the two had it as two copies. */
 
 /* What a 390px viewport gives up. CHANNEL is the filter's own value repeated down the page — and
    the widest cell on the screen, since a channel name has no length limit — and SOURCE is an

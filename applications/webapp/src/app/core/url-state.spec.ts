@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { syncQueryParams } from './url-state';
+import { isUuid } from './domain';
 
 /** The last query params `syncQueryParams` asked the router to write. */
 let written: Record<string, string | null>;
@@ -27,7 +28,7 @@ function setup(initialUrl: Record<string, string> = {}) {
 
 function sync(
   state: Record<string, WritableSignal<string | number | boolean>>,
-  allowed?: Record<string, readonly string[]>,
+  allowed?: Record<string, readonly string[] | ((value: string) => boolean)>,
 ) {
   TestBed.runInInjectionContext(() => syncQueryParams(state, allowed));
   TestBed.tick();
@@ -112,6 +113,30 @@ describe('syncQueryParams', () => {
 
     expect(channel()).toBe('anything at all');
     expect(status()).toBe('ALL');
+  });
+
+  /**
+   * The shapes a list cannot spell. `?run=` on ingest and channel detail reaches
+   * `GET /pipelines/{id}`, which takes a whole uuid — and the id those screens *print* is
+   * `id.slice(0, 8)`, so a half-copied link is the likely way to get one wrong.
+   */
+  it('takes a predicate where an allow-list has no shape to give', () => {
+    setup({ run: '710a9419' });
+    const run = signal('');
+    sync({ run }, { run: isUuid });
+
+    expect(run()).toBe('');
+    expect(written['run']).toBeNull();
+  });
+
+  it('still reads a URL value the predicate accepts', () => {
+    const id = '710a9419-0f4e-4b2c-9d61-2b6f0c8a51e7';
+    setup({ run: id });
+    const run = signal('');
+    sync({ run }, { run: isUuid });
+
+    expect(run()).toBe(id);
+    expect(written['run']).toBe(id);
   });
 
   it('takes the declared value as the default even when the URL disagrees on entry', () => {

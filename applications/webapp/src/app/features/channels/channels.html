@@ -5,6 +5,10 @@
 </p>
 
 <vk-problem [failure]="failure()" />
+<!-- Present even when empty, so it is a region a screen reader can announce into rather than one
+     that appears with its text already in place. A removed row leaves the table, and a row silently
+     disappearing is indistinguishable from a press that did nothing. -->
+<p class="said mono muted" role="status">{{ said() }}</p>
 
 <form class="panel add" [formGroup]="form" (ngSubmit)="add()">
   <div class="fields">
@@ -46,14 +50,20 @@
   <!--
     `rows()` is `[]` while the list is loading *and* while it has errored, so the empty state used
     to claim "nothing matches" over a request that never answered — under a problem panel already
-    saying it failed. It renders only once the resource actually holds a value; before that the
-    panel above is the answer, and a "Loading…" line here would sit there forever on an error.
+    saying it failed. It renders only once the resource actually holds a value.
+
+    `!list.hasValue()` on the loading branch is both what says so on a first load — the panel was
+    simply blank until the response landed — and what keeps it off an errored resource, which is
+    never `isLoading()`. It also keeps the poll invisible: `reload()` holds the previous page while
+    it refetches, so without that guard the table would be replaced by "Loading…" every 15s.
   -->
-  @if (list.hasValue() && rows().length === 0) {
+  @if (list.isLoading() && !list.hasValue()) {
+    <p class="quiet mono muted">Loading channels…</p>
+  } @else if (list.hasValue() && rows().length === 0) {
     <vk-empty message="No channels tracked yet. Add one above to browse its uploads." />
   } @else if (rows().length) {
     <div class="table-scroll">
-      <table class="grid" translate="no">
+      <table class="grid grid-pinned" translate="no">
         <thead>
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
@@ -61,7 +71,7 @@
             <th scope="col">Channel</th>
             <th scope="col" class="num">Videos</th>
             <th scope="col" class="num">Last sync</th>
-            <th scope="col"><span class="sr-only">Actions</span></th>
+            <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -81,14 +91,29 @@
               <td class="num sm" [title]="absoluteTime(channel.lastSyncSuccessAt)">
                 {{ channel.lastSyncSuccessAt ? age(channel.lastSyncSuccessAt) : 'never' }}
               </td>
-              <td>
+              <td class="stick">
                 <span class="row-actions">
                   <button class="btn-sm" type="button" [disabled]="busy() === channel.id" (click)="sync(channel)">
                     {{ busy() === channel.id ? 'Syncing…' : 'Sync now' }}
                   </button>
-                  <button class="btn-sm btn-danger" type="button" [disabled]="busy() === channel.id" (click)="remove(channel)">
-                    Remove
+                  <!--
+                    One button that changes its label, not two swapped by an `@if`: Angular destroys
+                    the element it replaces, so arming a row from the keyboard would drop focus to
+                    `<body>` and put the confirm a whole tab cycle away. It stays enabled while the
+                    request is in flight for the same reason — `disabled` takes an element out of
+                    the tab order — and `remove()` ignores the repeat press instead.
+                  -->
+                  <button
+                    class="btn-sm btn-danger"
+                    type="button"
+                    [attr.aria-disabled]="busy() === channel.id ? 'true' : null"
+                    (click)="remove(channel)"
+                  >
+                    {{ armed() === channel.id ? 'Confirm remove' : busy() === channel.id ? 'Removing…' : 'Remove' }}
                   </button>
+                  @if (armed() === channel.id) {
+                    <button class="btn-sm" type="button" (click)="armed.set(null); said.set('')">Keep</button>
+                  }
                 </span>
               </td>
             </tr>

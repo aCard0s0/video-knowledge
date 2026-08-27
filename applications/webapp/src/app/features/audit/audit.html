@@ -107,10 +107,16 @@
   <!--
     `rows()` is `[]` while the list is loading *and* while it has errored, so the empty state used
     to claim "nothing matches" over a request that never answered — under a problem panel already
-    saying it failed. It renders only once the resource actually holds a value; before that the
-    panel above is the answer, and a "Loading…" line here would sit there forever on an error.
+    saying it failed. It renders only once the resource actually holds a value.
+
+    `!list.hasValue()` on the loading branch is both what says so on a first load — the panel was
+    simply blank until the response landed — and what keeps it off an errored resource, which is
+    never `isLoading()`. It also keeps the poll invisible: `reload()` holds the previous page while
+    it refetches, so without that guard the table would be replaced by "Loading…" every 15s.
   -->
-  @if (list.hasValue() && rows().length === 0) {
+  @if (list.isLoading() && !list.hasValue()) {
+    <p class="quiet mono muted">Loading events…</p>
+  } @else if (list.hasValue() && rows().length === 0) {
     <vk-empty message="No events match these filters." >
       @if (filtered()) {
         <button class="btn-sm" type="button" (click)="clear()">Clear filters</button>

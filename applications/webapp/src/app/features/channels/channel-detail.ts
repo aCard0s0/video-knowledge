@@ -8,7 +8,7 @@ import {
   YoutubeChannelVideoSummary,
   YoutubeService,
 } from '../../api/generated';
-import { blank, statusVar } from '../../core/domain';
+import { blank, isUuid, statusVar } from '../../core/domain';
 import { shortUrl } from '../../core/url';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
@@ -62,7 +62,7 @@ export class ChannelDetail {
   protected readonly maxPerRun = MAX_PER_RUN;
 
   constructor() {
-    syncQueryParams({ page: this.page, onlyNew: this.onlyNew, run: this.runId });
+    syncQueryParams({ page: this.page, onlyNew: this.onlyNew, run: this.runId }, { run: isUuid });
     // Ticking "not ingested only" shrinks the list under the page number that came from the URL.
     clampPage(this.page, PAGE_SIZE, this.videos);
 

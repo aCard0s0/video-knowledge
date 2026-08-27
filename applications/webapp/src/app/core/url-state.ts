@@ -12,7 +12,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 export function syncQueryParams(
   state: Record<string, WritableSignal<string | number | boolean>>,
   /**
-   * Per-key allow-lists for values that reach a query the server validates.
+   * Per-key guards for values that reach a query the server validates.
    *
    * A query param is whatever someone pasted. `?status=BOGUS` went straight into the signal, out to
    * `GET /videos`, and came back as `No enum constant …VideoStatus.BOGUS` in the failure panel —
@@ -20,10 +20,17 @@ export function syncQueryParams(
    * control contradicted the URL that produced the error, and the same shape sat on `/runs` and
    * `/audit` (`?status=` on both is a Java enum name one `valueOf` away from a 400).
    *
-   * An unlisted value is ignored, so the signal keeps its declared default and the write effect
+   * A rejected value is ignored, so the signal keeps its declared default and the write effect
    * below drops the key from the URL — the same self-healing `clampPage` gives a page past the end.
+   *
+   * A list for the enums, which is most of them; a predicate for the shapes a list cannot spell.
+   * `?run=` on ingest and channel detail is a uuid — `GET /pipelines/{id}` answers a raw Java
+   * conversion error for anything else, and the ids this console *shows* are `id.slice(0, 8)`,
+   * which is exactly what gets half-copied into a URL. The guard belongs here rather than on the
+   * signal: what the *server* hands those screens is always a whole id, and a screen that
+   * second-guessed its own response would be guarding the wrong side.
    */
-  allowed?: Record<string, readonly string[]>,
+  allowed?: Record<string, readonly string[] | ((value: string) => boolean)>,
 ): void {
   const router = inject(Router);
   const route = inject(ActivatedRoute);
@@ -44,7 +51,8 @@ export function syncQueryParams(
   for (const [key, signal] of Object.entries(state)) {
     const raw = initial.get(key);
     if (raw === null) continue;
-    if (allowed?.[key] && !allowed[key].includes(raw)) continue;
+    const guard = allowed?.[key];
+    if (guard && !(typeof guard === 'function' ? guard(raw) : guard.includes(raw))) continue;
     const current = signal();
     if (typeof current === 'number') {
       const parsed = Number(raw);
