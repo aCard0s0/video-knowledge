@@ -1,6 +1,7 @@
 package com.tradinglabs.vidingest.integration;
 
 import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
+import com.tradinglabs.vidingest.pipeline.service.PipelineService;
 import com.tradinglabs.vidingest.pipeline.repo.PipelineRunRepository;
 import com.tradinglabs.vidingest.search.repo.ContextChunkRepository;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
@@ -19,6 +20,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+
+import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -78,8 +82,28 @@ public abstract class BaseVidingestIntegrationTest {
     @Autowired
     protected YoutubeChannelRepository youtubeChannelRepository;
 
+    @Autowired
+    protected PipelineService pipelineService;
+
+    /**
+     * Waits for ingestion to go quiet, then wipes.
+     *
+     * A test that submits a run leaves virtual threads running past its own method — and awaiting
+     * a terminal run status is not enough, because `runPipelineRunItem` releases its lease in a
+     * `finally` that fires *after* `refreshRunState` has made the run COMPLETED. So the wipe raced
+     * live writes to `vidingest_pipeline_run_items`: the delete cascaded into rows the pipeline's
+     * own transaction was updating, the two took them in opposite orders, and Postgres killed one
+     * side with `deadlock detected`. Intermittent, and it failed the whole suite when it hit.
+     *
+     * Bounded rather than indefinite: work that never drains is a bug worth failing on, not
+     * something to hang the build for.
+     */
     @BeforeEach
     void cleanupDatabase() {
+        await().atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(25))
+                .until(() -> !pipelineService.hasWorkInFlight());
+
         multimodalSegmentRepository.deleteAllInBatch();
         contextChunkRepository.deleteAllInBatch();
         transcriptionSegmentRepository.deleteAllInBatch();
