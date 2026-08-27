@@ -44,13 +44,13 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 
 | Screen | Endpoints |
 |---|---|
-| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/ollama` |
+| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/llm` |
 | **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos?notIngestedOnly`, `POST /{id}/pipelines`, `GET /pipelines/{runId}`, `/audit`, `GET /pipelines/capabilities` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `GET /pipelines/capabilities` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
 | **Video detail** | `/detail`, `/file`, `/transcription/segments`, `/ocr/frames`, `/frames/{frameId}/image`, `/multimodal-timeline/page`, `/knowledge`, `/speakers`, `PATCH /speakers/{speakerId}`, `POST /phases/{phase}/run`, `/context/regenerate`, `/knowledge/regenerate` |
-| **Audit feed** | `GET /audit/events?runId&eventType&status&fromDate&toDate&page&size` |
+| **Audit feed** | `GET /audit/events?runId&eventType&status&phase&errorCode&fromDate&toDate&page&size` |
 
 ## API discovery findings
 
@@ -139,6 +139,16 @@ any field that lost its offset, which is how the skew hid in the first place. Fi
 specs must carry the offset too — `lane.spec.ts` compared a zoneless literal against a `Z` one and
 failed by exactly 3600000 ms.
 
+**The same rule binds the *write* path, and the audit feed shipped breaking it.** `fromDate` and
+`toDate` on `GET /audit/events` are `OffsetDateTime` parameters, so a zoneless value is a 400, not a
+misread hour: `Failed to convert value of type 'java.lang.String' to required type
+'java.time.OffsetDateTime'`. The screen sent `toISOString().slice(0, 19)` — the right instant with
+the `Z` cut off — which was correct only while the server compared naive `LocalDateTime`, and
+inverted the day that migration landed. So **every date filter on the audit screen 400ed**, replacing
+the table with the panel reporting it and re-firing on the 15s poll. `toISOString()` alone is both
+halves of the conversion the input needs: local wall clock → the UTC instant it names, carrying the
+offset that says so.
+
 ### 6. Absent values are `""`, not `null`
 
 `errorCode`, `error`, `videoId`, `channelName`, `videoTitle`, `previousPhase` all come back as
@@ -165,6 +175,10 @@ TS unions and drifts if the server adds a constant:
 - `YoutubeChannelStatus`: NEW, SYNCING, READY, ERROR, DISABLED
 - `TranscriptionStatus`: TRANSCRIBING, COMPLETED, FAILED
 - `PipelineErrorCode`, `PipelineRunItemEventType`: see above
+
+`PipelineErrorCode` was mirrored late (`ERROR_CODES`): the codes were only ever *rendered*, by a
+`vk-fault` that takes whatever the server sent, so nothing needed the list until the audit feed
+offered them as a filter.
 
 Skippable and rerunnable phases are the same seven (`PipelineRunPhase.isOptional()`), confirmed
 live: `Unsupported phase: METADATA. Allowed: TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE,
@@ -712,7 +726,7 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   a live lane segment, wrong for a wall clock. The theme switch shares its row: both are ambient,
   neither is status.
 - **The foot says what is broken and how stale this is.** The `/health/ready` checks and
-  `/health/ollama` merge into one list: the count reads `1 down` the moment anything is (never
+  `/health/llm` merge into one list: the count reads `1 down` the moment anything is (never
   `3 ok` while `videoPath` is not writable), the failing checks are named beside it while the rail
   is wide, and a native `popover` — light dismiss and Esc for free — lists every check with the
   value the server gave it. Those values used to live in a `title` no touch device and no keyboard
@@ -761,6 +775,69 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   filter, which defaults on, so a channel whose sync had just failed with a yt-dlp 404 reported
   `Every upload in this catalog is already ingested` — directly under the red panel naming the 404.
   Nothing on the page with the filter off means no uploads, not that they all ran.
+- **The audit feed's When column is a clock, not an age.** It is the same table the run screen's
+  trail is, one row per event, and a relative age cannot order what it lists: page 7 of the dev
+  feed was nine transitions of one item all reading `43h 29m ago`, and the two that matter are 3ms
+  apart. `clockTime` (`core/time.ts`) exists for exactly this and the trail already used it — this
+  screen was the one still on `humanAge`. It also cost three lines of wrap per row at 390px, since
+  `43h 29m ago` is the only value in the table with spaces to break on.
+- **The day is rendered where it changes, not on every row.** A clock with no date is ambiguous
+  across a midnight, and this feed spans days where the trail spans minutes. Two rows on a
+  three-day page instead of eight characters on all fifty. `dayLabel` (`core/time.ts`) is the whole
+  mechanism: the row compares its own label with the previous row's
+  (`dayLabel(rows()[$index - 1]?.occurredAt)`, where a negative index reads `undefined` and so heads
+  row 0), because the label **doubles as the grouping key** — same day, same string — and nothing
+  else then defines "same day". It is *local*, matching the clock beside it rather than the rail's
+  UTC wall clock, which is the property `audit.spec.ts` pins across a UTC midnight. A `Map` of
+  marked event ids built in the component said the same thing in 60 more lines.
+- **The day heading spans the spine column.** One `colspan="8"` cell, no `<td class="spine">`: that
+  cell would carry no status and take the heading's padding, and a padded cell in the 3px spine
+  column widens it for every row in the table — measured 3px → 24px. It is also why the heading sits
+  flush with the panel edge rather than aligned to the When column.
+- **A failure gets a row here too.** The feed carried `errorCode` and `error` in a `min-width: 28ch`
+  Detail column — the arrangement the runs board and the channel list were both moved out of, for
+  the reason the trail's own comment gives: 325 of 359 events have nothing to say there and paid the
+  width anyway, while the 34 that do had their tail pushed off a phone entirely. Now the shared
+  `fault-row`, which is also what themes and wraps it for free.
+- **A CANCELLED event is not a failure.** `vk-fault` takes `[cancelled]` precisely because a
+  cancelled item carries an `errorCode` like any other (`DUPLICATE_VIDEO`), and the feed was the one
+  screen not passing it — so one row said `CANCELLED` in the calm ramp and `DUPLICATE_VIDEO` in red,
+  about the same event.
+- **`previousPhase` and `itemId` were on every event and rendered nowhere.** The trail gives
+  `previousPhase` a `From` column; the feed dropped it, which on `ITEM_RETRY_REQUESTED` left the row
+  naming **no** phase at all — that event's own `phase` is `""` and `previousPhase` is the only one
+  it carries. `itemId` now rides the run link as `?item=`, the deep link run detail already honours,
+  so a row on a 100-URL run opens the item it belongs to instead of a list to search. No `?phase=`:
+  that filters the trail, and a row here is one event, not a request to see only that step.
+- **`""` is absent in the Phase column too.** The trail renders `{{ event.phase || '—' }}` with a
+  comment naming `ITEM_RETRY_REQUESTED`; the feed rendered it bare, so seven rows had an empty cell
+  where the rule (finding 6) says a dash goes.
+- **The run-id filter takes what the screen shows, or says so.** `?runId` is a `UUID` parameter and
+  the Run column prints `runId.slice(0, 8)`, so the eight characters an operator copies off a row
+  answered `400 Failed to convert … to java.util.UUID` with the table replaced by the panel
+  reporting it — and the placeholder `710a9419…` *demonstrated* the rejected form. The placeholder is
+  a whole uuid now, the id itself is on every Run link's `title`, and a value that is not a uuid
+  holds the request back behind a hint instead of spending a round trip to be told no.
+  `aria-describedby` is unconditional: pointing at an element that is not in the DOM yet is what
+  leaves the hint unannounced when it appears.
+- **Phase and error code are filters, server-side.** `eventType=ITEM_FAILED` answers "what broke"
+  and left the next question — which of these 26 are `TRANSCRIPTION_FAILURE` — to the operator's
+  eyes. `?phase` and `?errorCode` mirror the existing enum-filter shape exactly, including that an
+  unrecognised value matches **nothing** rather than 400ing: the parameter is a `String` so a stale
+  link cannot fail the request, which is the same reason `?sortBy` falls back rather than throwing
+  (finding 14). The phase list offers `CREATED` and `DONE` — never lane *steps*, but `ITEM_CREATED`
+  and `ITEM_COMPLETED` carry them, so filtering to one is a real question on this screen and only
+  this one. `PipelineAuditFilterIntegrationTest` pins both contracts against a real database,
+  because the service's unit test mocks the repository and so never sees inside the `Specification`.
+- **The count is announced, not just rendered.** Changing a filter refetches 50 rows and moves a
+  number in the pager, which says nothing to a screen reader; six other screens already carry a
+  `role="status"` line and this one did not. It is `sr-only` because the pager already says it on
+  screen, and always in the DOM so there is a region to announce into.
+- **A phone gives up From and Attempt — and keeps Status.** The trail drops Status at this width too,
+  but here the only other thing carrying it is the 3px spine, and colour alone is not a state in this
+  app: `vk-status` renders the token *as* the label for that reason, and nothing else names
+  `IN_PROGRESS` on an `ITEM_PHASE_ENTERED` row. Reaching Run past it costs a short sideways drag,
+  which the fault no longer does now it has its own full-width row.
 
 ### The phase lane
 

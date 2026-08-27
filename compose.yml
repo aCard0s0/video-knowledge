@@ -2,7 +2,7 @@
 #
 # Defines the shared network and named volumes. The actual services live in
 # split files, layered on top of this base by scripts/tradey.sh:
-#   - compose/infra/infra.yml   postgres, ollama, whisper, diarize-asr, paddleocr-server
+#   - compose/infra/infra.yml   postgres, llm, whisper, diarize-asr, paddleocr-server
 #   - compose/services.yml      vidingest       (REST server)
 #   - compose/cli.yml           vidingest-cli   (Spring Shell console)
 #   - compose/mcp.yml           vidingest-mcp   (MCP SSE server)
@@ -14,6 +14,8 @@ networks:
 
 volumes:
   postgres_data:
+  # Deliberately still ollama_data while the llm service runs the ollama image: the volume
+  # holds ollama's own /root/.ollama layout, and renaming it orphans multi-GB of pulled models.
   ollama_data:
   ai_models:
   vidingest_data:

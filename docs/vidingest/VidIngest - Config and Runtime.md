@@ -161,19 +161,22 @@ When semantic search is enabled, VidIngest also requires a `QueryEmbeddingProvid
 
 #### Docker (recommended) env vars
 
-When running VidIngest via the platform Docker stack (`SPRING_PROFILES_ACTIVE=docker`), semantic search is enabled by default and embeddings are configured to use **Ollama**.
+When running VidIngest via the platform Docker stack (`SPRING_PROFILES_ACTIVE=docker`), semantic search is enabled by default and embeddings use the **Ollama-native** client against
+the `llm` service. Switch `VIDINGEST_EMBEDDINGS_PROVIDER` to `openai-compatible` for LM Studio,
+`llama-server`, mlx-lm or vLLM.
 
 - `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`
 - `VIDINGEST_EMBEDDINGS_PROVIDER=ollama`
-- `VIDINGEST_OLLAMA_BASE_URL=http://ollama:11434`
-- `VIDINGEST_OLLAMA_EMBED_MODEL=rjmalagon/gte-qwen2-1.5b-instruct-embed-f16`
+- `VIDINGEST_LLM_BASE_URL=http://llm:11434`
+- `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL=rjmalagon/gte-qwen2-1.5b-instruct-embed-f16`
 - `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536`
-- `VIDINGEST_OLLAMA_TIMEOUT=30s` (or `VIDINGEST_EMBEDDINGS_TIMEOUT=30s`)
-- `VIDINGEST_OLLAMA_TRUNCATE=true`
+- `VIDINGEST_EMBEDDINGS_TIMEOUT=30s` — one var now; the old `VIDINGEST_OLLAMA_TIMEOUT` used to
+  shadow it even when the provider was `openai-compatible`
+- `VIDINGEST_EMBEDDINGS_OLLAMA_TRUNCATE=true`
 
 Notes:
 
-- `VIDINGEST_OLLAMA_BASE_URL` must be reachable **from inside the container**; use `http://ollama:11434` for the docker stack.
+- `VIDINGEST_LLM_BASE_URL` must be reachable **from inside the container**; use `http://llm:11434` for the docker stack.
 - Semantic search results depend on context-chunk generation during ingestion; ingest without `TRANSCRIBE` or `CONTEXT` in `skipPhases`.
 - For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`.
 
@@ -184,11 +187,11 @@ Notes:
   - Fix: set `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`.
 - **409 Conflict: no query embedding provider configured**
   - Cause: embeddings provider is misconfigured or inactive.
-  - Fix (Ollama): set `VIDINGEST_EMBEDDINGS_PROVIDER=ollama` and configure `VIDINGEST_OLLAMA_BASE_URL` + `VIDINGEST_OLLAMA_EMBED_MODEL`.
+  - Fix (Ollama): set `VIDINGEST_EMBEDDINGS_PROVIDER=ollama` and configure `VIDINGEST_LLM_BASE_URL` + `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL`.
   - Fix (OpenAI-compatible): set `VIDINGEST_EMBEDDINGS_PROVIDER=openai-compatible` and configure `VIDINGEST_EMBEDDINGS_BASE_URL` + `VIDINGEST_EMBEDDINGS_MODEL` (+ `VIDINGEST_EMBEDDINGS_API_KEY` if needed).
 - **Upstream embeddings failure**
   - Cause: embeddings call failed (network, auth, model mismatch, timeout).
-  - Fix: verify provider URLs, model name, and connectivity from inside the container; increase timeout via `VIDINGEST_OLLAMA_TIMEOUT` / `VIDINGEST_EMBEDDINGS_TIMEOUT`.
+  - Fix: verify provider URLs, model name, and connectivity from inside the container; increase timeout via `VIDINGEST_EMBEDDINGS_TIMEOUT`.
 
 ## Docker configuration
 
@@ -199,7 +202,7 @@ the named volumes; services live in split files layered on top of it:
 
 | File | Services |
 |------|----------|
-| `compose/infra/infra.yml` | `postgres`, `ollama`, `whisper`, `paddleocr-server`, `diarize-asr` |
+| `compose/infra/infra.yml` | `postgres`, `llm`, `whisper`, `paddleocr-server`, `diarize-asr` |
 | `compose/services.yml` | `vidingest` (REST server) |
 | `compose/cli.yml` | `vidingest-cli` |
 | `compose/mcp.yml` | `vidingest-mcp` |
@@ -220,8 +223,8 @@ a container. `package/` is only used when the server runs on the host, where
 | `vidingest_data` | `/data/videos` | `vidingest` (rw) — `application-docker.properties` sets `vidingest.storage.video-path=/data/videos`; also `paddleocr-server` as `:ro` so OCR reads frames in place |
 | `app_logs` | `/app/logs` | `vidingest`, `vidingest-mcp` (`LOG_DIR=/app/logs`) |
 | `postgres_data` | `/var/lib/postgresql/data` | `postgres` |
-| `ollama_data` | `/root/.ollama` | `ollama` |
-| `ai_models` | `/models` | shared model cache for `ollama`, `whisper` (`ASR_MODEL_PATH=/models/whisper`), `paddleocr-server`, `diarize-asr` |
+| `ollama_data` | `/root/.ollama` | `llm` — volume keeps the `ollama_` prefix on purpose: it holds ollama's own on-disk layout, and renaming it orphans the pulled models |
+| `ai_models` | `/models` | shared model cache for `llm`, `whisper` (`ASR_MODEL_PATH=/models/whisper`), `paddleocr-server`, `diarize-asr` |
 
 Transcript sidecars are written next to the downloaded video file, so under
 `/data/videos/...` in a container.
@@ -368,7 +371,8 @@ vidingest.fusion.max-segments-per-video=${VIDINGEST_FUSION_MAX_SEGMENTS_PER_VIDE
 vidingest.knowledge.enabled=${VIDINGEST_KNOWLEDGE_ENABLED:false}
 vidingest.knowledge.provider=${VIDINGEST_KNOWLEDGE_PROVIDER:ollama}
 vidingest.knowledge.chat-model=${VIDINGEST_KNOWLEDGE_CHAT_MODEL:qwen2.5:14b-instruct}
-vidingest.knowledge.base-url=${VIDINGEST_KNOWLEDGE_BASE_URL:${VIDINGEST_OLLAMA_BASE_URL:http://localhost:11434}}
+vidingest.knowledge.base-url=${VIDINGEST_KNOWLEDGE_BASE_URL:${VIDINGEST_LLM_BASE_URL:http://localhost:11434}}
+vidingest.knowledge.api-key=${VIDINGEST_KNOWLEDGE_API_KEY:}
 vidingest.knowledge.temperature=${VIDINGEST_KNOWLEDGE_TEMPERATURE:0.2}
 vidingest.knowledge.max-output-tokens=${VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS:4096}
 vidingest.knowledge.max-input-chars-per-batch=${VIDINGEST_KNOWLEDGE_MAX_INPUT_CHARS_PER_BATCH:16000}
@@ -376,8 +380,23 @@ vidingest.knowledge.max-units-per-video=${VIDINGEST_KNOWLEDGE_MAX_UNITS_PER_VIDE
 vidingest.knowledge.min-salience=${VIDINGEST_KNOWLEDGE_MIN_SALIENCE:0.2}
 vidingest.knowledge.embed-content=${VIDINGEST_KNOWLEDGE_EMBED_CONTENT:true}
 ```
-Reuses the existing Ollama daemon — just a different model. Pull it once with
-`ollama pull qwen2.5:14b-instruct` (or whatever model you configure).
+Defaults to the `llm` compose service — the same daemon the embeddings client uses, just a
+different model. Pull it once with `./scripts/tradey.sh llm pull qwen2.5:14b-instruct` (or
+whatever model you configure).
+
+`provider` selects the wire protocol: `ollama` (`/api/chat`) or `openai-compatible`
+(`/chat/completions`). Use the latter for LM Studio, `llama-server`, mlx-lm, vLLM, or a remote
+host — and give `base-url` the `/v1` suffix those servers expect:
+
+```properties
+VIDINGEST_KNOWLEDGE_PROVIDER=openai-compatible
+VIDINGEST_KNOWLEDGE_BASE_URL=http://host.docker.internal:1234/v1
+VIDINGEST_KNOWLEDGE_API_KEY=            # only hosted endpoints need one
+```
+
+An unrecognised `provider` fails the context at startup rather than degrading silently — there
+is no `Disabled` chat client, since `vidingest.knowledge.enabled=false` already turns the phase
+off.
 
 ### Docker-compose sidecars
 - `diarize-asr` (built from `compose/infra/diarize-asr/`, port 9001) —
@@ -396,7 +415,7 @@ Tradey wiring (`scripts/tradey.sh`):
   them up. They are deliberately *not* `depends_on` of `vidingest`, so the server starts
   without them; the matching `VIDINGEST_OCR_ENABLED` / `VIDINGEST_DIARIZATION_ENABLED`
   flags gate whether it calls them.
-- `ollama` is part of the `infra` group and starts automatically with `vidingest`.
+- `llm` is part of the `infra` group and starts automatically with `vidingest`.
 - Probe endpoints: `:9001/health` and `:8002/health` respectively.
 
 ### PaddleOCR memory, and why OCR time tracks text density

@@ -43,12 +43,14 @@ services:
     networks:
       - video-knowledge
 
-  ollama:
+  # The local model runtime. Named for the role, not the vendor: swap the image for any
+  # server that speaks OpenAI-compatible /chat/completions (LM Studio, llama.cpp, vLLM) and
+  # set VIDINGEST_KNOWLEDGE_PROVIDER=openai-compatible. The OLLAMA_* vars below are read by
+  # the ollama binary itself, so they keep their names while this image is in use.
+  llm:
     image: 'ollama/ollama:0.12.7-rc0'
     ports:
-      - '${VK_BIND_ADDR:-127.0.0.1}:${OLLAMA_PORT:-11434}:11434'
-    labels:
-      - "org.springframework.boot.service-connection=ollama"
+      - '${VK_BIND_ADDR:-127.0.0.1}:${LLM_PORT:-11434}:11434'
     environment:
       # Store pulled models on the shared persistent volume.
       - OLLAMA_MODELS=/models/ollama

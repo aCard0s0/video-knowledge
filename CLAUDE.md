@@ -199,7 +199,7 @@ bypass the proxy regardless. Six services shipped with inert annotations. Phase 
 process and HTTP work in the same method as their writes, so the public driver can never
 carry `@Transactional`: inject `TransactionOperations` and wrap only the DB block. Bulk
 `deleteBy*` repo methods carry their own `@Modifying @Transactional @Query`. Never open a
-transaction around a sidecar, ollama or yt-dlp call — the pool is 10 connections.
+transaction around a sidecar, LLM or yt-dlp call — the pool is 10 connections.
 `SubprocessTransactionBoundaryIntegrationTest` and `ContextChunkRegenerateIntegrationTest` assert
 this from inside the stubbed call, so re-adding `@Transactional` fails a test rather than
 production. **Irreversible work goes after the commit, not inside it**: a recursive directory
@@ -245,10 +245,15 @@ volume major-version-specific.
 Feature packages under `core/` follow `client → service → domain/repo → mapper → dto`
 (MapStruct mappers, Lombok everywhere). External dependencies, all HTTP or process calls:
 yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), whisper (:9000),
-diarize-asr (:9001), paddleocr-server (:8002), ollama (:11434) for both embeddings and
-knowledge-extraction chat. Embedding providers are swappable behind `EmbeddingsClient`
-with `Disabled*` implementations — integration tests turn embeddings off through
-`vidingest.search.embeddings.provider=disabled`.
+diarize-asr (:9001), and the `llm` compose service (:11434, the ollama image) for both
+embeddings and knowledge-extraction chat. **Neither LLM caller is Ollama-only**: embeddings
+and knowledge chat each have an `ollama` and an `openai-compatible` implementation, picked by
+`vidingest.search.embeddings.provider` / `vidingest.knowledge.provider`, so LM Studio,
+llama.cpp, mlx-lm, vLLM or a remote host is a property change. The provider-named classes and
+packages (`OllamaEmbeddingsClient`, `core/knowledge/client/ollama/`) are honest — they speak
+that wire protocol — while every neutral surface is named `llm` (`/api/v1/health/llm`,
+`LlmStatus`, `VIDINGEST_LLM_BASE_URL`). Embeddings additionally has a `Disabled*` floor;
+integration tests use `vidingest.search.embeddings.provider=disabled`.
 
 ### Tests
 

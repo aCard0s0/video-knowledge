@@ -10,14 +10,39 @@
   <div class="panel-head filters">
     <div class="filter">
       <label for="runId">Run id</label>
-      <!-- `(search)` too: the native clear button fires `input`/`search` and defers `change` to
-           blur, so the × emptied the box while the filtered feed and `?runId=` stayed. -->
-      <input id="runId" type="search" class="mono" autocomplete="off" spellcheck="false" placeholder="710a9419…" translate="no" [value]="runId()" (change)="set('runId', $any($event.target).value)" (search)="set('runId', $any($event.target).value)" />
+      <!-- The placeholder shows a whole uuid because that is what `?runId` takes, and the eight
+           characters the Run column prints are not it — showing `710a9419…` here taught the form
+           that 400s. `aria-describedby` is unconditional: pointing at an element that is not in
+           the DOM yet is what makes the hint unannounced when it does appear.
+
+           `(search)` as well as `(change)`: the native clear button fires `input`/`search` and
+           defers `change` to blur, so the × emptied the box while the filtered feed and `?runId=`
+           both stayed — the control contradicting its own screen. -->
+      <input
+        id="runId"
+        name="runId"
+        type="search"
+        class="mono"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="710a9419-0f4e-4b2c-9d61-2b6f0c8a51e7"
+        translate="no"
+        aria-describedby="runIdHint"
+        [attr.aria-invalid]="runIdInvalid() || null"
+        [value]="runId()"
+        (change)="set('runId', $any($event.target).value)"
+        (search)="set('runId', $any($event.target).value)"
+      />
+      <p id="runIdHint" class="hint mono warn" role="status">
+        @if (runIdInvalid()) {
+          Needs the whole run id — the Run column shows its first 8 characters, hover one for the rest.
+        }
+      </p>
     </div>
 
     <div class="filter">
       <label for="eventType">Event</label>
-      <select id="eventType" [value]="eventType()" (change)="set('eventType', $any($event.target).value)">
+      <select id="eventType" name="eventType" [value]="eventType()" (change)="set('eventType', $any($event.target).value)">
         <option value="">any</option>
         @for (type of eventTypes; track type) {
           <option [value]="type">{{ type }}</option>
@@ -27,7 +52,7 @@
 
     <div class="filter">
       <label for="status">Status</label>
-      <select id="status" [value]="status()" (change)="set('status', $any($event.target).value)">
+      <select id="status" name="status" [value]="status()" (change)="set('status', $any($event.target).value)">
         <option value="">any</option>
         @for (option of statuses; track option) {
           <option [value]="option">{{ option }}</option>
@@ -36,19 +61,48 @@
     </div>
 
     <div class="filter">
-      <label for="from">From (local)</label>
-      <input id="from" type="datetime-local" [value]="from()" (change)="set('from', $any($event.target).value)" />
+      <label for="phase">Phase</label>
+      <select id="phase" name="phase" [value]="phase()" (change)="set('phase', $any($event.target).value)">
+        <option value="">any</option>
+        <!-- CREATED and DONE included: they are never lane *steps*, but ITEM_CREATED and
+             ITEM_COMPLETED genuinely carry them, so filtering to one is a real question here. -->
+        @for (option of phases; track option) {
+          <option [value]="option">{{ option }}</option>
+        }
+      </select>
     </div>
 
     <div class="filter">
-      <label for="to">To (local)</label>
-      <input id="to" type="datetime-local" [value]="to()" (change)="set('to', $any($event.target).value)" />
+      <label for="errorCode">Error code</label>
+      <select id="errorCode" name="errorCode" [value]="errorCode()" (change)="set('errorCode', $any($event.target).value)">
+        <option value="">any</option>
+        @for (option of errorCodes; track option) {
+          <option [value]="option">{{ option }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter-pair">
+      <div class="filter">
+        <label for="from">From (local)</label>
+        <input id="from" name="from" type="datetime-local" [value]="from()" (change)="set('from', $any($event.target).value)" />
+      </div>
+
+      <div class="filter">
+        <label for="to">To (local)</label>
+        <input id="to" name="to" type="datetime-local" [value]="to()" (change)="set('to', $any($event.target).value)" />
+      </div>
     </div>
 
     @if (filtered()) {
       <button class="btn-sm" type="button" (click)="clear()">Clear filters</button>
     }
   </div>
+
+  <!-- Changing a filter refetches 50 rows and moves a count in the pager, which announces nothing.
+       Always in the DOM so there is a region to announce into, and sr-only because the pager
+       already says it on screen. -->
+  <p class="sr-only" role="status">{{ said() }}</p>
 
   <!--
     `rows()` is `[]` while the list is loading *and* while it has errored, so the empty state used
@@ -71,35 +125,62 @@
             <th scope="col" class="num">When</th>
             <th scope="col">Event</th>
             <th scope="col">Phase</th>
+            <th scope="col" class="from">From</th>
             <th scope="col">Status</th>
-            <th scope="col" class="num">Attempt</th>
+            <th scope="col" class="num att">Attempt</th>
             <th scope="col">Run</th>
-            <th scope="col">Detail</th>
           </tr>
         </thead>
         <tbody>
           @for (event of rows(); track event.id) {
+            @let day = dayLabel(event.occurredAt);
+            <!-- The clock cannot say which midnight a row is on, and this feed spans days. -->
+            @if (day !== dayLabel(rows()[$index - 1]?.occurredAt)) {
+              <tr class="day-row">
+                <td colspan="8" class="mono">{{ day }}</td>
+              </tr>
+            }
             <tr>
               <td class="spine" [style.--spine]="statusVar(event.status)"></td>
-              <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ age(event.occurredAt) }}</td>
+              <!-- A clock, not an age: see the trail on the run screen, and `clockTime`. -->
+              <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
               <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
-              <td class="mono sm">{{ event.phase }}</td>
+              <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
+              <td class="mono sm">{{ event.phase || '—' }}</td>
+              <!-- `previousPhase` is on ENTERED and on RETRY_REQUESTED, and on the latter it is the
+                   only phase the event names — dropping it left those rows naming no phase at all. -->
+              <td class="mono sm muted from">{{ event.previousPhase || '—' }}</td>
               <td><vk-status [status]="event.status" /></td>
-              <td class="num">{{ event.attempt }}</td>
+              <td class="num att">{{ event.attempt }}</td>
               <td class="mono sm">
-                <a [routerLink]="['/runs', event.runId]">{{ event.runId?.slice(0, 8) }}</a>
+                <!-- `?item` so the run screen opens on the item this event belongs to: without it a
+                     100-URL run lands the operator on a list to search. No `?phase` — that filters
+                     the trail, and a row here is one event, not a choice to see only that step. -->
+                <a
+                  [routerLink]="['/runs', event.runId]"
+                  [queryParams]="{ item: event.itemId || null }"
+                  [title]="event.runId"
+                  >{{ event.runId?.slice(0, 8) }}</a
+                >
                 @if (event.videoId) {
                   · <a [routerLink]="['/videos', event.videoId]">video</a>
                 }
               </td>
-              <td class="detail">
-                @if (!blank(event.errorCode) || !blank(event.error)) {
-                  <vk-fault [errorCode]="event.errorCode" [error]="event.error" />
-                } @else {
-                  <span class="muted">—</span>
-                }
-              </td>
             </tr>
+            <!-- Full width under its event, not a ninth column — the shared `fault-row` shape the
+                 runs board and the channels list already use, for the reason their comments give. -->
+            @if (!blank(event.errorCode) || !blank(event.error)) {
+              <tr class="fault-row">
+                <td class="spine" [style.--spine]="statusVar(event.status)"></td>
+                <td colspan="7">
+                  <vk-fault
+                    [errorCode]="event.errorCode"
+                    [error]="event.error"
+                    [cancelled]="event.status === 'CANCELLED'"
+                  />
+                </td>
+              </tr>
+            }
           }
         </tbody>
       </table>

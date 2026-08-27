@@ -1,7 +1,15 @@
 .filters {
   flex-wrap: wrap;
-  align-items: flex-end;
+  // Top, not bottom: the run-id hint makes its own control taller, and against flex-end every
+  // other filter in the row dropped by the height of that message the moment it appeared.
+  align-items: flex-start;
   justify-content: flex-start;
+  gap: var(--space-md);
+}
+
+// From and To are one range and wrap as one — split, From sat on a line above the To it belongs to.
+.filter-pair {
+  display: flex;
   gap: var(--space-md);
 }
 
@@ -16,22 +24,48 @@
 }
 
 .filter input[type='search'] {
-  width: 22ch;
+  // A whole uuid is 36 characters, and the placeholder is the format the field actually takes.
+  width: 37ch;
 }
 
-.detail {
-  white-space: normal;
-  min-width: 28ch;
-}
+// Reserves nothing: the hint is a `role="status"` region that is always in the DOM, so an empty one
+// must not push the row it sits in.
+.hint {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--fs-xs);
+  max-width: 44ch;
 
-@media (max-width: 767px) {
-  .detail {
-    min-width: 0;
-    max-width: 24ch;
+  &:empty {
+    display: none;
   }
 }
 
-table.grid td.detail {
+// The day, once, above the first row that falls on it. It heads the rows under it rather than
+// separating itself from them, so it drops its own rule. One cell spanning everything, including
+// the spine column — a `<td class="spine">` here would carry no status and take this padding,
+// which widens that 3px column for the whole table (measured 3px → 24px).
+.day-row td {
   height: auto;
-  padding-bottom: var(--space-xs);
+  padding: var(--space-md) var(--space-md) var(--space-xs);
+  border-bottom: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  // Lowercase for the same reason the rail foot's date is: a marker in the console's voice.
+  text-transform: lowercase;
+}
+
+@media (max-width: 767px) {
+  // `previousPhase` is context for the phase beside it, and Attempt is a number nobody triages on;
+  // the trail drops the first here too. **Status stays**, though the trail drops it: the only other
+  // thing carrying it on this row is the 3px spine, and colour alone is not a state in this app —
+  // `vk-status` renders the token *as the label* for exactly that reason. Event names the outcome
+  // for the terminal rows and nothing names it for ITEM_PHASE_ENTERED. Reaching Run past it costs a
+  // short sideways drag, which the fault no longer does now it has its own full-width row.
+  table.grid th.from,
+  table.grid td.from,
+  table.grid th.att,
+  table.grid td.att {
+    display: none;
+  }
 }

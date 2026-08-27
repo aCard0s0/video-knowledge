@@ -17,8 +17,7 @@ import { Observable }                                        from 'rxjs';
 import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 
 // @ts-ignore
-import { OllamaStatus } from '../model/ollama-status';
-// @ts-ignore
+import { LlmStatus } from '../model/llm-status';
 // @ts-ignore
 import { ReadinessResult } from '../model/readiness-result';
 
@@ -39,17 +38,17 @@ export class HealthService extends BaseService {
     }
 
     /**
-     * Ollama status
-     * Probes the configured Ollama server for reachability and running/installed models.
-     * @endpoint get /api/v1/health/ollama
+     * LLM runtime status
+     * Probes the configured model runtime (Ollama, LM Studio, llama.cpp, mlx, vLLM, ...) for reachability and its installed/loaded models.
+     * @endpoint get /api/v1/health/llm
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public ollama(observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<OllamaStatus>;
-    public ollama(observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<OllamaStatus>>;
-    public ollama(observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<OllamaStatus>>;
-    public ollama(observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public llmStatus(observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<LlmStatus>;
+    public llmStatus(observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<LlmStatus>>;
+    public llmStatus(observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<LlmStatus>>;
+    public llmStatus(observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
 
         let localVarHeaders = this.defaultHeaders;
 
@@ -76,9 +75,9 @@ export class HealthService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/health/ollama`;
+        let localVarPath = `/api/v1/health/llm`;
         const { basePath, withCredentials } = this.configuration;
-        return this.httpClient.request<OllamaStatus>('get', `${basePath}${localVarPath}`,
+        return this.httpClient.request<LlmStatus>('get', `${basePath}${localVarPath}`,
             {
                 context: localVarHttpContext,
                 responseType: <any>responseType_,
@@ -90,15 +89,6 @@ export class HealthService extends BaseService {
             }
         );
     }
-
-    /**
-     * Optional phase availability
-     * Which optional phases this deployment will execute, ignoring any run\&#39;s own skipPhases. A phase reported false is disabled server-side and cannot be turned on per run.
-     * @endpoint get /api/v1/health/phases
-     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-     * @param reportProgress flag to report request and response progress.
-     * @param options additional options
-     */
 
     /**
      * Readiness probe

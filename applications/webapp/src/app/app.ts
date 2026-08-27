@@ -66,8 +66,14 @@ export const SECTIONS = [
 ] as const;
 
 /**
- * The server serializes naive `LocalDateTime` and the container runs UTC, so every timestamp on
- * every screen is UTC. The rail says so once, ticking, instead of each screen implying it.
+ * Every server timestamp carries an explicit UTC offset — the entities are `OffsetDateTime` and
+ * every `now()` is `OffsetDateTime.now(ZoneOffset.UTC)`, so the wire form is
+ * "2026-08-26T15:49:24.522757Z" whatever zone the JVM sits in. The rail names that clock once,
+ * ticking, instead of each screen implying which one it is showing.
+ *
+ * `timeZone: 'UTC'` here is deliberate and is *not* the same thing as `core/time.ts`: a screen
+ * renders an instant in the operator's local zone, while this is a UTC wall clock on purpose — the
+ * one place the console states the zone the server's numbers are in.
  */
 const UTC_TIME = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'UTC',
@@ -100,7 +106,7 @@ export class App {
   protected readonly poller = inject(Poller);
 
   protected readonly ready = rxResource({ stream: () => this.health.readiness() });
-  protected readonly ollama = rxResource({ stream: () => this.health.ollama() });
+  protected readonly llm = rxResource({ stream: () => this.health.llmStatus() });
 
   protected readonly where = toSignal(
     this.router.events.pipe(
@@ -139,7 +145,7 @@ export class App {
       () => 30_000,
       () => {
         this.ready.reload();
-        this.ollama.reload();
+        this.llm.reload();
       },
     );
   }
@@ -202,7 +208,7 @@ export class App {
   );
 
   /**
-   * `/health/ready` and `/health/ollama` as one list, because the strip shows one count. Nothing
+   * `/health/ready` and `/health/llm` as one list, because the strip shows one count. Nothing
    * is summarised away: every entry is listed with its server-given value in the popover, and a
    * failing one is named on the strip itself.
    */
@@ -212,21 +218,22 @@ export class App {
       : this.checks().map((c) => ({ name: c.name, ok: c.ok, detail: String(c.value) }));
 
     // `value()` throws once a resource is in its error state, so the error branch comes first.
-    if (this.ollama.error()) {
-      deps.push({ name: 'ollama', ok: false, detail: 'GET /health/ollama failed' });
-    } else if (this.ollama.hasValue()) {
-      const o = this.ollama.value();
-      const running = o?.runningModels?.length ?? 0;
-      const state = !o?.reachable
-        ? `unreachable · ${o?.baseUrl ?? ''}`
-        : running > 0
-          ? `${running} loaded`
-          : 'idle, 0 loaded';
-      deps.push({
-        name: 'ollama',
-        ok: !!o?.reachable,
-        detail: o?.embedModel ? `${state} · embed ${o.embedModel}` : state,
-      });
+    if (this.llm.error()) {
+      deps.push({ name: 'llm', ok: false, detail: 'GET /health/llm failed' });
+    } else if (this.llm.hasValue()) {
+      const l = this.llm.value();
+      // runningModels is Ollama-only — no other runtime exposes a /api/ps analogue, so a 0 from
+      // one of those means "not reported", not "nothing loaded". Report what that runtime can
+      // actually answer instead of printing an idle count it never populated.
+      const state = !l?.reachable
+        ? `unreachable · ${l?.baseUrl ?? ''}`
+        : l?.provider === 'ollama'
+          ? `${l.runningModels?.length ?? 0} loaded`
+          : `${l?.installedModels?.length ?? 0} available`;
+      const detail = [state, l?.provider, l?.embedModel && `embed ${l.embedModel}`]
+        .filter(Boolean)
+        .join(' · ');
+      deps.push({ name: 'llm', ok: !!l?.reachable, detail });
     }
     return deps;
   });

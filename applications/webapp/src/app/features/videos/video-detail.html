@@ -212,7 +212,7 @@
           } @else if (knowledgeAll().length === 0) {
             <vk-empty message="No knowledge units for this video.">
               <button class="btn-primary" type="button" (click)="runPhase('KNOWLEDGE')">Run KNOWLEDGE</button>
-              <span class="mono sm muted">Needs an ollama chat model loaded — check the rail before starting.</span>
+              <span class="mono sm muted">Needs a chat model loaded on the LLM runtime — check the rail before starting.</span>
             </vk-empty>
           } @else {
             @if (knowledgeAll().length > knowledgeShown().length) {

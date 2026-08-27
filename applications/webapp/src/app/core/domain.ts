@@ -91,6 +91,20 @@ export const EVENT_TYPES = [
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/**
+ * `PipelineErrorCode`. Mirrored late: the codes were only ever *rendered* (by `vk-fault`, which
+ * takes whatever the server sent), so nothing needed the list until the audit feed offered them as
+ * a filter.
+ */
+export const ERROR_CODES = [
+  'DUPLICATE_VIDEO',
+  'UPSTREAM_TOOL_FAILURE',
+  'TRANSCRIPTION_FAILURE',
+  'INVALID_METADATA',
+  'UNEXPECTED',
+] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
 export const VIDEO_STATUSES = [
   'PENDING',
   'DOWNLOADING',
