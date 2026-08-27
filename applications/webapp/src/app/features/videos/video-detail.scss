@@ -85,15 +85,17 @@
   font-size: var(--fs-xs);
 }
 
-// Reserved whether or not it has anything to say. It is a live region, so it must be in the
-// accessibility tree before the update it announces — `display: none` while empty took it out.
-.run-result {
+// Both reserve their line whether or not they have anything to say: each is a live region, so it
+// has to be in the accessibility tree before the update it announces — `display: none` while empty
+// took it out.
+.run-result,
+.rename-result {
   min-height: 1lh;
   color: var(--st-done);
-}
 
-.run-result.live {
-  color: var(--st-running);
+  &.live {
+    color: var(--st-running);
+  }
 }
 
 .dossier {
@@ -219,9 +221,7 @@
 }
 
 .rename-result {
-  min-height: 1lh;
-  color: var(--st-done);
-  padding: 0 var(--space-md);
+  padding-inline: var(--space-md);
 }
 
 .body {
@@ -328,8 +328,6 @@
     top: 0;
     z-index: 1;
     border-radius: 0;
-    // Sticky over a scrolling list, so it needs its own ground rather than the panel's.
-    background: #000;
   }
 
   // Out of the panel's box, so the gutter it used to inherit has to be restated.
@@ -345,12 +343,11 @@
     max-height: none;
   }
 
-  // A sticky element must not cover the thing focus just moved to. The rows are `<button>`s, so
-  // tabbing scrolls them into view — under the pinned player, without this. `56.25vw` is the
-  // player's own height at `aspect-ratio: 16 / 9` across the one-column width, plus a gap.
-  .rows li > .row,
-  .units li > .row,
-  .frames-list li > .frame {
+  // A sticky element must not cover the thing focus just moved to. Every control in this panel is
+  // a `<button>`, which `styles.scss` already gives a `scroll-margin-top`; only the value changes
+  // here. `56.25vw` is the player's own height at `aspect-ratio: 16 / 9` across the one-column
+  // width, plus a gap.
+  .artifacts button {
     scroll-margin-top: calc(56.25vw + var(--space-md));
   }
 }

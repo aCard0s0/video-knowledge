@@ -319,7 +319,6 @@ export class VideoDetail {
 
   private stopTicking(): void {
     clearInterval(this.ticker);
-    this.ticker = undefined;
   }
 
   /**
@@ -341,7 +340,7 @@ export class VideoDetail {
       next: (updated) => {
         this.renaming.set(null);
         if (this.speakers.hasValue()) {
-          this.speakers.update((rows) => (rows ?? []).map((r) => (r.id === updated.id ? updated : r)));
+          this.speakers.update((rows) => rows.map((r) => (r.id === updated.id ? updated : r)));
         }
         // A row that silently goes back to looking exactly as it did is indistinguishable from a
         // press that did nothing — the rule the runs board's retry line already follows.
