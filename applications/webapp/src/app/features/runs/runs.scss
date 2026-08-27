@@ -30,7 +30,130 @@
   font-variant-numeric: tabular-nums;
 }
 
-.live tbody tr:hover,
-.history tbody tr:hover {
+/* The reason a run stopped, in a full-width row under it rather than a ninth column. `error` is
+   free text and the useful part is its tail, so it needs the width and the wrap that the grid's
+   `nowrap` cells deny it. */
+.fault-row td {
+  height: auto;
+  white-space: normal;
+  padding-bottom: var(--space-sm);
+}
+
+/* It belongs to the row above: that row drops its rule so the two read as one record. */
+tr:has(+ .fault-row) td {
+  border-bottom: 0;
+}
+
+/* The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
+   tail — the part that separates one yt-dlp failure from the next — off the right edge. Wrap it to
+   the viewport instead: 7rem clears the collapsed 56px rail plus the panel's padding on both sides,
+   which is all the chrome there is below 900px. On a desktop the message's own 92ch cap is narrower,
+   so this does nothing. */
+.fault-row vk-fault {
+  display: block;
+  max-width: calc(100vw - 7rem);
+}
+
+/* Retry rides the right edge instead of the far end of a table five columns wider than a phone.
+   At 390px the grid is 792px, so the button the screen exists for sat 412px past the viewport and
+   cost a horizontal scroll per row. `background: inherit` rather than a token, so the row's hover
+   wash reaches it — a sticky cell painted `--card` would sit on top of it. Inert at any width where
+   the table already fits. */
+.history .stick {
+  position: sticky;
+  right: 0;
+  background: inherit;
+  /* A hairline, so the row scrolling underneath reads as covered rather than mangled — without it
+     a clipped `youtube.com/watch?…` ends behind the button as `youtube.cc` and looks like data.
+     Inset, because a sticky cell in a `border-collapse: collapse` table does not keep a border. */
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
+/* A sticky cell needs something opaque behind it, and `inherit` only reaches a row that has a
+   background of its own — so the rows carry the surface the panel used to provide, and hovering
+   either half of a run lights both. */
+.history tbody tr {
+  background: var(--card);
+}
+
+.history tbody tr:hover,
+.history tr:has(+ .fault-row:hover),
+.history tr:hover + .fault-row {
   background: var(--muted);
+}
+
+/* Three items in a `space-between` head squeeze the bulk button to min-content on a phone, which
+   breaks "Retry 4 failed" over three lines. It keeps its words; the head wraps instead. */
+.history .panel-head {
+  flex-wrap: wrap;
+}
+
+.history .panel-head .btn-sm {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* The whole identity cell is the link. It used to be the eight hex characters alone — 62×17px in a
+   389px cell, under the 24×24 target minimum — with the title beside it a dead span, so the obvious
+   thing to click was the one part that did nothing. */
+.run-link {
+  display: flex;
+  align-items: center;
+  /* Wraps rather than forcing id and label onto one line: on a phone that line is what widened the
+     identifying column past the viewport, and the two stack perfectly well. */
+  flex-wrap: wrap;
+  gap: 0 var(--space-sm);
+  min-height: 24px;
+  text-decoration: none;
+
+  .id {
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 2px;
+  }
+
+  .title {
+    margin-left: 0;
+  }
+
+  &:hover .id {
+    text-decoration-color: var(--fg-muted);
+  }
+}
+
+/* Present even when empty, so it is a live region to announce into rather than one that appears
+   with its text already in place. */
+.retry-said {
+  margin: 0;
+  font-size: var(--fs-sm);
+
+  &:not(:empty) {
+    margin-bottom: var(--space-md);
+  }
+}
+
+/* What a 390px viewport gives up. Four of these five are the ones a phone can least afford: PHASE
+   is `—` for every terminal run, CHANNEL is empty on anything not from a channel sync, VIDEOS is a
+   count the run screen repeats, and CREATED is the older of two ages — UPDATED is the one that
+   answers "is this moving?". They are back the moment there is room. */
+@media (max-width: 767px) {
+  .hide-sm {
+    display: none;
+  }
+}
+
+/* The two sortable headers. A button, not a click handler on the `th`: sorting is an action, and
+   this way it is in the tab order and answers the keyboard for free. It inherits the header's own
+   type so the row still reads as a header row. */
+.sort {
+  all: unset;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fg);
+  }
+}
+
+th[aria-sort='descending'] .sort {
+  color: var(--fg);
 }

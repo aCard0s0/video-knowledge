@@ -1,6 +1,11 @@
 <h1 class="mono">runs</h1>
 
 <vk-problem [failure]="failure()" />
+<vk-rejects [items]="retryRejects()" />
+<!-- Always in the DOM, so a screen reader has a live region to announce into rather than one that
+     appears with its own text already in it. A retry under the FAILED chip moves the row out of the
+     filter, which on its own looks exactly like nothing having happened. -->
+<p class="retry-said mono muted" role="status">{{ retryOutcome() }}</p>
 
 <section class="panel live">
   <div class="panel-head">
@@ -10,6 +15,10 @@
 
   @if (liveRuns().length === 0) {
     <p class="quiet mono muted">Nothing running. Submitted runs appear here within a couple of seconds.</p>
+  } @else if (liveElsewhere().length === 0) {
+    <!-- The history below is already listing every one of them; repeating the rows here put the
+         same run id on screen twice. The count stays, because it is status. -->
+    <p class="quiet mono muted">Listed in the history below.</p>
   } @else {
     <div class="table-scroll">
       <table class="grid" translate="no">
@@ -19,23 +28,25 @@
             <th scope="col">Status</th>
             <th scope="col">Phase</th>
             <th scope="col">Run</th>
-            <th scope="col">Channel</th>
-            <th scope="col" class="num">Items</th>
+            <th scope="col" class="hide-sm">Channel</th>
+            <th scope="col" class="num hide-sm">Videos</th>
             <th scope="col" class="num">Started</th>
           </tr>
         </thead>
         <tbody>
-          @for (run of liveRuns(); track run.id) {
+          @for (run of liveElsewhere(); track run.id) {
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
-              <td class="mono sm">{{ marker(run).text }}</td>
+              <td class="mono sm">{{ marker(run) }}</td>
               <td>
-                <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-                <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                <a class="run-link" [routerLink]="['/runs', run.id]">
+                  <span class="id mono">{{ run.id?.slice(0, 8) }}</span>
+                  <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                </a>
               </td>
-              <td class="truncate">{{ run.channelName || '—' }}</td>
-              <td class="num">{{ run.videoCount }}</td>
+              <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
+              <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
               <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
             </tr>
           }
@@ -64,6 +75,13 @@
         </button>
       }
     </div>
+    <!-- Named by what it will actually do: the FAILED runs on this page, which past 25 rows is not
+         the number on the chip. -->
+    @if (failedHere().length > 1) {
+      <button class="btn-sm" type="button" [disabled]="retrying().size > 0" (click)="retryAll()">
+        {{ retrying().size ? 'Retrying…' : 'Retry ' + failedHere().length + ' failed' }}
+      </button>
+    }
   </div>
 
   @if (historyRuns().length === 0) {
@@ -77,13 +95,21 @@
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
             <th scope="col">Status</th>
-            <th scope="col">Phase / code</th>
+            <th scope="col" class="hide-sm">Phase</th>
             <th scope="col">Run</th>
-            <th scope="col">Channel</th>
-            <th scope="col" class="num">Items</th>
-            <th scope="col" class="num">Created</th>
-            <th scope="col" class="num">Updated</th>
-            <th scope="col"><span class="sr-only">Actions</span></th>
+            <th scope="col" class="hide-sm">Channel</th>
+            <th scope="col" class="num hide-sm">Videos</th>
+            <th scope="col" class="num hide-sm" [attr.aria-sort]="sortBy() === 'createdAt' ? 'descending' : 'none'">
+              <button class="sort mono" type="button" (click)="setSort('createdAt')">
+                Created<span aria-hidden="true">{{ sortBy() === 'createdAt' ? ' ↓' : '' }}</span>
+              </button>
+            </th>
+            <th scope="col" class="num" [attr.aria-sort]="sortBy() === 'updatedAt' ? 'descending' : 'none'">
+              <button class="sort mono" type="button" (click)="setSort('updatedAt')">
+                Updated<span aria-hidden="true">{{ sortBy() === 'updatedAt' ? ' ↓' : '' }}</span>
+              </button>
+            </th>
+            <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -91,25 +117,42 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
-              <td class="mono sm" [class.failed]="marker(run).failed">{{ marker(run).text }}</td>
+              <td class="mono sm hide-sm">{{ marker(run) }}</td>
               <td>
-                <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-                <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                <a class="run-link" [routerLink]="['/runs', run.id]">
+                  <span class="id mono">{{ run.id?.slice(0, 8) }}</span>
+                  <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                </a>
               </td>
-              <td class="truncate">{{ run.channelName || '—' }}</td>
-              <td class="num">{{ run.videoCount }}</td>
-              <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
+              <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
+              <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
+              <td class="num sm hide-sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
               <td class="num sm" [title]="absoluteTime(run.updatedAt)">{{ age(run.updatedAt) }}</td>
-              <td>
+              <td class="stick">
                 <span class="row-actions">
                   @if (run.status === 'FAILED') {
-                    <button class="btn-sm" type="button" [disabled]="retrying() !== null" (click)="retry(run)">
-                      {{ retrying() === run.id ? 'Retrying…' : 'Retry' }}
+                    <button class="btn-sm" type="button" [disabled]="retrying().size > 0" (click)="retry(run)">
+                      {{ retrying().has(run.id!) ? 'Retrying…' : 'Retry' }}
                     </button>
                   }
                 </span>
               </td>
             </tr>
+            <!-- The reason, in its own full-width row rather than a ninth column: `error` is free
+                 text from the phase that died and the useful part is its tail, so it gets the width
+                 to be read rather than a clip that makes eleven UPSTREAM_TOOL_FAILUREs identical. -->
+            @if (hasFault(run)) {
+              <tr class="fault-row">
+                <td class="spine" [style.--spine]="statusVar(run.status)"></td>
+                <td colspan="8">
+                  <vk-fault
+                    [errorCode]="run.errorCode"
+                    [error]="run.error"
+                    [cancelled]="run.status === 'CANCELLED'"
+                  />
+                </td>
+              </tr>
+            }
           }
         </tbody>
       </table>

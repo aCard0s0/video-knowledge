@@ -28,11 +28,12 @@ import { StatusBadge } from '../../ui/status-badge';
 import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
 import { Problem } from '../../ui/problem';
+import { Rejects } from '../../ui/rejects';
 import { PhasePicker } from '../../ui/phase-picker';
 
 @Component({
   selector: 'vk-run-detail',
-  imports: [RouterLink, StatusBadge, Lane, Fault, Problem, PhasePicker],
+  imports: [RouterLink, StatusBadge, Lane, Fault, Problem, PhasePicker, Rejects],
   templateUrl: './run-detail.html',
   styleUrl: './run-detail.scss',
 })

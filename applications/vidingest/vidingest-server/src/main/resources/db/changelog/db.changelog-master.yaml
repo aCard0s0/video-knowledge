@@ -1,15 +1,13 @@
 databaseChangeLog:
   - include:
-      file: classpath:db/changelog/changesets/001-core-pipeline.sql
+      file: classpath:db/changelog/changesets/001-pipeline.sql
   - include:
-      file: classpath:db/changelog/changesets/002-youtube-channels.sql
+      file: classpath:db/changelog/changesets/002-transcription.sql
   - include:
-      file: classpath:db/changelog/changesets/003-knowledge-extraction.sql
+      file: classpath:db/changelog/changesets/003-frames-ocr.sql
   - include:
-      file: classpath:db/changelog/changesets/004-run-item-lease.sql
+      file: classpath:db/changelog/changesets/004-knowledge.sql
   - include:
-      file: classpath:db/changelog/changesets/005-run-skip-phases.sql
+      file: classpath:db/changelog/changesets/005-search.sql
   - include:
-      file: classpath:db/changelog/changesets/006-index-cleanup.sql
-  - include:
-      file: classpath:db/changelog/changesets/007-speaker-labels.sql
+      file: classpath:db/changelog/changesets/006-youtube-channels.sql
