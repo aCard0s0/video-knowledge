@@ -1,7 +1,7 @@
 # VidIngest — Per-Phase Rerun
 
 **Owner**: TradingLabs Platform
-**Last reviewed**: 2026-08-26
+**Last reviewed**: 2026-08-27
 **Status**: stable
 
 **Applies to**:
@@ -86,7 +86,7 @@ every other endpoint — there is no `status:"ERROR"` body and no 200-on-failure
 
 | Cause | Status | `title` |
 |-------|--------|---------|
-| Upstream tool or sidecar did not deliver (whisper, pyannote, ffmpeg, paddleocr, ollama) | `502` | `Upstream failure` |
+| Upstream tool or sidecar did not deliver (whisper, pyannote, ffmpeg, paddleocr, the LLM runtime) | `502` | `Upstream failure` |
 | Unusable or non-rerunnable phase name | `400` | `Bad request` |
 | Unknown `videoId` | `404` | `Not found` |
 | Guard rail refused the work (e.g. chunk cap exceeded) | `409` | `Conflict` |

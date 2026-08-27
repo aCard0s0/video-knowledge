@@ -29,12 +29,12 @@ model/download-video-request.ts
 model/download-video-response.ts
 model/item-result.ts
 model/knowledge-unit-dto.ts
+model/llm-model.ts
+model/llm-status.ts
 model/models.ts
 model/multimodal-segment-dto.ts
 model/ocr-frame-group.ts
 model/ocr-result-dto.ts
-model/ollama-model.ts
-model/ollama-status.ts
 model/page-response-multimodal-segment-dto.ts
 model/page-response-ocr-frame-group.ts
 model/page-response-run-item-audit-event.ts

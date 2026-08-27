@@ -44,7 +44,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 
 | Screen | Endpoints |
 |---|---|
-| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/ollama` |
+| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/llm` |
 | **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos?notIngestedOnly`, `POST /{id}/pipelines`, `GET /pipelines/{runId}`, `/audit`, `GET /pipelines/capabilities` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `GET /pipelines/capabilities` |
@@ -624,7 +624,7 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   a live lane segment, wrong for a wall clock. The theme switch shares its row: both are ambient,
   neither is status.
 - **The foot says what is broken and how stale this is.** The `/health/ready` checks and
-  `/health/ollama` merge into one list: the count reads `1 down` the moment anything is (never
+  `/health/llm` merge into one list: the count reads `1 down` the moment anything is (never
   `3 ok` while `videoPath` is not writable), the failing checks are named beside it while the rail
   is wide, and a native `popover` — light dismiss and Esc for free — lists every check with the
   value the server gave it. Those values used to live in a `title` no touch device and no keyboard

@@ -1,7 +1,7 @@
 # VidIngest (server + MCP + CLI)
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-05-13
+- **Last reviewed**: 2026-08-27
 - **Status**: stable
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-client`, `vidingest-api`
 - **Capabilities**: download + transcription + semantic chunk search (stable);
@@ -182,14 +182,14 @@ VidIngest semantic search requires:
 
 ### Ollama (recommended)
 
-The platform Docker stack runs an `ollama` container (see `compose/infra/infra.yml`). VidIngest can use Ollama embeddings via `POST /api/embed`.
+The platform Docker stack runs the `llm` service on the ollama image (see `compose/infra/infra.yml`). VidIngest can use Ollama-native embeddings via `POST /api/embed`.
 
 Key env vars (recommended via repo-root `.env` / `.env.example`):
 
 - `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`
 - `VIDINGEST_EMBEDDINGS_PROVIDER=ollama`
-- `VIDINGEST_OLLAMA_BASE_URL=http://ollama:11434`
-- `VIDINGEST_OLLAMA_EMBED_MODEL=rjmalagon/gte-qwen2-1.5b-instruct-embed-f16`
+- `VIDINGEST_LLM_BASE_URL=http://llm:11434`
+- `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL=rjmalagon/gte-qwen2-1.5b-instruct-embed-f16`
 - `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536`
 
 ### Backfilling context chunks for existing videos

@@ -55,7 +55,7 @@ Shared Java libraries live in [libraries](libraries) (`common-logging`, `common-
 - MCP (SSE): <http://localhost:8055/vidingest/sse>
 
 `tradey` layers the split compose files (`compose.yml` + `compose/*`). Infra
-(`postgres`, `ollama`, `whisper`) starts automatically as a dependency of the
+(`postgres`, `llm`, `whisper`) starts automatically as a dependency of the
 server. Optional sidecars (`paddleocr-server` for OCR, `diarize-asr` for speaker
 diarization) are opt-in: `./scripts/tradey.sh start sidecars`. Host ports are defined
 in [compose/ports.env](compose/ports.env).
