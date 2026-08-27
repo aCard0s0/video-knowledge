@@ -10,7 +10,8 @@ import com.tradinglabs.vidingest.pipeline.service.StuckItemReconciler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,7 +29,7 @@ class StuckItemReconcilerIntegrationTest extends BaseVidingestIntegrationTest {
                 .status(RunStatus.IN_PROGRESS)
                 .videoUrl("https://example.com/video")
                 .phase(PipelineRunPhase.DOWNLOAD)
-                .phaseUpdatedAt(LocalDateTime.now().minusHours(2))
+                .phaseUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusHours(2))
                 .build());
 
         PipelineRunItem item = runItemRepository.saveAndFlush(PipelineRunItem.builder()
@@ -36,7 +37,7 @@ class StuckItemReconcilerIntegrationTest extends BaseVidingestIntegrationTest {
                 .url("https://example.com/video")
                 .status(RunStatus.IN_PROGRESS)
                 .phase(PipelineRunPhase.DOWNLOAD)
-                .phaseUpdatedAt(LocalDateTime.now().minusHours(2))
+                .phaseUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusHours(2))
                 .build());
 
         stuckItemReconciler.reconcileStuckItems();

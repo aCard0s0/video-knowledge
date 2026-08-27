@@ -23,7 +23,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -135,7 +136,7 @@ class VideoMultimodalArtifactsControllerWebMvcTest {
                 .text("Hello world")
                 .confidence(0.94f)
                 .language("en")
-                .createdAt(LocalDateTime.parse("2026-05-13T11:00:00"))
+                .createdAt(OffsetDateTime.parse("2026-05-13T11:00:00Z"))
                 .build();
         when(ocrResultRepository.findByVideoIdOrderByFrameTimestamp(videoId))
                 .thenReturn(List.of(line1));
@@ -168,7 +169,7 @@ class VideoMultimodalArtifactsControllerWebMvcTest {
                 .endSeconds(end)
                 .transcriptText(transcript)
                 .ocrText(ocr)
-                .createdAt(LocalDateTime.now())
+                .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
     }
 }

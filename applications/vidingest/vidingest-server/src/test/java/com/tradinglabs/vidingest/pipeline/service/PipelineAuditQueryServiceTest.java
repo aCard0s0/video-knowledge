@@ -22,7 +22,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -87,7 +88,7 @@ class PipelineAuditQueryServiceTest {
                 .runItemId(itemId)
                 .eventType(PipelineRunItemEventType.ITEM_CREATED)
                 .attempt(1)
-                .occurredAt(LocalDateTime.now())
+                .occurredAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
 
         when(pipelineRunRepository.existsById(runId)).thenReturn(true);

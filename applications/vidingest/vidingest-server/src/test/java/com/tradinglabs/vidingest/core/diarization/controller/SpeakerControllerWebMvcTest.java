@@ -17,7 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,7 +63,7 @@ class SpeakerControllerWebMvcTest {
                 .video(video)
                 .label("SPEAKER_00")
                 .displayName("Alice")
-                .createdAt(LocalDateTime.parse("2026-05-13T09:00:00"))
+                .createdAt(OffsetDateTime.parse("2026-05-13T09:00:00Z"))
                 .build();
         when(speakerRepository.findByVideo_Id(videoId)).thenReturn(List.of(s));
         when(transcriptionSegmentRepository.countBySpeakerId(speakerId)).thenReturn(42L);
@@ -85,7 +85,7 @@ class SpeakerControllerWebMvcTest {
                 .id(speakerId)
                 .video(video)
                 .label("SPEAKER_00")
-                .createdAt(LocalDateTime.parse("2026-05-13T09:00:00"))
+                .createdAt(OffsetDateTime.parse("2026-05-13T09:00:00Z"))
                 .build();
         when(speakerRepository.findById(speakerId)).thenReturn(Optional.of(s));
         when(speakerRepository.save(any(Speaker.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -108,7 +108,7 @@ class SpeakerControllerWebMvcTest {
                 .video(video)
                 .label("SPEAKER_01")
                 .displayName("OldName")
-                .createdAt(LocalDateTime.parse("2026-05-13T09:00:00"))
+                .createdAt(OffsetDateTime.parse("2026-05-13T09:00:00Z"))
                 .build();
         when(speakerRepository.findById(speakerId)).thenReturn(Optional.of(s));
         when(speakerRepository.save(any(Speaker.class))).thenAnswer(inv -> inv.getArgument(0));

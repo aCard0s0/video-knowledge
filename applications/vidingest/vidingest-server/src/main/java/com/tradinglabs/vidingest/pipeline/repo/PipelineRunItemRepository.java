@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -42,7 +42,7 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
      * <p>Served by {@code idx_vidingest_pipeline_run_items_status_phase_updated_at} for each status
      * in the collection — no new index.
      */
-    List<PipelineRunItem> findByStatusInAndPhaseUpdatedAtBefore(Collection<RunStatus> statuses, LocalDateTime before);
+    List<PipelineRunItem> findByStatusInAndPhaseUpdatedAtBefore(Collection<RunStatus> statuses, OffsetDateTime before);
 
     /** Claims (or re-claims) an item for {@code owner} until {@code expiresAt}. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -54,7 +54,7 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
             """)
     int acquireLease(@Param("itemId") UUID itemId,
                      @Param("owner") String owner,
-                     @Param("expiresAt") LocalDateTime expiresAt);
+                     @Param("expiresAt") OffsetDateTime expiresAt);
 
     /**
      * Pushes out the expiry of the leases this owner still holds. Scoped by owner so a heartbeat
@@ -69,7 +69,7 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
             """)
     int renewLeases(@Param("itemIds") Collection<UUID> itemIds,
                     @Param("owner") String owner,
-                    @Param("expiresAt") LocalDateTime expiresAt);
+                    @Param("expiresAt") OffsetDateTime expiresAt);
 
     /** Drops the lease once the item is no longer being executed. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -88,6 +88,6 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
                AND i.leaseExpiresAt IS NOT NULL
                AND i.leaseExpiresAt > :now
             """)
-    boolean existsLiveLeaseForRun(@Param("runId") UUID runId, @Param("now") LocalDateTime now);
+    boolean existsLiveLeaseForRun(@Param("runId") UUID runId, @Param("now") OffsetDateTime now);
 }
 

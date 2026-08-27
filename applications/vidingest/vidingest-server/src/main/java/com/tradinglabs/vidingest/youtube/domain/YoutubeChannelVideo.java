@@ -19,7 +19,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -48,7 +49,7 @@ public class YoutubeChannelVideo {
     private String title;
 
     @Column(name = "published_at")
-    private LocalDateTime publishedAt;
+    private OffsetDateTime publishedAt;
 
     @Column(name = "watch_url", nullable = false, columnDefinition = "TEXT")
     private String watchUrl;
@@ -58,20 +59,20 @@ public class YoutubeChannelVideo {
     private Map<String, Object> metadata;
 
     @Column(name = "first_seen_at", nullable = false)
-    private LocalDateTime firstSeenAt;
+    private OffsetDateTime firstSeenAt;
 
     @Column(name = "last_seen_at", nullable = false)
-    private LocalDateTime lastSeenAt;
+    private OffsetDateTime lastSeenAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        var now = LocalDateTime.now();
+        var now = OffsetDateTime.now(ZoneOffset.UTC);
         createdAt = now;
         updatedAt = now;
         if (firstSeenAt == null) {
@@ -84,7 +85,7 @@ public class YoutubeChannelVideo {
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     @Override

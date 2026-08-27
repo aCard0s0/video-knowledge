@@ -1,21 +1,20 @@
 /**
  * Timestamp handling.
  *
- * The server serialises `LocalDateTime` with no zone: "2026-08-26T15:49:24.522757". A browser
- * parsing that treats it as *local* time. The container runs UTC and the operator's browser may
- * not — measured on this box: container 16:21 UTC, host 17:21 WEST, so every age read one hour
- * too old. Since "is this hung or just slow?" is the question the runs board exists to answer,
- * that skew is not cosmetic.
+ * Every server timestamp carries an explicit offset: the entities are `OffsetDateTime` written at
+ * UTC, so the wire form is "2026-08-26T15:49:24.522757Z" and `new Date` reads it correctly wherever
+ * the browser sits.
  *
- * ponytail: append Z and treat server time as UTC. Correct while the server runs UTC (true in
- * Docker). The real fix is Instant/OffsetDateTime server-side, which changes the wire contract
- * for the CLI and MCP clients too.
+ * This used to append a `Z` to a zoneless `LocalDateTime`, which was right only while the server
+ * ran with -Duser.timezone=UTC — true in Docker, false on a host in any other zone, and measured
+ * on this box as every age reading one hour too old (container 16:21 UTC, host 17:21 WEST). The
+ * appended Z is deliberately *not* kept as a fallback: it would silently re-assume UTC for any
+ * field that lost its offset, which is how the skew hid in the first place. A zoneless timestamp
+ * is now a server bug, and should read as one.
  */
 export function parseServerTime(value: string | null | undefined): Date | null {
   if (!value) return null;
-  // Already carries a zone (the two @DateTimeFormat fields on the YouTube DTOs do).
-  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value);
-  const d = new Date(zoned ? value : `${value}Z`);
+  const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

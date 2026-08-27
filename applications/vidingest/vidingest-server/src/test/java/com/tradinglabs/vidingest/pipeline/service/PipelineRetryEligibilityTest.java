@@ -19,7 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -133,7 +134,7 @@ class PipelineRetryEligibilityTest {
     void refusesAnItemAnotherInstanceHoldsALeaseOn() {
         PipelineRunItem leased = item(RunStatus.IN_PROGRESS);
         leased.setLeaseOwner("4242@some-other-host");
-        leased.setLeaseExpiresAt(LocalDateTime.now().plusMinutes(5));
+        leased.setLeaseExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
         when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(leased));
 
         CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
@@ -152,7 +153,7 @@ class PipelineRetryEligibilityTest {
     void retriesAnItemWhoseLeaseHasExpired() {
         PipelineRunItem stale = item(RunStatus.IN_PROGRESS);
         stale.setLeaseOwner("4242@a-host-that-is-gone");
-        stale.setLeaseExpiresAt(LocalDateTime.now().minusMinutes(5));
+        stale.setLeaseExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5));
         when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(stale));
 
         CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());

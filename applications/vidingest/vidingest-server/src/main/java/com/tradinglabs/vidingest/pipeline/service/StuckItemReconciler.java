@@ -11,7 +11,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -53,7 +54,7 @@ public class StuckItemReconciler {
     @Scheduled(fixedDelayString = "${vidingest.reconciler.intervalMs:300000}",
             initialDelayString = "${vidingest.reconciler.initialDelayMs:60000}")
     public void reconcileStuckItems() {
-        LocalDateTime threshold = LocalDateTime.now().minus(staleAfter);
+        OffsetDateTime threshold = OffsetDateTime.now(ZoneOffset.UTC).minus(staleAfter);
         List<PipelineRunItem> stuck =
                 runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(SWEEPABLE, threshold);
         if (stuck.isEmpty()) {

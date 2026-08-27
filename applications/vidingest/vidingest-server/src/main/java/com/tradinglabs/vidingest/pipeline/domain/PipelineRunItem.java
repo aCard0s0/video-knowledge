@@ -7,7 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -44,7 +45,7 @@ public class PipelineRunItem {
     private PipelineRunPhase failedPhase;
 
     @Column(name = "phase_updated_at")
-    private LocalDateTime phaseUpdatedAt;
+    private OffsetDateTime phaseUpdatedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "error_code", length = 80)
@@ -69,26 +70,26 @@ public class PipelineRunItem {
     private String leaseOwner;
 
     @Column(name = "lease_expires_at")
-    private LocalDateTime leaseExpiresAt;
+    private OffsetDateTime leaseExpiresAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (status == null) {
             status = RunStatus.PENDING;
         }
         if (phase == null) {
             phase = PipelineRunPhase.CREATED;
-            phaseUpdatedAt = LocalDateTime.now();
+            phaseUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         } else if (phaseUpdatedAt == null) {
-            phaseUpdatedAt = LocalDateTime.now();
+            phaseUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
         if (attempt == null) {
             attempt = 1;
@@ -97,12 +98,12 @@ public class PipelineRunItem {
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void setPhase(PipelineRunPhase phase) {
         this.phase = phase;
-        this.phaseUpdatedAt = LocalDateTime.now();
+        this.phaseUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     @Override

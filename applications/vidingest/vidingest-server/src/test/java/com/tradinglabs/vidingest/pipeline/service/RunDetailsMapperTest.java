@@ -15,7 +15,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,7 +39,7 @@ class RunDetailsMapperTest {
 
     @InjectMocks private RunDetailsMapper mapper;
 
-    private static final LocalDateTime T0 = LocalDateTime.of(2026, 1, 1, 0, 0);
+    private static final OffsetDateTime T0 = OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
     @Test
     void readsPreviewsThroughTheProjectionAndRanksThemLikeTheRunList() {

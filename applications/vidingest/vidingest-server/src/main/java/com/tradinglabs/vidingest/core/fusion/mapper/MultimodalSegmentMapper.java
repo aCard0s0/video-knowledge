@@ -9,18 +9,17 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Entity → DTO mapper for {@link MultimodalSegment}. Speaker UUIDs flatten to strings so
- * non-Java clients don't have to construct UUID types.
+ * Entity → DTO mapper for {@link MultimodalSegment}.
  */
 @Component
 public class MultimodalSegmentMapper {
 
     public MultimodalSegmentDto toDto(MultimodalSegment seg) {
         if (seg == null) return null;
-        UUID[] speakers = seg.getSpeakerIds();
-        List<String> speakerIds = speakers == null
+        String[] speakers = seg.getSpeakerLabels();
+        List<String> speakerLabels = speakers == null
                 ? List.of()
-                : Arrays.stream(speakers).filter(java.util.Objects::nonNull).map(UUID::toString).toList();
+                : Arrays.stream(speakers).filter(java.util.Objects::nonNull).toList();
         return new MultimodalSegmentDto(
                 seg.getId() != null ? seg.getId().toString() : null,
                 seg.getVideo() != null && seg.getVideo().getId() != null
@@ -31,7 +30,7 @@ public class MultimodalSegmentMapper {
                 seg.getEndSeconds() != null ? seg.getEndSeconds() : 0.0,
                 seg.getTranscriptText(),
                 seg.getOcrText(),
-                speakerIds,
+                speakerLabels,
                 seg.getCreatedAt() != null ? seg.getCreatedAt().toString() : null
         );
     }
