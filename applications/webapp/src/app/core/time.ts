@@ -71,6 +71,27 @@ export function clockTime(value: string | null | undefined): string {
   return d ? CLOCK.format(d) : '—';
 }
 
+const DAY = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+/**
+ * The local calendar day, for a feed that spans several of them.
+ *
+ * `clockTime` is what makes a run's transitions readable and is exactly what makes a *cross-run*
+ * feed ambiguous: 21:22:07 says nothing about which midnight it is on. Rendered once where the day
+ * changes, it costs two rows on a three-day page instead of eight characters on all fifty. The
+ * string doubles as the grouping key — same day, same output — so nothing else has to define what
+ * "same day" means.
+ */
+export function dayLabel(value: string | null | undefined): string {
+  const d = parseServerTime(value);
+  return d ? DAY.format(d) : '';
+}
+
 /** Seconds → mm:ss / h:mm:ss, matching the player's own readout. */
 export function timecode(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '--:--';

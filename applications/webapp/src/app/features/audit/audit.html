@@ -69,35 +69,63 @@
             <th scope="col" class="num">When</th>
             <th scope="col">Event</th>
             <th scope="col">Phase</th>
+            <th scope="col" class="from">From</th>
             <th scope="col">Status</th>
             <th scope="col" class="num">Attempt</th>
             <th scope="col">Run</th>
-            <th scope="col">Detail</th>
           </tr>
         </thead>
         <tbody>
           @for (event of rows(); track event.id) {
+            <!-- The clock cannot say which midnight a row is on, and this feed spans days. -->
+            @if (dayFor(event.id); as day) {
+              <tr class="day-row">
+                <td class="spine"></td>
+                <td colspan="7" class="mono">{{ day }}</td>
+              </tr>
+            }
             <tr>
               <td class="spine" [style.--spine]="statusVar(event.status)"></td>
-              <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ age(event.occurredAt) }}</td>
+              <!-- Not an age: nine transitions of one item all read "43h 29m ago", which can
+                   neither order them nor separate the 3ms between two of them. The absolute
+                   local time stays in the title, as it does on every other age in the console. -->
+              <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
               <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
-              <td class="mono sm">{{ event.phase }}</td>
+              <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
+              <td class="mono sm">{{ event.phase || '—' }}</td>
+              <!-- `previousPhase` is on ENTERED and on RETRY_REQUESTED, and on the latter it is the
+                   only phase the event names — dropping it left those rows naming no phase at all. -->
+              <td class="mono sm muted from">{{ event.previousPhase || '—' }}</td>
               <td><vk-status [status]="event.status" /></td>
               <td class="num">{{ event.attempt }}</td>
               <td class="mono sm">
-                <a [routerLink]="['/runs', event.runId]">{{ event.runId?.slice(0, 8) }}</a>
+                <!-- `?item` so the run screen opens on the item this event belongs to: without it a
+                     100-URL run lands the operator on a list to search. No `?phase` — that filters
+                     the trail, and a row here is one event, not a choice to see only that step. -->
+                <a [routerLink]="['/runs', event.runId]" [queryParams]="{ item: event.itemId || null }">{{
+                  event.runId?.slice(0, 8)
+                }}</a>
                 @if (event.videoId) {
                   · <a [routerLink]="['/videos', event.videoId]">video</a>
                 }
               </td>
-              <td class="detail">
-                @if (!blank(event.errorCode) || !blank(event.error)) {
-                  <vk-fault [errorCode]="event.errorCode" [error]="event.error" />
-                } @else {
-                  <span class="muted">—</span>
-                }
-              </td>
             </tr>
+            <!-- Full width under its event, not a ninth column: 325 of 359 events carry nothing
+                 here and paid 28ch for it, while the 34 that do were squeezed into a column whose
+                 tail — the half that separates one yt-dlp failure from the next — ran off a phone
+                 entirely. The shape the runs board and the channels list already use. -->
+            @if (!blank(event.errorCode) || !blank(event.error)) {
+              <tr class="fault-row">
+                <td class="spine" [style.--spine]="statusVar(event.status)"></td>
+                <td colspan="7">
+                  <vk-fault
+                    [errorCode]="event.errorCode"
+                    [error]="event.error"
+                    [cancelled]="event.status === 'CANCELLED'"
+                  />
+                </td>
+              </tr>
+            }
           }
         </tbody>
       </table>

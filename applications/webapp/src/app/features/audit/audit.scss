@@ -19,19 +19,37 @@
   width: 22ch;
 }
 
-.detail {
-  white-space: normal;
-  min-width: 28ch;
+// The day, once, above the first row that falls on it. It heads the rows under it rather than
+// separating itself from them, so both its cells drop the rule.
+.day-row td {
+  height: auto;
+  border-bottom: 0;
+}
+
+// Everything but the spine. `table.grid td.spine` is (0,2,1) in styles.scss and a bare `.day-row td`
+// is (0,1,1) — but a *component* rule carries the scoping attribute, so it wins and the padding
+// below landed on the 3px cell too. One padded cell in one row widens that column for the whole
+// table: measured 3px → 24px, and the status spine stopped reading as an edge marker. Same trap
+// the shared `.fault-row` rule documents, in the opposite direction.
+.day-row td:not(.spine) {
+  padding: var(--space-md) var(--space-md) var(--space-xs);
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  // Lowercase for the same reason the rail foot's date is: a marker in the console's voice.
+  text-transform: lowercase;
+}
+
+// Neither a record nor interactive; the row hover would say otherwise.
+table.grid tbody tr.day-row:hover {
+  background: transparent;
 }
 
 @media (max-width: 767px) {
-  .detail {
-    min-width: 0;
-    max-width: 24ch;
+  // The column the run screen's trail gives up here too, for the same reason: `previousPhase` is
+  // context for the phase beside it, and a phone has room for the phase itself.
+  table.grid th.from,
+  table.grid td.from {
+    display: none;
   }
-}
-
-table.grid td.detail {
-  height: auto;
-  padding-bottom: var(--space-xs);
 }

@@ -139,6 +139,16 @@ any field that lost its offset, which is how the skew hid in the first place. Fi
 specs must carry the offset too — `lane.spec.ts` compared a zoneless literal against a `Z` one and
 failed by exactly 3600000 ms.
 
+**The same rule binds the *write* path, and the audit feed shipped breaking it.** `fromDate` and
+`toDate` on `GET /audit/events` are `OffsetDateTime` parameters, so a zoneless value is a 400, not a
+misread hour: `Failed to convert value of type 'java.lang.String' to required type
+'java.time.OffsetDateTime'`. The screen sent `toISOString().slice(0, 19)` — the right instant with
+the `Z` cut off — which was correct only while the server compared naive `LocalDateTime`, and
+inverted the day that migration landed. So **every date filter on the audit screen 400ed**, replacing
+the table with the panel reporting it and re-firing on the 15s poll. `toISOString()` alone is both
+halves of the conversion the input needs: local wall clock → the UTC instant it names, carrying the
+offset that says so.
+
 ### 6. Absent values are `""`, not `null`
 
 `errorCode`, `error`, `videoId`, `channelName`, `videoTitle`, `previousPhase` all come back as
@@ -659,6 +669,35 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   filter, which defaults on, so a channel whose sync had just failed with a yt-dlp 404 reported
   `Every upload in this catalog is already ingested` — directly under the red panel naming the 404.
   Nothing on the page with the filter off means no uploads, not that they all ran.
+- **The audit feed's When column is a clock, not an age.** It is the same table the run screen's
+  trail is, one row per event, and a relative age cannot order what it lists: page 7 of the dev
+  feed was nine transitions of one item all reading `43h 29m ago`, and the two that matter are 3ms
+  apart. `clockTime` (`core/time.ts`) exists for exactly this and the trail already used it — this
+  screen was the one still on `humanAge`. It also cost three lines of wrap per row at 390px, since
+  `43h 29m ago` is the only value in the table with spaces to break on.
+- **The day is rendered where it changes, not on every row.** A clock with no date is ambiguous
+  across a midnight, and this feed spans days where the trail spans minutes. `dayLabel` heads the
+  first row of each day (`dayMarks`, unit-tested) — two rows on a three-day page instead of eight
+  characters on all fifty. The label doubles as the grouping key, so nothing else defines "same
+  day", and both are *local*, matching the clock beside them rather than the rail's UTC wall clock.
+- **A failure gets a row here too.** The feed carried `errorCode` and `error` in a `min-width: 28ch`
+  Detail column — the arrangement the runs board and the channel list were both moved out of, for
+  the reason the trail's own comment gives: 325 of 359 events have nothing to say there and paid the
+  width anyway, while the 34 that do had their tail pushed off a phone entirely. Now the shared
+  `fault-row`, which is also what themes and wraps it for free.
+- **A CANCELLED event is not a failure.** `vk-fault` takes `[cancelled]` precisely because a
+  cancelled item carries an `errorCode` like any other (`DUPLICATE_VIDEO`), and the feed was the one
+  screen not passing it — so one row said `CANCELLED` in the calm ramp and `DUPLICATE_VIDEO` in red,
+  about the same event.
+- **`previousPhase` and `itemId` were on every event and rendered nowhere.** The trail gives
+  `previousPhase` a `From` column; the feed dropped it, which on `ITEM_RETRY_REQUESTED` left the row
+  naming **no** phase at all — that event's own `phase` is `""` and `previousPhase` is the only one
+  it carries. `itemId` now rides the run link as `?item=`, the deep link run detail already honours,
+  so a row on a 100-URL run opens the item it belongs to instead of a list to search. No `?phase=`:
+  that filters the trail, and a row here is one event, not a request to see only that step.
+- **`""` is absent in the Phase column too.** The trail renders `{{ event.phase || '—' }}` with a
+  comment naming `ITEM_RETRY_REQUESTED`; the feed rendered it bare, so seven rows had an empty cell
+  where the rule (finding 6) says a dash goes.
 
 ### The phase lane
 
