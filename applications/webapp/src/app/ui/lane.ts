@@ -150,18 +150,18 @@ import { humanDuration } from '../core/time';
     }
 
     .done button {
-      background: rgba(74, 222, 128, 0.12);
-      border-color: rgba(74, 222, 128, 0.35);
+      background: color-mix(in srgb, var(--st-done) 12%, transparent);
+      border-color: color-mix(in srgb, var(--st-done) 35%, transparent);
     }
 
     .live button {
-      background: rgba(56, 189, 248, 0.16);
+      background: color-mix(in srgb, var(--st-running) 16%, transparent);
       border-color: var(--st-running);
       animation: breathe 2s ease-in-out infinite alternate;
     }
 
     .failed button {
-      background: rgba(220, 38, 38, 0.18);
+      background: color-mix(in srgb, var(--st-failed-fill) 18%, transparent);
       border-color: var(--st-failed-fill);
       border-right-width: 3px;
     }
@@ -171,7 +171,7 @@ import { humanDuration } from '../core/time';
     }
 
     .cancelled button {
-      background: rgba(100, 116, 139, 0.2);
+      background: color-mix(in srgb, var(--st-cancelled) 20%, transparent);
       border-color: var(--st-cancelled);
       border-right-width: 3px;
     }
@@ -207,12 +207,12 @@ import { humanDuration } from '../core/time';
        does. The row's own "never started" text is what actually says it — this is the echo. */
     .lane.dead .pending button {
       border-color: var(--st-failed-fill);
-      background: rgba(220, 38, 38, 0.1);
+      background: color-mix(in srgb, var(--st-failed-fill) 10%, transparent);
     }
 
     .lane.dead.stopped-cancelled .pending button {
       border-color: var(--st-cancelled);
-      background: rgba(100, 116, 139, 0.14);
+      background: color-mix(in srgb, var(--st-cancelled) 14%, transparent);
     }
 
     .lane.dead .merged {

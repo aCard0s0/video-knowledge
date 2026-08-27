@@ -1,3 +1,15 @@
+@mixin visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .skip {
   position: absolute;
   left: var(--space-sm);
@@ -20,18 +32,164 @@
   min-height: 100%;
 }
 
-.gutter {
+// Every inline icon in the shell: stroke geometry from CSS so the markup carries only the path.
+svg.icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  &.solid {
+    fill: currentcolor;
+    stroke: none;
+  }
+}
+
+.frame {
+  --nav-now: var(--nav-w);
+
+  display: grid;
+  grid-template-columns: var(--nav-now) 1fr;
+  align-items: start;
+
+  &.collapsed {
+    --nav-now: var(--nav-w-collapsed);
+  }
+}
+
+// The whole chrome, in one column: name, sections, and the status that used to sit in a strip
+// across the top. Sticky and full height, so none of it scrolls away.
+.rail {
+  container-type: inline-size;
   position: sticky;
   top: 0;
-  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-md) var(--space-sm);
+  border-right: 1px solid var(--border);
+  height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  background: var(--card);
+}
+
+// Mark, descriptor, name — three tiers, so the name can stay lowercase mono (the rule the screen
+// titles follow) and still read as a masthead. The mark is the pipeline in one glyph: a frame of
+// video going in, three lines of transcript coming out.
+.brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  height: var(--gutter-h);
-  padding: 0 max(var(--space-md), env(safe-area-inset-right)) 0 max(var(--space-md), env(safe-area-inset-left));
-  background: var(--card);
+  gap: 10px;
+  padding: 0 var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
   border-bottom: 1px solid var(--border);
+  color: var(--fg);
+
+  .mark {
+    width: 22px;
+    height: 22px;
+  }
+
+  // The nav icons are stroke-only; the play triangle is the one solid shape in the rail.
+  .fill {
+    fill: currentcolor;
+    stroke: none;
+  }
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.wordmark {
+  font: 600 var(--fs-lg) / 1 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+// A terminal caret, which is what the console is standing in for.
+.cursor {
+  color: var(--accent);
+  animation: caret 1.2s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 9px var(--space-sm);
+    border-radius: var(--radius);
+    border-left: 2px solid transparent;
+    color: var(--fg-muted);
+    text-decoration: none;
+    font: 500 var(--fs-xs) / 1 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition:
+      color var(--t-fast) ease,
+      background var(--t-fast) ease;
+
+    &:hover {
+      color: var(--fg);
+      background: var(--muted);
+    }
+
+    // A wash rather than a flat fill, so the accent bar still reads as the marker and the label
+    // stays --fg: the palette reserves accent text for the primary CTA.
+    &.on {
+      color: var(--fg);
+      border-left-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+  }
+
+  // Ordinals, in the muted weight: the rail reads as the menu it is, and the numbers never
+  // compete with the labels.
+  .idx {
+    flex: none;
+    width: 2ch;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  a.on .idx {
+    color: var(--accent);
+  }
+}
+
+// Where you are inside the active section, indented to line up with the labels above it:
+// the link's 2px border, then its padding, ordinal, icon and the two gaps between them.
+.leaf {
+  padding: 3px var(--space-sm) 5px calc(2px + var(--space-sm) * 3 + 2ch + 15px);
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-foot {
+  margin-top: auto;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
   font-size: var(--fs-xs);
 }
 
@@ -39,13 +197,25 @@
 .tick {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  padding: 2px var(--space-sm);
   min-width: 0;
 }
 
-.deps {
-  overflow-x: auto;
-  scrollbar-width: none;
+// Status reads as status: uppercase for the checks, muted lowercase for the detail under them.
+// Named on the button and the chips, not just the container: a `<button>` does not inherit
+// `text-transform` from an ancestor, so the container rule alone left the count lowercase.
+.deps,
+.deps-btn,
+.deps .chip {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tick {
+  padding-bottom: var(--space-sm);
+  color: var(--fg-muted);
 }
 
 .chip {
@@ -66,55 +236,222 @@
   }
 }
 
+// Carries `.chip` too — the dot and the ok/bad colours are the same ones the named chips use.
+.deps-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px 5px;
+  margin-left: -5px;
+  background: none;
+  border: 1px solid transparent;
+  font: 400 var(--fs-xs) / 1 var(--font-mono);
+
+  &:hover:not(:disabled) {
+    background: var(--muted);
+    border-color: var(--border);
+  }
+}
+
 .tick button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 6px;
   font-size: var(--fs-xs);
+
+  svg.icon {
+    width: 10px;
+    height: 10px;
+  }
 }
 
-.frame {
-  display: grid;
-  grid-template-columns: var(--nav-w) 1fr;
-  align-items: start;
+// Opens flush against the rail, whatever width it currently has, and upward from the foot that
+// owns it. Overriding `inset` is what stops the UA centring it in the viewport.
+.deps-pop {
+  position: fixed;
+  inset: auto;
+  left: var(--nav-now);
+  bottom: var(--space-md);
+  margin: 0;
+  padding: var(--space-sm) 0;
+  min-width: 240px;
+  max-width: min(92vw, 420px);
+  overscroll-behavior: contain;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  font-size: var(--fs-xs);
+
+  p {
+    display: flex;
+    gap: var(--space-md);
+    margin: 0;
+    padding: 2px var(--space-md);
+  }
+
+  .dep-name {
+    flex: none;
+    width: 9ch;
+    color: var(--fg-muted);
+  }
+
+  // Paths and model names are long and unbreakable; wrap rather than widen the panel.
+  p span:last-child {
+    overflow-wrap: anywhere;
+  }
 }
 
-nav {
-  position: sticky;
-  top: var(--gutter-h);
+// Ambient, not status: a wall clock and a preference, on one row.
+.clock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm) var(--space-xs);
+  border-top: 1px solid var(--border);
+}
+
+.stamp {
+  // `time` is inline by default; the stamp is a two-line block.
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: var(--space-md) var(--space-sm);
-  border-right: 1px solid var(--border);
-  height: calc(100vh - var(--gutter-h));
+  min-width: 0;
 
-  a {
-    padding: 7px var(--space-sm);
-    border-radius: var(--radius);
-    border-left: 2px solid transparent;
+  .time {
+    color: var(--fg);
+    font-size: var(--fs-md);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .zone,
+  .date {
     color: var(--fg-muted);
-    text-decoration: none;
-    font: 500 var(--fs-xs) / 1 var(--font-mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    transition:
-      color var(--t-fast) ease,
-      background var(--t-fast) ease;
+  }
 
-    &:hover {
-      color: var(--fg);
-      background: var(--muted);
-    }
+  .zone {
+    font-size: var(--fs-xs);
+  }
 
-    &.on {
-      color: var(--fg);
-      border-left-color: var(--accent);
-      background: var(--muted);
-    }
+  .date {
+    font-size: var(--fs-xs);
+    text-transform: lowercase;
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+
+  &:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--muted);
+  }
+}
+
+// The last row, and the only one that is neither status nor ambient.
+.nav-toggle {
+  margin-top: var(--space-xs);
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: var(--space-sm);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--fg-muted);
+  font: 500 var(--fs-xs) / 1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
+  &:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--muted);
+  }
+}
+
+.nav-toggle svg.icon {
+  transition: transform var(--t-med) ease;
+}
+
+.frame.collapsed .nav-toggle svg.icon {
+  transform: rotate(180deg);
+}
+
+// One rule for "the rail is too narrow for words", whether the operator collapsed it or the
+// viewport did. Everything that is only a label goes; every number and every control stays.
+@container (max-width: 120px) {
+  .brand,
+  nav a,
+  .deps,
+  .tick,
+  .nav-btn {
+    justify-content: center;
+    gap: 0;
+  }
+
+  .brand {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .brand-text,
+  nav a span,
+  .leaf,
+  .tick .label,
+  .deps-btn .unit,
+  .nav-btn span {
+    @include visually-hidden;
+  }
+
+  nav .idx {
+    display: none;
+  }
+
+  .clock {
+    justify-content: center;
+  }
+
+  .stamp {
+    display: none;
+  }
+
+  .tick .wide {
+    display: none;
+  }
+
+  // "1m 23s" needs more than 40px of inner width, and the age is the point of the line.
+  .deps,
+  .tick {
+    padding-left: 2px;
+    padding-right: 2px;
+    gap: var(--space-xs);
+  }
+
+  .deps-btn {
+    margin-left: 0;
+  }
+
+  .deps span.chip {
+    @include visually-hidden;
   }
 }
 
 main {
-  padding: var(--space-md) max(var(--space-md), env(safe-area-inset-right)) max(var(--space-md), env(safe-area-inset-bottom))
+  padding: var(--space-md) max(var(--space-md), env(safe-area-inset-right))
+    max(var(--space-md), env(safe-area-inset-bottom))
     max(var(--space-md), env(safe-area-inset-left));
   min-width: 0;
 
@@ -124,17 +461,26 @@ main {
   }
 }
 
+// Below this the rail is icons only and there is nothing to toggle.
 @media (max-width: 900px) {
   .frame {
-    grid-template-columns: 1fr;
+    --nav-now: var(--nav-w-collapsed);
   }
 
-  nav {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+  .nav-toggle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip,
+  nav a,
+  .nav-toggle svg.icon {
+    transition: none;
+  }
+
+  // A steady caret still reads as a caret.
+  .cursor {
+    animation: none;
   }
 }

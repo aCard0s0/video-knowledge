@@ -113,7 +113,7 @@ summary {
 
   &.on {
     border-left-color: var(--fg-muted);
-    background: rgba(148, 163, 184, 0.04);
+    background: color-mix(in srgb, var(--fg-muted) 4%, transparent);
   }
 }
 

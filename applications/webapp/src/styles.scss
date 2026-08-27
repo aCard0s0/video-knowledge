@@ -26,14 +26,14 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-// A sticky gutter plus sticky table headers can otherwise scroll a focused control out of sight.
+// Sticky table headers can otherwise scroll a focused control out of sight.
 a,
 button,
 input,
 select,
 textarea,
 [tabindex] {
-  scroll-margin-top: calc(var(--gutter-h) + var(--row-h));
+  scroll-margin-top: var(--row-h);
   scroll-margin-bottom: var(--space-lg);
 }
 
@@ -92,8 +92,8 @@ button {
     color var(--t-fast) ease;
 
   &:hover:not(:disabled) {
-    background: #232838;
-    border-color: #46536b;
+    background: var(--muted-hover);
+    border-color: var(--border-hover);
   }
 
   &:disabled {
@@ -125,7 +125,7 @@ button {
   color: var(--st-failed);
 
   &:hover:not(:disabled) {
-    background: rgba(220, 38, 38, 0.14);
+    background: color-mix(in srgb, var(--st-failed-fill) 14%, transparent);
     border-color: var(--st-failed);
   }
 }
@@ -147,11 +147,11 @@ select {
   transition: border-color var(--t-fast) ease;
 
   &::placeholder {
-    color: #64748b;
+    color: var(--placeholder);
   }
 
   &:hover {
-    border-color: #46536b;
+    border-color: var(--border-hover);
   }
 }
 

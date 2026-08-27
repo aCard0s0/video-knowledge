@@ -2,7 +2,7 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 
 /**
  * The REST API has no SSE and no websocket, so every "live" number here is polled. One shared
- * clock and one shared pause switch keep that honest: the gutter shows when the last tick landed
+ * clock and one shared pause switch keep that honest: the rail shows when the last tick landed
  * and lets the operator stop it, and nothing polls while the tab is hidden.
  */
 @Injectable({ providedIn: 'root' })

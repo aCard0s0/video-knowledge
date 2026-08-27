@@ -59,7 +59,7 @@ import { OPTIONAL_PHASES, OptionalPhase } from '../core/domain';
       padding: 5px 9px;
       border: 1px solid var(--accent);
       border-radius: var(--radius);
-      background: rgba(22, 163, 74, 0.12);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
       color: var(--fg);
       font-size: var(--fs-sm);
       letter-spacing: 0.04em;

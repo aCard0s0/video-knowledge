@@ -333,7 +333,13 @@ Production serving is one jar: the Dockerfile builds the console in a node stage
 `config/SpaStaticResourceConfig` forwards client routes to `index.html` while leaving `api/`,
 `actuator`, `v3/` and `swagger-ui` to 404 as JSON.
 
-Design tokens are [applications/webapp/src/styles/_tokens.scss](applications/webapp/src/styles/_tokens.scss). They
+Design tokens are [applications/webapp/src/styles/_tokens.scss](applications/webapp/src/styles/_tokens.scss).
+**Two themes live there**, dark and a separately measured light ramp — not an inversion, since the
+green that reads 11.6:1 on near-black is 1.6:1 on near-white. The OS preference applies with no
+JavaScript (`@media (prefers-color-scheme: light)` guarded by `:root:not([data-theme='dark'])`); a
+stored choice lands on `<html data-theme>` from an inline script in `index.html` **before first
+paint**. So **never write a raw hex in a component** — it cannot follow the theme. Washes go over
+the token: `color-mix(in srgb, var(--st-failed-fill) 18%, transparent)`. The tokens
 override [design-system/vidingest-console/MASTER.md](design-system/vidingest-console/MASTER.md),
 which is regenerable search-CLI output and never hand-edited (it is a light-mode landing-page
 template with several unusable values). The five design skills in [.claude/skills/](.claude/skills/)
