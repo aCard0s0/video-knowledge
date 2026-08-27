@@ -1,4 +1,13 @@
-import { Component, ElementRef, computed, inject, input, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  computed,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
@@ -11,9 +20,11 @@ import {
   VideosService,
 } from '../../api/generated';
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
-import { humanDuration, timecode } from '../../core/time';
+import { absoluteTime, humanAge, humanDuration, timecode } from '../../core/time';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
+import { Capabilities } from '../../core/capabilities';
+import { Poller } from '../../core/poller';
 import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -43,6 +54,8 @@ export class VideoDetail {
   private readonly knowledgeApi = inject(KnowledgeService);
   private readonly speakersApi = inject(SpeakersService);
   private readonly phases = inject(VideoPhasesService);
+  private readonly capabilities = inject(Capabilities);
+  private readonly poller = inject(Poller);
 
   private readonly player = viewChild<ElementRef<HTMLVideoElement>>('player');
 
@@ -55,6 +68,20 @@ export class VideoDetail {
   protected readonly lastRun = signal<string | null>(null);
   private readonly actionFailure = signal<ApiFailure | null>(null);
   protected readonly renaming = signal<string | null>(null);
+  protected readonly renameResult = signal<string | null>(null);
+
+  /** The chip pressed once and awaiting its confirming second press. */
+  protected readonly armed = signal<string | null>(null);
+
+  /**
+   * How long the in-flight rerun has been running.
+   *
+   * Its own interval, not `poller.now()`: that clock stops while the operator has polling paused,
+   * and the request does not — the same reason the rail's wall clock has one (`app.ts`). Started
+   * on the press and cleared on the answer, so an idle screen ticks nothing.
+   */
+  protected readonly elapsedMs = signal(0);
+  private ticker: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
     syncQueryParams({ pane: this.pane, page: this.page, type: this.knowledgeType });
@@ -63,6 +90,7 @@ export class VideoDetail {
     clampPage(this.page, SEG_SIZE, this.segments);
     clampPage(this.page, FRAME_SIZE, this.frames);
     clampPage(this.page, FUSED_SIZE, this.fused);
+    inject(DestroyRef).onDestroy(() => this.stopTicking());
   }
 
   protected readonly detail = rxResource({
@@ -114,6 +142,8 @@ export class VideoDetail {
   protected readonly statusVar = statusVar;
   protected readonly valueOf = valueOf;
   protected readonly timecode = timecode;
+  protected readonly humanDuration = humanDuration;
+  protected readonly absoluteTime = absoluteTime;
 
   /**
    * `/videos/{id}/knowledge` has no paging, and a long video can produce hundreds of units. Render
@@ -121,7 +151,26 @@ export class VideoDetail {
    * ponytail: a cap, not virtualization — add paging server-side if this becomes the main view.
    */
   protected readonly KNOWLEDGE_CAP = 200;
-  protected readonly knowledgeAll = computed(() => valueOf(this.knowledge) ?? []);
+
+  /**
+   * Sorted by where in the video the unit is, which is not the order the server sends.
+   *
+   * `KnowledgeUnitRepository.findByVideo_IdOrderByCreatedAtAsc` is *insert* order — one batch of
+   * ~40 segments writes its units in whatever order the model emitted them, all sharing a
+   * timestamp. Its javadoc calls that "timeline-ordered", which it is not. Rendered down a
+   * timecode gutter beside a player, the effect was a list whose rows walk backwards: 00:50,
+   * 01:15, 01:50, 00:00, 00:35.
+   *
+   * Sorted here rather than in the repository because the ordering is this screen's need — the
+   * MCP and CLI consumers read the same endpoint and did not ask for it — and `startSeconds` is
+   * already on every row. Units without one sort last: they belong to no moment, so there is no
+   * honest place for them among the ones that do.
+   */
+  protected readonly knowledgeAll = computed(() =>
+    [...(valueOf(this.knowledge) ?? [])].sort(
+      (a, b) => (a.startSeconds ?? Infinity) - (b.startSeconds ?? Infinity),
+    ),
+  );
   protected readonly knowledgeShown = computed(() => this.knowledgeAll().slice(0, this.KNOWLEDGE_CAP));
 
   protected readonly video = computed(() => valueOf(this.detail)?.video);
@@ -143,6 +192,16 @@ export class VideoDetail {
 
   protected frameUrl(frameId: string | undefined): string {
     return frameId ? `${API_V1}/frames/${frameId}/image` : '';
+  }
+
+  /**
+   * Relative age against the shared poll clock, the same one every other screen's ages read.
+   *
+   * `parseServerTime` treats a zoneless timestamp as a server bug rather than assuming UTC, which
+   * is the fallback that once hid an hour of skew for a release.
+   */
+  protected age(value: string | undefined): string {
+    return humanAge(value, this.poller.now());
   }
 
   protected show(pane: Pane): void {
@@ -172,15 +231,62 @@ export class VideoDetail {
   }
 
   /**
+   * A phase the per-phase rerun endpoint will refuse, so offering it is offering a 409.
+   *
+   * `VideoPhaseRunnerService` deliberately does *not* consult `applies(ctx)`: the rerun is the
+   * operator's escape hatch — "re-OCR after a paddleocr-server upgrade" — so a phase the
+   * deployment has switched off still runs, and greying all six of those out would break the one
+   * thing this row is for. KNOWLEDGE is the exception, and the only one:
+   * `KnowledgeExtractionService` checks `vidingest.knowledge.enabled` itself and throws Conflict,
+   * because with the feature off the endpoint would otherwise call the chat model and hang for
+   * the full read timeout. `Capabilities` already knows which phases are off, so the answer costs
+   * no extra request — it is the same singleton the phase picker reads.
+   */
+  protected refused(phase: OptionalPhase): boolean {
+    return phase === 'KNOWLEDGE' && this.capabilities.disabledOnServer(phase);
+  }
+
+  protected chipLabel(phase: OptionalPhase): string {
+    if (this.armed() === phase) return `re-run ${phase}?`;
+    if (this.running() === phase) return `${phase}…`;
+    return phase;
+  }
+
+  /**
+   * The chip row: two presses.
+   *
+   * A rerun wipes this video's artifacts for that phase before rebuilding them, so one stray
+   * click among seven chips costs a transcript and a ten-minute whisper call. Same arm-then-send
+   * shape the videos list already uses for delete. Pressing a different chip re-arms that one, so
+   * there is always a way out besides Cancel and Esc.
+   *
+   * The empty-state CTAs inside the panes call {@link runPhase} directly and stay one press:
+   * an empty pane has nothing to destroy.
+   */
+  protected confirmRun(phase: OptionalPhase): void {
+    if (this.armed() !== phase) {
+      this.armed.set(phase);
+      return;
+    }
+    this.armed.set(null);
+    this.runPhase(phase);
+  }
+
+  /**
    * Per-phase rerun is synchronous and idempotent server-side (each phase wipes and repopulates
    * its own artifacts), so the honest feedback is elapsed time and rows written.
    */
   protected runPhase(phase: OptionalPhase): void {
+    // Also clears an arm left over from a chip the operator never confirmed, so firing an
+    // empty-state CTA cannot leave a different chip sitting one press from wiping its artifacts.
+    this.armed.set(null);
     this.running.set(phase);
     this.actionFailure.set(null);
     this.lastRun.set(null);
+    this.startTicking();
     this.phases.runVideoPhase(this.videoId(), phase).subscribe({
       next: (result) => {
+        this.stopTicking();
         this.running.set(null);
         this.lastRun.set(
           `${result.phase}: ${humanDuration(result.elapsedMs)}${
@@ -197,20 +303,52 @@ export class VideoDetail {
         this.reloadPane();
       },
       error: (err: unknown) => {
+        this.stopTicking();
         this.running.set(null);
         this.actionFailure.set(toApiFailure(err));
       },
     });
   }
 
+  private startTicking(): void {
+    this.stopTicking();
+    const startedAt = Date.now();
+    this.elapsedMs.set(0);
+    this.ticker = setInterval(() => this.elapsedMs.set(Date.now() - startedAt), 1000);
+  }
+
+  private stopTicking(): void {
+    clearInterval(this.ticker);
+  }
+
+  /**
+   * Renames one speaker and writes the server's answer into the row it came from.
+   *
+   * **Not `speakers.reload()`.** The rows bind `[value]="speaker.displayName || ''"` with no
+   * `(input)`, and `track speaker.id` keeps the DOM node across a refetch — so re-fetching the
+   * list re-evaluated that binding on *every* row and reset any name the operator had typed but
+   * not yet saved. Renaming the first of two speakers silently discarded the second's text.
+   * `PATCH /speakers/{id}` answers with the updated `SpeakerDto`, so the one row that changed can
+   * be written in place; nothing else is touched, and it is one request rather than two.
+   */
   protected rename(speaker: SpeakerDto, displayName: string): void {
     if (!speaker.id) return;
     this.renaming.set(speaker.id);
+    this.renameResult.set(null);
     this.actionFailure.set(null);
     this.speakersApi.renameSpeaker(speaker.id, { displayName }).subscribe({
-      next: () => {
+      next: (updated) => {
         this.renaming.set(null);
-        this.speakers.reload();
+        if (this.speakers.hasValue()) {
+          this.speakers.update((rows) => rows.map((r) => (r.id === updated.id ? updated : r)));
+        }
+        // A row that silently goes back to looking exactly as it did is indistinguishable from a
+        // press that did nothing — the rule the runs board's retry line already follows.
+        this.renameResult.set(
+          updated.displayName
+            ? `Saved: ${updated.label} is now “${updated.displayName}”.`
+            : `Cleared the name for ${updated.label}.`,
+        );
       },
       error: (err: unknown) => {
         this.renaming.set(null);

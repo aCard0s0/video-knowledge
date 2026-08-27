@@ -10,7 +10,16 @@
       <h1 class="mono">{{ v.title || 'video' }}</h1>
       <p class="sub mono sm">
         <vk-status [status]="v.status" />
-        · {{ v.channelName || 'no channel' }} · {{ v.source }}/{{ v.sourceVideoId }}
+        <!-- `/videos` already filters on channelName and already reads `?channel=`; only the link
+             from a video back to the rest of its channel was missing, so the trip was Back and
+             retype. `translate="no"` on the source id: it is an identifier, not prose. -->
+        ·
+        @if (v.channelName) {
+          <a routerLink="/videos" [queryParams]="{ channel: v.channelName }" translate="no">{{ v.channelName }}</a>
+        } @else {
+          no channel
+        }
+        · <span translate="no">{{ v.source }}/{{ v.sourceVideoId }}</span>
         @if (v.pipelineId) {
           · <a [routerLink]="['/runs', v.pipelineId]">run {{ v.pipelineId.slice(0, 8) }}</a>
         }
@@ -18,8 +27,11 @@
     </div>
     <div class="head-actions mono sm">
       <a routerLink="/videos">← all videos</a>
-      <a [href]="txtUrl()">whisper.txt</a>
-      <a [href]="jsonUrl()">whisper.json</a>
+      <!-- `download` marks these as what they are. The server sets Content-Disposition:
+           attachment, so the browser saves them either way, but a link that navigates and a link
+           that downloads should not be indistinguishable. -->
+      <a [href]="txtUrl()" download>↓ whisper.txt</a>
+      <a [href]="jsonUrl()" download>↓ whisper.json</a>
     </div>
   </div>
 
@@ -34,40 +46,79 @@
         class="player"
         controls
         preload="metadata"
+        [attr.aria-label]="'Video: ' + (v.title || 'untitled')"
         [src]="fileUrl()"
         (timeupdate)="onTime()"
       ></video>
 
       <p class="cursor mono sm muted">at {{ timecode(cursor()) }} — click any row to jump</p>
 
-      <div class="reruns">
+      <div class="reruns" (keydown.escape)="armed.set(null)">
         <span class="eyebrow">re-run a phase</span>
         <div class="phase-buttons">
           @for (phase of optionalPhases; track phase) {
             <button
               class="btn-sm mono"
               type="button"
-              [disabled]="running() !== null"
-              title="Wipes and rebuilds this phase's artifacts for this video"
-              (click)="runPhase(phase)"
+              [class.armed]="armed() === phase"
+              [class.unavailable]="refused(phase)"
+              [disabled]="running() !== null || refused(phase)"
+              (click)="confirmRun(phase)"
             >
-              {{ running() === phase ? phase + '…' : phase }}
+              {{ chipLabel(phase) }}
             </button>
           }
+          @if (armed()) {
+            <button class="btn-sm mono" type="button" (click)="armed.set(null)">Cancel</button>
+          }
         </div>
-        <p class="mono sm run-result" aria-live="polite">{{ lastRun() }}</p>
+
+        <!-- What a rerun costs, in text rather than in the `title` this used to carry: an
+             attribute no touch device and no keyboard can reach, the same trap the rail's health
+             checks and the phase picker's reasons were pulled out of. -->
+        <p class="note mono muted">Wipes this phase's artifacts for the video, then rebuilds them.</p>
+        @if (refused('KNOWLEDGE')) {
+          <p class="note mono warn">
+            KNOWLEDGE is off on this server — re-running it answers 409, not units.
+          </p>
+        }
+
+        <!--
+          Always in the DOM and never `display: none`: a live region inserted at the moment it has
+          something to say is not reliably announced. It carries elapsed time because the rerun is
+          synchronous and can run for minutes — OCR over seventeen frames measured past ten, with
+          nothing but a 10px ellipsis to say the request was still open.
+        -->
+        <p class="note mono run-result" role="status" [class.live]="running()">
+          @if (running(); as phase) {
+            {{ phase }} running — {{ humanDuration(elapsedMs()) }} elapsed
+          } @else {
+            {{ lastRun() }}
+          }
+        </p>
       </div>
 
       <!-- What is actually on disk for this video. Every number here comes from /detail, which the
            screen was already fetching and then ignoring. -->
       <dl class="dossier mono sm">
+        <!-- The videos list shows this age and the one screen that could explain a video did not.
+             Absolute time in the title, as every other age on every screen already carries. -->
+        @if (v.createdAt) {
+          <dt>ingested</dt>
+          <dd [title]="absoluteTime(v.createdAt)">{{ age(v.createdAt) }}</dd>
+        }
         @if (transcription(); as t) {
           <dt>transcript</dt>
           <dd>
             @if (t.present) {
               {{ t.status }} · {{ t.provider || 'unknown provider' }} · {{ t.language || 'lang ?' }}
-              @if (t.fullTextChars) {
+              <!-- `!== undefined`, not truthiness: a transcript of 0 characters is a fact worth
+                   rendering, and hiding it made an empty transcript look like a missing field. -->
+              @if (t.fullTextChars !== null && t.fullTextChars !== undefined) {
                 · {{ t.fullTextChars }} chars
+              }
+              @if (t.updatedAt) {
+                <br /><span class="muted" [title]="absoluteTime(t.updatedAt)">written {{ age(t.updatedAt) }}</span>
               }
             } @else {
               none
@@ -83,7 +134,7 @@
         }
         @if (v.filePath) {
           <dt>file</dt>
-          <dd class="path" [title]="v.filePath">{{ v.filePath }}</dd>
+          <dd class="path" [title]="v.filePath" translate="no">{{ v.filePath }}</dd>
         }
       </dl>
     </section>
@@ -145,7 +196,7 @@
                       [src]="frameUrl(frame.frameId)"
                       [alt]="'Frame at ' + timecode(frame.timestampSeconds)"
                       width="160"
-                      height="90"
+                      height="120"
                       loading="lazy"
                     />
                     <span class="tc mono">{{ timecode(frame.timestampSeconds) }}</span>
@@ -154,7 +205,11 @@
                     @for (line of frame.lines ?? []; track line.id) {
                       <li class="mono sm">
                         {{ line.text }}
-                        <span class="muted">{{ line.confidence ? (line.confidence * 100).toFixed(0) + '%' : '' }}</span>
+                        <!-- A line OCR read at 0% confidence is the one most worth flagging, and
+                             truthiness rendered it as if the score were missing. -->
+                        @if (line.confidence !== null && line.confidence !== undefined) {
+                          <span class="muted">{{ (line.confidence * 100).toFixed(0) }}%</span>
+                        }
                       </li>
                     } @empty {
                       <li class="muted sm">No text read from this frame.</li>
@@ -183,10 +238,16 @@
                     <span class="text">
                       <span class="line">{{ seg.transcriptText || '—' }}</span>
                       @if (seg.ocrText) {
-                        <span class="ocr mono sm">on screen: {{ seg.ocrText }}</span>
+                        <!-- Clamped: paddleocr returns every string on the frame, so one segment
+                             of a screen-share ran to fifteen lines of sidebar chrome in the warn
+                             colour, louder than the transcript it annotates. The frames pane has
+                             the full read, per frame, which is where it is legible anyway. -->
+                        <span class="ocr mono sm" translate="no">on screen: {{ seg.ocrText }}</span>
                       }
+                      <!-- The labels, not a count of them. Naming the speakers is what DIARIZE is
+                           for, and the speakers pane names the same ones. -->
                       @if ((seg.speakerLabels ?? []).length) {
-                        <span class="spk mono sm muted">{{ (seg.speakerLabels ?? []).length }} speaker(s)</span>
+                        <span class="spk mono sm muted" translate="no">{{ (seg.speakerLabels ?? []).join(', ') }}</span>
                       }
                     </span>
                   </button>
@@ -209,10 +270,30 @@
 
           @if (knowledge.isLoading()) {
             <p class="quiet muted">Loading knowledge…</p>
+          } @else if (knowledgeAll().length === 0 && knowledgeType()) {
+            <!--
+              The filter's empty set, not the video's. This branch used to fall through to the
+              message below, so filtering to a type with no units claimed the video had none —
+              while the tab beside it counted them and the dossier agreed — and offered an LLM
+              extraction over the whole video as the fix for a chip. Same shape the videos list
+              was already corrected for.
+            -->
+            <vk-empty [message]="'No ' + knowledgeType() + ' units for this video.'">
+              <button class="btn-sm mono" type="button" (click)="knowledgeType.set('')">Show all types</button>
+            </vk-empty>
           } @else if (knowledgeAll().length === 0) {
             <vk-empty message="No knowledge units for this video.">
-              <button class="btn-primary" type="button" (click)="runPhase('KNOWLEDGE')">Run KNOWLEDGE</button>
-              <span class="mono sm muted">Needs a chat model loaded on the LLM runtime — check the rail before starting.</span>
+              @if (refused('KNOWLEDGE')) {
+                <!-- Naming the flag is the point: the line below blames a missing chat model,
+                     which is not why this deployment has no units. -->
+                <span class="mono sm warn">
+                  KNOWLEDGE is off on this server — set vidingest.knowledge.enabled=true. Until
+                  then the rerun endpoint answers 409.
+                </span>
+              } @else {
+                <button class="btn-primary" type="button" (click)="runPhase('KNOWLEDGE')">Run KNOWLEDGE</button>
+                <span class="mono sm muted">Needs a chat model loaded on the LLM runtime — check the rail before starting.</span>
+              }
             </vk-empty>
           } @else {
             @if (knowledgeAll().length > knowledgeShown().length) {
@@ -244,6 +325,13 @@
               <button class="btn-primary" type="button" (click)="runPhase('DIARIZE')">Run DIARIZE</button>
             </vk-empty>
           } @else {
+            <!--
+              Always in the DOM, never `display: none` — a live region has to be in the
+              accessibility tree before the update it announces. A rename that worked used to
+              change nothing on screen but the button flipping back from "Saving…", which is
+              indistinguishable from a press that did nothing.
+            -->
+            <p class="rename-result note mono" role="status">{{ renameResult() }}</p>
             <table class="grid" translate="no">
               <thead>
                 <tr>
