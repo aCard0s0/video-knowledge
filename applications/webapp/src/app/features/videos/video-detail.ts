@@ -57,7 +57,7 @@ export class VideoDetail {
   protected readonly renaming = signal<string | null>(null);
 
   constructor() {
-    syncQueryParams({ pane: this.pane, page: this.page, type: this.knowledgeType });
+    syncQueryParams({ pane: this.pane, page: this.page, type: this.knowledgeType }, { pane: 'transcript' });
     // One page signal, three paged panes. A pane that is not visible has undefined params, so its
     // resource is idle and holds no page — only the visible one's clamp is ever live.
     clampPage(this.page, SEG_SIZE, this.segments);

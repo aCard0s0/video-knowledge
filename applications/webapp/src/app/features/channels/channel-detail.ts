@@ -40,7 +40,7 @@ export class ChannelDetail {
   protected readonly maxPerRun = MAX_PER_RUN;
 
   constructor() {
-    syncQueryParams({ page: this.page, onlyNew: this.onlyNew });
+    syncQueryParams({ page: this.page, onlyNew: this.onlyNew }, { onlyNew: true });
   }
 
   protected readonly channel = rxResource({

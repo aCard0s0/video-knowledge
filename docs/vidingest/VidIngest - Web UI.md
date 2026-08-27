@@ -528,6 +528,17 @@ trail to that phase. `CREATED` and `DONE` never appear — they are run markers.
 | Dates and durations via `Intl.*` | Ages are `humanDuration` (`4s ago`), not `Intl.RelativeTimeFormat` (`4 seconds ago`) — the gutter is 28px of 11px mono, and the runs board compares hundreds of them |
 | Deep-link all stateful UI | The rail's collapsed state is `localStorage`, not a query param: it describes the operator's chrome, not the screen, and putting it in the URL would ship it in every link they paste |
 
+A screen's filters, tab and page live in the query string (`core/url-state.ts`), and **a default
+never does** — a shared link carries only what was actually chosen. A screen whose default is a real
+value declares it: `syncQueryParams({ … }, { sortBy: 'createdAt' })`. That second argument is not
+optional decoration. The rule used to be a hardcoded `'' | 'ALL' | 0 | false`, which is a guess
+about what a default looks like, and it was wrong for three of the six screens — `/runs`,
+`/videos/{id}` and `/channels/{id}` each wrote `?sortBy=createdAt`, `?pane=transcript` or
+`?onlyNew=true` on load with nothing chosen. A declared default is also **exhaustive for its key**,
+which is the half that cannot be merged with the empty-ish rule: `onlyNew` starts `true`, so `false`
+is the operator's choice, and the generic rule would have dropped precisely the value the link
+existed to carry.
+
 ## Change checklist
 
 - [ ] Update this page when screens, endpoints or the design tokens change
