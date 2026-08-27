@@ -139,11 +139,15 @@
         <a class="mono sm" routerLink="/runs">all runs →</a>
       </div>
 
-      @if (!recent.hasValue()) {
-        <p class="quiet muted">Loading…</p>
-      } @else if (recentRuns().length === 0) {
+      <!--
+        The empty state waits for the resource to hold a value: `recentRuns()` is `[]` while the
+        list is loading *and* while it has errored. A "Loading…" line here would be no better —
+        on an error it never resolves, which is the trap the run screen was pulled out of in #13.
+        Loading and errored both render nothing; the panel above is the answer.
+      -->
+      @if (recent.hasValue() && recentRuns().length === 0) {
         <p class="quiet muted">Nothing ingested yet. The run you start appears here and keeps advancing.</p>
-      } @else {
+      } @else if (recentRuns().length) {
         <ul class="recent">
           @for (run of recentRuns(); track run.id) {
             <li>

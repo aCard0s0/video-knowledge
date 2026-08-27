@@ -274,7 +274,8 @@ describe('Ingest', () => {
   it('does not report an unanswered list as an empty one', async () => {
     const { el } = await screen(stubPipelines({ listRuns: () => throwError(() => new HttpErrorResponse({ status: 500 })) }));
 
-    expect(el.querySelector('.quiet')?.textContent).not.toContain('Nothing ingested yet');
+    // Nothing at all, not a "Loading…" that never resolves: the panel above is the answer.
+    expect(el.querySelector('.quiet')).toBeNull();
     expect(el.querySelector('vk-problem')!.textContent).toContain('500');
   });
 
