@@ -519,3 +519,21 @@ main {
     transform: translateY(6px);
   }
 }
+
+/*
+  A sticky action bar must not leave focus underneath it.
+
+  Sticky panels are painted over the page but take no space, so the browser treats an element
+  behind one as perfectly visible and never scrolls: measured on the channel screen, 32 of 50
+  focused row links landed under the ingest panel, with `elementFromPoint` returning the panel
+  instead of the link. `scroll-padding-bottom` is what tells a scroller that band is not viewing
+  area, so scroll-into-view moves the element clear of it.
+
+  Reserved past the worst case — that panel is 152px on a wide screen and 299px at 390px, where
+  the phase chips wrap to three rows — because over-reserving only costs a little extra scroll
+  while under-reserving reinstates the bug. At full scroll the panel sits back in flow below the
+  table, so nothing is covered there either.
+*/
+:root:has(.ingest) {
+  scroll-padding-bottom: 22rem;
+}

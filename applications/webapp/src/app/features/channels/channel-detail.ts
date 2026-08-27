@@ -51,17 +51,25 @@ export class ChannelDetail {
   protected readonly busy = signal(false);
   private readonly actionFailure = signal<ApiFailure | null>(null);
   protected readonly started = signal<CreatePipelineRunResponse | null>(null);
+  /**
+   * The run being watched, in the URL.
+   *
+   * It lived only inside `started()`, so a refresh — or Back, or a pasted link — dropped the run
+   * this screen had just kicked off and left the operator to find it on the runs board. The
+   * ingest screen already carries it as `?run=`; the watch panel was copied here without it.
+   */
+  private readonly runId = signal('');
   protected readonly maxPerRun = MAX_PER_RUN;
 
   constructor() {
-    syncQueryParams({ page: this.page, onlyNew: this.onlyNew });
+    syncQueryParams({ page: this.page, onlyNew: this.onlyNew, run: this.runId });
     // Ticking "not ingested only" shrinks the list under the page number that came from the URL.
     clampPage(this.page, PAGE_SIZE, this.videos);
 
     this.poller.every(
       () => (this.watch.live() ? POLL_LIVE : POLL_IDLE),
       () => {
-        if (this.started()?.runId) this.watch.reload();
+        if (this.runId()) this.watch.reload();
       },
     );
   }
@@ -99,7 +107,7 @@ export class ChannelDetail {
    * them. Idle until an ingest answers: `watchRun` leaves both its resources alone while the id
    * is undefined.
    */
-  private readonly watch = watchRun(() => this.started()?.runId);
+  private readonly watch = watchRun(() => this.runId() || undefined);
 
   protected readonly watched = this.watch.detail;
   protected readonly watchedItems = this.watch.items;
@@ -117,6 +125,16 @@ export class ChannelDetail {
   protected readonly rejected = computed(
     () => this.started()?.items?.filter((i) => i.status === 'REJECTED') ?? [],
   );
+
+  /** Whether there is a run on screen at all — this session's, or one reopened from the URL. */
+  protected readonly watching = computed(() => !!this.runId());
+
+  /** "started · N accepted" is only true of a run this visit began; a reopened one is watched. */
+  protected readonly headline = computed(() => {
+    if (!this.started()) return `watching · ${this.runId().slice(0, 8)}`;
+    const rejects = this.rejected().length;
+    return `started · ${this.accepted().length} accepted${rejects ? ` · ${rejects} rejected` : ''}`;
+  });
 
   protected readonly rows = computed(() => valueOf(this.videos)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.videos)?.total ?? 0);
@@ -163,7 +181,7 @@ export class ChannelDetail {
 
   /** A lane segment opens the run screen with the trail filtered to that phase. */
   protected openPhase(item: RunItem, phase: string): void {
-    void this.router.navigate(['/runs', this.started()?.runId], {
+    void this.router.navigate(['/runs', this.runId()], {
       queryParams: { item: item.itemId, phase },
     });
   }
@@ -224,6 +242,7 @@ export class ChannelDetail {
         next: (response) => {
           this.busy.set(false);
           this.started.set(response);
+          this.runId.set(response.runId ?? '');
           // Picks are cleared, not re-seeded from the rejects: the response identifies an item by
           // its watch URL and the selection is keyed by youtubeVideoId, and inventing a parse
           // between the two buys nothing the rejects table below does not already say.

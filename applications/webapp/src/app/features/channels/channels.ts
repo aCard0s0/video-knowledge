@@ -1,7 +1,7 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { rxResource } from '@angular/core/rxjs-interop';
+import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 
 import { YoutubeChannelSummary, YoutubeService } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
@@ -31,6 +31,9 @@ export class Channels {
   protected readonly size = PAGE_SIZE;
   protected readonly busy = signal<string | null>(null);
   private readonly actionFailure = signal<ApiFailure | null>(null);
+  /** Errors appear on submit, not while the operator is still typing the first character. */
+  private readonly submitted = signal(false);
+  private readonly urlField = viewChild<ElementRef<HTMLInputElement>>('urlField');
 
   protected readonly form = new FormGroup({
     url: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -65,14 +68,28 @@ export class Channels {
     return humanAge(value, this.poller.now());
   }
 
+  /**
+   * Reactive forms are not signal-based, so a computed reading `control.invalid` would never
+   * recompute — the value has to come through `valueChanges` to be a dependency at all.
+   * Shown only once submit has been pressed, not while the first character is being typed.
+   */
+  private readonly urlValue = toSignal(this.form.controls.url.valueChanges, { initialValue: '' });
+  protected readonly urlInvalid = computed(() => this.submitted() && this.urlValue().trim() === '');
+
   protected add(): void {
-    if (this.form.invalid) return;
+    // Submit stays enabled so pressing it explains the problem. Disabled, it just did nothing.
+    this.submitted.set(true);
+    if (this.form.invalid) {
+      this.urlField()?.nativeElement.focus();
+      return;
+    }
     const { url, displayName } = this.form.getRawValue();
     this.busy.set('add');
     this.actionFailure.set(null);
     this.youtube.createChannel({ url, displayName: displayName || undefined }).subscribe({
       next: (channel) => {
         this.form.reset();
+        this.submitted.set(false);
         this.list.reload();
         // A freshly added channel has an empty catalog until something syncs it, and leaving that
         // to the operator (or to the half-hour scheduler) makes "Add" look like it did nothing.

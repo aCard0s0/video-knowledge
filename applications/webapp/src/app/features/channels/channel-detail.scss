@@ -106,3 +106,15 @@ td.pick input[type='checkbox'] {
   width: 16px;
   height: 16px;
 }
+
+/* The label fills its cell: the checkbox and the title that also labels it are then one
+   continuous target, with no strip of cell padding between them that does nothing. */
+.pick-hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--row-h);
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
