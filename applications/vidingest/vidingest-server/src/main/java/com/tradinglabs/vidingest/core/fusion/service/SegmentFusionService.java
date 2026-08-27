@@ -1,6 +1,8 @@
 package com.tradinglabs.vidingest.core.fusion.service;
 
 import com.tradinglabs.vidingest.config.FusionConfig;
+import com.tradinglabs.vidingest.core.diarization.domain.Speaker;
+import com.tradinglabs.vidingest.core.diarization.repo.SpeakerRepository;
 import com.tradinglabs.vidingest.core.frames.domain.VideoFrame;
 import com.tradinglabs.vidingest.core.frames.repo.VideoFrameRepository;
 import com.tradinglabs.vidingest.core.fusion.domain.MultimodalSegment;
@@ -55,6 +57,7 @@ public class SegmentFusionService {
     private final TranscriptionSegmentRepository transcriptionSegmentRepository;
     private final VideoFrameRepository videoFrameRepository;
     private final OcrResultRepository ocrResultRepository;
+    private final SpeakerRepository speakerRepository;
     private final MultimodalSegmentRepository multimodalSegmentRepository;
     private final TransactionOperations transactionOperations;
 
@@ -92,6 +95,11 @@ public class SegmentFusionService {
                 : transcriptionSegmentRepository.findByTranscriptionIdOrderByStartSecondsAsc(transcription.getId());
         List<VideoFrame> frames = videoFrameRepository.findByVideo_IdOrderByTimestampSecondsAsc(video.getId());
         List<OcrResult> ocrResults = ocrResultRepository.findByVideoIdOrderByFrameTimestamp(video.getId());
+        // speaker_id on a transcript segment is a bare uuid column, so the label has to be
+        // resolved here. A segment pointing at a speaker that no longer exists contributes
+        // nothing, which is the honest answer rather than a stale id.
+        Map<UUID, String> labelBySpeakerId = speakerRepository.findByVideo_Id(video.getId()).stream()
+                .collect(HashMap::new, (m, s) -> m.put(s.getId(), s.getLabel()), HashMap::putAll);
 
         double maxEnd = computeMaxEnd(video, transSegs, frames, ocrResults);
         if (maxEnd <= 0.0) {
@@ -122,7 +130,7 @@ public class SegmentFusionService {
                 break;
             }
 
-            WindowAggregation agg = aggregate(start, end, transSegs, frames, ocrByFrameId);
+            WindowAggregation agg = aggregate(start, end, transSegs, frames, ocrByFrameId, labelBySpeakerId);
             if (agg.isEmpty()) {
                 continue;
             }
@@ -134,7 +142,7 @@ public class SegmentFusionService {
                     .endSeconds(end)
                     .transcriptText(blankToNull(agg.transcriptText))
                     .ocrText(blankToNull(agg.ocrText))
-                    .speakerIds(agg.speakerIds.isEmpty() ? null : agg.speakerIds.toArray(UUID[]::new))
+                    .speakerLabels(agg.speakerLabels.isEmpty() ? null : agg.speakerLabels.toArray(String[]::new))
                     .build());
         }
 
@@ -213,10 +221,11 @@ public class SegmentFusionService {
             double end,
             List<TranscriptionSegment> transSegs,
             List<VideoFrame> frames,
-            Map<UUID, List<OcrResult>> ocrByFrameId
+            Map<UUID, List<OcrResult>> ocrByFrameId,
+            Map<UUID, String> labelBySpeakerId
     ) {
         StringBuilder transcript = new StringBuilder();
-        Set<UUID> speakers = new LinkedHashSet<>();
+        Set<String> speakers = new LinkedHashSet<>();
 
         // Transcript: any segment whose [start,end] overlaps the window contributes its text
         // and (optional) speaker. We rely on the upstream sort (asc by startSeconds) so the
@@ -229,8 +238,9 @@ public class SegmentFusionService {
                 if (!transcript.isEmpty()) transcript.append(' ');
                 transcript.append(text.trim());
             }
-            if (s.getSpeakerId() != null) {
-                speakers.add(s.getSpeakerId());
+            String label = s.getSpeakerId() == null ? null : labelBySpeakerId.get(s.getSpeakerId());
+            if (label != null) {
+                speakers.add(label);
             }
         }
 
@@ -265,19 +275,19 @@ public class SegmentFusionService {
     }
 
     /** Aggregated content for one window. Package-private so tests can construct it. */
-    record WindowAggregation(String transcriptText, String ocrText, Set<UUID> speakerIds) {
+    record WindowAggregation(String transcriptText, String ocrText, Set<String> speakerLabels) {
         boolean isEmpty() {
             return (transcriptText == null || transcriptText.isBlank())
                     && (ocrText == null || ocrText.isBlank())
-                    && (speakerIds == null || speakerIds.isEmpty());
+                    && (speakerLabels == null || speakerLabels.isEmpty());
         }
 
         /** Convenience for tests; sorted so equality assertions don't depend on iteration order. */
-        List<UUID> sortedSpeakerIds() {
-            if (speakerIds == null) return List.of();
-            return speakerIds.stream()
+        List<String> sortedSpeakerLabels() {
+            if (speakerLabels == null) return List.of();
+            return speakerLabels.stream()
                     .filter(Objects::nonNull)
-                    .sorted(Comparator.comparing(UUID::toString))
+                    .sorted()
                     .toList();
         }
     }

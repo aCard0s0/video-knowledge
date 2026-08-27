@@ -28,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -110,7 +111,7 @@ public class YoutubeChannelCommandService {
         String channelUrl = transactionOperations.execute(status -> {
             YoutubeChannel ch = loadForSync(channelId);
             ch.setStatus(YoutubeChannelStatus.SYNCING);
-            ch.setLastSyncAttemptAt(LocalDateTime.now());
+            ch.setLastSyncAttemptAt(OffsetDateTime.now(ZoneOffset.UTC));
             ch.setLastError(null);
             return youtubeChannelRepository.save(ch).getChannelUrl();
         });
@@ -152,7 +153,7 @@ public class YoutubeChannelCommandService {
         upsertVideos(ch, discovery.videos());
 
         ch.setStatus(YoutubeChannelStatus.READY);
-        ch.setLastSyncSuccessAt(LocalDateTime.now());
+        ch.setLastSyncSuccessAt(OffsetDateTime.now(ZoneOffset.UTC));
         ch.setLastError(null);
 
         youtubeChannelRepository.save(ch);
@@ -252,7 +253,7 @@ public class YoutubeChannelCommandService {
             existingById.put(v.getYoutubeVideoId(), v);
         }
 
-        var now = LocalDateTime.now();
+        var now = OffsetDateTime.now(ZoneOffset.UTC);
         List<YoutubeChannelVideo> toSave = new java.util.ArrayList<>(ids.size());
         Set<String> processed = new HashSet<>(ids.size());
 

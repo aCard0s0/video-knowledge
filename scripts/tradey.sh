@@ -6,7 +6,7 @@
 #   - vidingest  (Spring Boot REST, Java 26)                       → :8051
 #   - vidingest-mcp (MCP SSE server, opt-in)                       → :8055
 #   - vidingest-cli (Spring Shell console, opt-in)
-# plus the infra vidingest needs: timescaledb, ollama, whisper, and two
+# plus the infra vidingest needs: postgres, ollama, whisper, and two
 # optional sidecars (paddleocr-server, diarize-asr).
 #
 # Compose layout: compose.yml (base) + compose/{infra/infra,services,cli,mcp}.yml
@@ -24,7 +24,7 @@
 #   ./scripts/tradey.sh down --volumes
 #
 # Image tag: built images are video-knowledge/*:TAG (default latest). Set
-# VK_IMAGE_TAG or pass --tag/-t. Infra images (timescaledb, ollama, whisper) are unchanged.
+# VK_IMAGE_TAG or pass --tag/-t. Infra images (postgres, ollama, whisper) are unchanged.
 # ============================================================================
 set -euo pipefail
 
@@ -50,8 +50,8 @@ COMPOSE=(docker compose -p video-knowledge
   -f "${BASE_DIR}/compose/mcp.yml")
 
 # ── service catalogue + groups ──────────────────────────────────────────────
-ALL_SERVICES="timescaledb ollama whisper paddleocr-server diarize-asr vidingest vidingest-cli vidingest-mcp"
-GROUP_INFRA="timescaledb ollama whisper"
+ALL_SERVICES="postgres ollama whisper paddleocr-server diarize-asr vidingest vidingest-cli vidingest-mcp"
+GROUP_INFRA="postgres ollama whisper"
 GROUP_SIDECARS="paddleocr-server diarize-asr"
 GROUP_BACKEND="vidingest"
 # Default footprint for 'start'/'build all': infra + backend (no opt-in sidecars/cli/mcp)
@@ -74,7 +74,7 @@ resolve() {
     infra)             echo "${GROUP_INFRA}" ;;
     sidecars)          echo "${GROUP_SIDECARS}" ;;
     backend|be)        echo "${GROUP_BACKEND}" ;;
-    db)                echo "timescaledb" ;;
+    db)                echo "postgres" ;;
     vi|vidingest)      echo "vidingest" ;;
     cli)               echo "vidingest-cli" ;;
     mcp)               echo "vidingest-mcp" ;;
@@ -232,7 +232,7 @@ Commands:
 
 Targets:
   groups:   all  infra  sidecars  backend(be)
-  services: timescaledb(db) ollama whisper paddleocr-server diarize-asr
+  services: postgres(db) ollama whisper paddleocr-server diarize-asr
             vidingest(vi) vidingest-cli(cli) vidingest-mcp(mcp)
 
 Env overrides: VK_IMAGE_TAG (default latest)  VK_BIND_ADDR (default 127.0.0.1)

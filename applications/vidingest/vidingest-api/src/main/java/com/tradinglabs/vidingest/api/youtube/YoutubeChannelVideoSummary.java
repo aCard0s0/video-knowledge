@@ -1,12 +1,12 @@
 package com.tradinglabs.vidingest.api.youtube;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record YoutubeChannelVideoSummary(
         String id,
         String youtubeVideoId,
         String title,
-        LocalDateTime publishedAt,
+        OffsetDateTime publishedAt,
         String watchUrl,
         boolean ingested
 ) {

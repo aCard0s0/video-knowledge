@@ -185,8 +185,8 @@
                       @if (seg.ocrText) {
                         <span class="ocr mono sm">on screen: {{ seg.ocrText }}</span>
                       }
-                      @if ((seg.speakerIds ?? []).length) {
-                        <span class="spk mono sm muted">{{ (seg.speakerIds ?? []).length }} speaker(s)</span>
+                      @if ((seg.speakerLabels ?? []).length) {
+                        <span class="spk mono sm muted">{{ (seg.speakerLabels ?? []).length }} speaker(s)</span>
                       }
                     </span>
                   </button>

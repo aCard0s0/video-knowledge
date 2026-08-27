@@ -34,7 +34,7 @@ plus `compose/{infra/infra,services,cli,mcp}.yml`. Host ports come from
 
 - REST base URL: <http://localhost:8051/vidingest>
 - MCP (SSE): <http://localhost:8055/vidingest/sse>
-- Ports (defaults): timescaledb 3030, whisper 9000, diarize-asr 9001, paddleocr 8002,
+- Ports (defaults): postgres 3030, whisper 9000, diarize-asr 9001, paddleocr 8002,
   ollama 11434, vidingest 8051, vidingest-mcp 8055
 - Health and status checks: `./scripts/tradey.sh status` and `logs`
 - Link check: `python3 scripts/check-markdown-links.py`

@@ -12,7 +12,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -74,7 +75,7 @@ class StuckItemReconcilerTest {
         // second worker over the same video.
         PipelineRunItem item = staleItem();
         item.setLeaseOwner("4242@other-host");
-        item.setLeaseExpiresAt(LocalDateTime.now().plusMinutes(5));
+        item.setLeaseExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
         when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
@@ -89,7 +90,7 @@ class StuckItemReconcilerTest {
         // An owner that stopped heartbeating is an owner that died.
         PipelineRunItem item = staleItem();
         item.setLeaseOwner("4242@other-host");
-        item.setLeaseExpiresAt(LocalDateTime.now().minusMinutes(30));
+        item.setLeaseExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(30));
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
         when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
@@ -176,7 +177,7 @@ class StuckItemReconcilerTest {
                 .url("https://example.com/v")
                 .status(status)
                 .phase(phase)
-                .phaseUpdatedAt(LocalDateTime.now().minusHours(2))
+                .phaseUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusHours(2))
                 .attempt(1)
                 .build();
     }

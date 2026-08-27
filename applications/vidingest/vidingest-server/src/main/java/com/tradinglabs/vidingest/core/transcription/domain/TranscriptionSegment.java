@@ -7,7 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -41,17 +42,17 @@ public class TranscriptionSegment {
      * Optional reference to {@code vidingest_speakers.id}. Populated by {@code DiarizationService}
      * (M2) via time-overlap with pyannote's diarization windows. Nullable for transcripts that
      * were created before diarization existed and for runs where the phase is skipped.
-     * ON DELETE SET NULL on the FK (see changeset {@code 008-segment-speaker.sql}).
+     * ON DELETE SET NULL on the FK (see changeset {@code 002-transcription.sql}).
      */
     @Column(name = "speaker_id")
     private UUID speakerId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     @Override

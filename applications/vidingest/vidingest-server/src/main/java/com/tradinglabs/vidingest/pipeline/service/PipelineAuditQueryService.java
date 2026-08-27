@@ -21,7 +21,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -42,8 +42,8 @@ public class PipelineAuditQueryService {
             UUID runId,
             String eventType,
             String status,
-            LocalDateTime fromDate,
-            LocalDateTime toDate
+            OffsetDateTime fromDate,
+            OffsetDateTime toDate
     ) {}
 
     @Transactional(readOnly = true)

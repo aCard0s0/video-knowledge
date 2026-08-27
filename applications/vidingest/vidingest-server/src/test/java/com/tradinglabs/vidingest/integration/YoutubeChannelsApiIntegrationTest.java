@@ -12,7 +12,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -42,7 +43,7 @@ class YoutubeChannelsApiIntegrationTest extends BaseVidingestIntegrationTest {
                                 new YoutubeChannelDiscoveryResult.YoutubeVideoCandidate(
                                         "vid001",
                                         "Video 1",
-                                        LocalDateTime.of(2026, 1, 1, 0, 0),
+                                        OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC),
                                         "https://www.youtube.com/watch?v=vid001",
                                         Map.of("id", "vid001", "title", "Video 1")
                                 ),
