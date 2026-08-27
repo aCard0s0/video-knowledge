@@ -2,8 +2,10 @@ package com.tradinglabs.vidingest.core.download.util;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
@@ -110,17 +112,17 @@ public final class MetadataExtractor {
      * Prioritizes publish/upload date fields over timestamp
      * 
      * @param metadata Video metadata map
-     * @return LocalDateTime of publish date or null if not found
+     * @return OffsetDateTime of publish date at UTC, or null if not found
      */
-    public static LocalDateTime extractPublishDate(Map<String, Object> metadata) {
+    public static OffsetDateTime extractPublishDate(Map<String, Object> metadata) {
         // Try upload_date first (YYYYMMDD format)
-        LocalDateTime uploadDate = parseUploadDate(metadata, "upload_date");
+        OffsetDateTime uploadDate = parseUploadDate(metadata, "upload_date");
         if (uploadDate != null) {
             return uploadDate;
         }
 
         // Try release_date
-        LocalDateTime releaseDate = parseUploadDate(metadata, "release_date");
+        OffsetDateTime releaseDate = parseUploadDate(metadata, "release_date");
         if (releaseDate != null) {
             return releaseDate;
         }
@@ -157,7 +159,7 @@ public final class MetadataExtractor {
         }
 
         // Fallback to current date
-        String currentDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String currentDate = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         log.warn("No publish date found in metadata, using current date: {}", currentDate);
         return currentDate;
     }
@@ -177,12 +179,13 @@ public final class MetadataExtractor {
         return "unknown";
     }
 
-    private static LocalDateTime parseUploadDate(Map<String, Object> metadata, String field) {
+    /** {@code upload_date} is a bare YYYYMMDD calendar date; YouTube means it as UTC. */
+    private static OffsetDateTime parseUploadDate(Map<String, Object> metadata, String field) {
         String dateStr = extractString(metadata, field);
         if (dateStr != null && dateStr.length() == 8) {
             try {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
-                return LocalDateTime.parse(dateStr + "0000", formatter);
+                return LocalDateTime.parse(dateStr + "0000", formatter).atOffset(ZoneOffset.UTC);
             } catch (Exception e) {
                 log.warn("Failed to parse {}: {}", field, dateStr, e);
             }
@@ -190,13 +193,14 @@ public final class MetadataExtractor {
         return null;
     }
 
-    private static LocalDateTime parseTimestamp(Map<String, Object> metadata) {
+    private static OffsetDateTime parseTimestamp(Map<String, Object> metadata) {
         Object timestamp = metadata.get("timestamp");
         if (timestamp instanceof Number) {
             try {
-                return LocalDateTime.ofInstant(
-                        java.time.Instant.ofEpochSecond(((Number) timestamp).longValue()),
-                        ZoneId.systemDefault());
+                // ZoneId.systemDefault() here made the same video's published_at differ by
+                // an hour between a UTC container and a host in a non-UTC zone. The epoch is
+                // already an instant; UTC is the only reading that does not invent a zone.
+                return Instant.ofEpochSecond(((Number) timestamp).longValue()).atOffset(ZoneOffset.UTC);
             } catch (Exception e) {
                 log.warn("Failed to format timestamp: {}", timestamp, e);
             }
@@ -215,7 +219,7 @@ public final class MetadataExtractor {
     }
 
     private static String formatTimestampAsDate(Map<String, Object> metadata) {
-        LocalDateTime dateTime = parseTimestamp(metadata);
+        OffsetDateTime dateTime = parseTimestamp(metadata);
         if (dateTime != null) {
             String dateStr = dateTime.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
             log.debug("Using timestamp (publish timestamp) from metadata: {}", dateStr);

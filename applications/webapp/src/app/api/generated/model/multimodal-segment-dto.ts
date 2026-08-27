@@ -17,7 +17,7 @@ export interface MultimodalSegmentDto {
     endSeconds?: number;
     transcriptText?: string;
     ocrText?: string;
-    speakerIds?: Array<string>;
+    speakerLabels?: Array<string>;
     createdAt?: string;
 }
 

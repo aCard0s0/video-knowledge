@@ -4,7 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,13 +37,13 @@ class YoutubeChannelDiscoveryParserTest {
         assertThat(first.youtubeVideoId()).isEqualTo("vid001");
         assertThat(first.watchUrl()).isEqualTo("https://www.youtube.com/watch?v=vid001");
         assertThat(first.title()).isEqualTo("Video 1");
-        assertThat(first.publishedAt()).isEqualTo(LocalDateTime.of(2026, 1, 1, 0, 0));
+        assertThat(first.publishedAt()).isEqualTo(OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC));
 
         var second = result.videos().get(1);
         assertThat(second.youtubeVideoId()).isEqualTo("vid002");
         assertThat(second.watchUrl()).isEqualTo("https://www.youtube.com/watch?v=vid002");
         assertThat(second.title()).isEqualTo("Video 2");
-        assertThat(second.publishedAt()).isEqualTo(LocalDateTime.ofInstant(Instant.ofEpochSecond(1700000000), ZoneId.systemDefault()));
+        assertThat(second.publishedAt()).isEqualTo(OffsetDateTime.ofInstant(Instant.ofEpochSecond(1700000000), ZoneId.systemDefault()));
     }
 }
 

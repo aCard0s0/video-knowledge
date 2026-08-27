@@ -9,3 +9,7 @@ databaseChangeLog:
       file: classpath:db/changelog/changesets/004-run-item-lease.sql
   - include:
       file: classpath:db/changelog/changesets/005-run-skip-phases.sql
+  - include:
+      file: classpath:db/changelog/changesets/006-index-cleanup.sql
+  - include:
+      file: classpath:db/changelog/changesets/007-speaker-labels.sql

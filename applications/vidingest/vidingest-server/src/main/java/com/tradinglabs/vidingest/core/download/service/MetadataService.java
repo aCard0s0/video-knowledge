@@ -11,7 +11,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 
 /**
@@ -55,7 +56,7 @@ public class MetadataService {
         video.setFilePath(filePath);
         video.setMetadata(metadata);
         video.setStatus(VideoStatus.DOWNLOADED);
-        video.setDownloadedAt(LocalDateTime.now());
+        video.setDownloadedAt(OffsetDateTime.now(ZoneOffset.UTC));
 
         Video savedVideo = videoRepository.save(video);
         log.info("Metadata processed for video: {}", savedVideo.getId());
@@ -88,7 +89,7 @@ public class MetadataService {
         video.setFilePath(filePath);
         video.setMetadata(metadata);
         video.setStatus(VideoStatus.DOWNLOADED);
-        video.setDownloadedAt(LocalDateTime.now());
+        video.setDownloadedAt(OffsetDateTime.now(ZoneOffset.UTC));
 
         try {
             return videoRepository.saveAndFlush(video);

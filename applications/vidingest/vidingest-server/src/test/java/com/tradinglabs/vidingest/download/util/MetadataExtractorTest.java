@@ -3,7 +3,10 @@ package com.tradinglabs.vidingest.download.util;
 import com.tradinglabs.vidingest.core.download.util.MetadataExtractor;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.TimeZone;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -97,7 +100,7 @@ class MetadataExtractorTest {
     @Test
     void extractPublishDate_parsesUploadDate() {
         Map<String, Object> metadata = Map.of("upload_date", "20260315");
-        LocalDateTime date = MetadataExtractor.extractPublishDate(metadata);
+        OffsetDateTime date = MetadataExtractor.extractPublishDate(metadata);
         assertNotNull(date);
         assertEquals(2026, date.getYear());
         assertEquals(3, date.getMonthValue());
@@ -107,9 +110,35 @@ class MetadataExtractorTest {
     @Test
     void extractPublishDate_parsesTimestamp() {
         Map<String, Object> metadata = Map.of("timestamp", 1710500000L);
-        LocalDateTime date = MetadataExtractor.extractPublishDate(metadata);
+        OffsetDateTime date = MetadataExtractor.extractPublishDate(metadata);
         assertNotNull(date);
         assertEquals(2024, date.getYear());
+    }
+
+    /**
+     * The epoch used to be read through {@code ZoneId.systemDefault()}, so the same video got a
+     * different published_at on a host in a non-UTC zone than in the UTC container. Asserting the
+     * year alone passed either way, which is how it survived — pin the instant and the offset.
+     */
+    @Test
+    void extractPublishDate_readsTimestampAsUtcRegardlessOfJvmZone() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"));
+            OffsetDateTime date = MetadataExtractor.extractPublishDate(Map.of("timestamp", 1710500000L));
+            assertEquals(ZoneOffset.UTC, date.getOffset());
+            assertEquals(Instant.ofEpochSecond(1710500000L), date.toInstant());
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    /** upload_date is a bare calendar date; YouTube means it as UTC midnight. */
+    @Test
+    void extractPublishDate_readsUploadDateAsUtcMidnight() {
+        OffsetDateTime date = MetadataExtractor.extractPublishDate(Map.of("upload_date", "20260315"));
+        assertEquals(ZoneOffset.UTC, date.getOffset());
+        assertEquals(0, date.getHour());
     }
 
     @Test
@@ -169,7 +198,7 @@ class MetadataExtractorTest {
         Map<String, Object> metadata = Map.of(
                 "upload_date", "20260101",
                 "timestamp", 1710500000L);
-        LocalDateTime date = MetadataExtractor.extractPublishDate(metadata);
+        OffsetDateTime date = MetadataExtractor.extractPublishDate(metadata);
         assertNotNull(date);
         assertEquals(2026, date.getYear());
         assertEquals(1, date.getMonthValue());

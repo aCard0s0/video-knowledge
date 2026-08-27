@@ -10,7 +10,8 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -80,7 +81,7 @@ public class YoutubeChannelDiscoveryParser {
         }
 
         String title = text(entry, "title");
-        LocalDateTime publishedAt = parsePublishedAt(entry);
+        OffsetDateTime publishedAt = parsePublishedAt(entry);
         String watchUrl = watchUrl(id);
 
         Map<String, Object> metadata = objectMapper.convertValue(entry, MAP);
@@ -94,12 +95,13 @@ public class YoutubeChannelDiscoveryParser {
         );
     }
 
-    private static LocalDateTime parsePublishedAt(JsonNode entry) {
+    /** {@code upload_date} is a bare YYYYMMDD calendar date; YouTube means it as UTC. */
+    private static OffsetDateTime parsePublishedAt(JsonNode entry) {
         String uploadDate = text(entry, "upload_date");
         if (uploadDate != null && uploadDate.length() == 8) {
             try {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
-                return LocalDateTime.parse(uploadDate + "0000", formatter);
+                return LocalDateTime.parse(uploadDate + "0000", formatter).atOffset(ZoneOffset.UTC);
             } catch (RuntimeException ignored) {
                 // fall through
             }
@@ -108,7 +110,9 @@ public class YoutubeChannelDiscoveryParser {
         JsonNode timestamp = entry.get("timestamp");
         if (timestamp != null && timestamp.canConvertToLong()) {
             try {
-                return LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp.asLong()), ZoneId.systemDefault());
+                // Not systemDefault(): the epoch is already an instant, and reading it through
+                // the JVM zone made published_at depend on where the server ran.
+                return Instant.ofEpochSecond(timestamp.asLong()).atOffset(ZoneOffset.UTC);
             } catch (RuntimeException ignored) {
                 // fall through
             }

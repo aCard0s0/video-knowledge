@@ -7,7 +7,8 @@ import org.springframework.stereotype.Service;
 
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.UUID;
 
@@ -52,12 +53,12 @@ public class RunItemLeaseService {
     }
 
     public void acquire(UUID itemId) {
-        runItemRepository.acquireLease(itemId, owner, LocalDateTime.now().plus(ttl));
+        runItemRepository.acquireLease(itemId, owner, OffsetDateTime.now(ZoneOffset.UTC).plus(ttl));
     }
 
     /** Extends only the leases this instance still owns; returns how many were renewed. */
     public int renew(Collection<UUID> itemIds) {
-        return runItemRepository.renewLeases(itemIds, owner, LocalDateTime.now().plus(ttl));
+        return runItemRepository.renewLeases(itemIds, owner, OffsetDateTime.now(ZoneOffset.UTC).plus(ttl));
     }
 
     public void release(UUID itemId) {
@@ -66,10 +67,10 @@ public class RunItemLeaseService {
 
     /** True while some item of the run is held by a live lease, whichever instance owns it. */
     public boolean runHasLiveLease(UUID runId) {
-        return runItemRepository.existsLiveLeaseForRun(runId, LocalDateTime.now());
+        return runItemRepository.existsLiveLeaseForRun(runId, OffsetDateTime.now(ZoneOffset.UTC));
     }
 
-    public static boolean isLive(LocalDateTime leaseExpiresAt) {
-        return leaseExpiresAt != null && leaseExpiresAt.isAfter(LocalDateTime.now());
+    public static boolean isLive(OffsetDateTime leaseExpiresAt) {
+        return leaseExpiresAt != null && leaseExpiresAt.isAfter(OffsetDateTime.now(ZoneOffset.UTC));
     }
 }

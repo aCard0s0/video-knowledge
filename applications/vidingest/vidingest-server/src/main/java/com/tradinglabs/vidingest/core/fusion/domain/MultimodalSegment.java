@@ -10,7 +10,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -60,21 +61,26 @@ public class MultimodalSegment {
     private String ocrText;
 
     /**
-     * Distinct speaker ids drawn from the transcript segments in this window. Stored as a
-     * PostgreSQL {@code uuid[]} — Hibernate 6's {@link SqlTypes#ARRAY} maps it natively.
-     * Null when no diarization ran or no transcript segments had speakers.
+     * Distinct speaker labels drawn from the transcript segments in this window. Stored as a
+     * PostgreSQL {@code text[]} — Hibernate 6's {@link SqlTypes#ARRAY} maps it natively.
+     * Null when no diarization ran or no transcript segments had a resolvable speaker.
+     *
+     * <p>Labels, not ids, and deliberately: DIARIZE is wipe-then-repopulate, so re-running it
+     * alone deletes every {@code vidingest_speakers} row and recreates it under a new uuid. An
+     * id array had no foreign key to catch that and went stale silently; the label is stable
+     * across the re-run and {@code UNIQUE (video_id, label)} already makes it the natural key.
      */
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "speaker_ids", columnDefinition = "uuid[]")
-    private UUID[] speakerIds;
+    @Column(name = "speaker_labels", columnDefinition = "text[]")
+    private String[] speakerLabels;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+            createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
     }
 

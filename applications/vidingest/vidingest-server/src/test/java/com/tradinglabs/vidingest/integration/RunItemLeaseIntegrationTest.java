@@ -10,7 +10,8 @@ import com.tradinglabs.vidingest.pipeline.service.StuckItemReconciler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,7 +42,7 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
 
         PipelineRunItem leased = runItemRepository.findById(item.getId()).orElseThrow();
         assertThat(leased.getLeaseOwner()).isEqualTo(leaseService.owner());
-        assertThat(leased.getLeaseExpiresAt()).isAfter(LocalDateTime.now());
+        assertThat(leased.getLeaseExpiresAt()).isAfter(OffsetDateTime.now(ZoneOffset.UTC));
 
         leaseService.release(item.getId());
 
@@ -55,9 +56,9 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
         PipelineRunItem mine = staleItem();
         PipelineRunItem theirs = staleItem();
         leaseService.acquire(mine.getId());
-        setLease(theirs, OTHER_INSTANCE, LocalDateTime.now().plusMinutes(1));
+        setLease(theirs, OTHER_INSTANCE, OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1));
 
-        LocalDateTime theirExpiryBefore = runItemRepository.findById(theirs.getId()).orElseThrow().getLeaseExpiresAt();
+        OffsetDateTime theirExpiryBefore = runItemRepository.findById(theirs.getId()).orElseThrow().getLeaseExpiresAt();
 
         int renewed = leaseService.renew(List.of(mine.getId(), theirs.getId()));
 
@@ -72,7 +73,7 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
     @Test
     void reconcilerSpareTheItemWhileAnotherInstancesLeaseIsLiveAndReapsItAfterwards() {
         PipelineRunItem item = staleItem();
-        setLease(item, OTHER_INSTANCE, LocalDateTime.now().plusMinutes(5));
+        setLease(item, OTHER_INSTANCE, OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
 
         stuckItemReconciler.reconcileStuckItems();
 
@@ -81,7 +82,7 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
                 .isEqualTo(RunStatus.IN_PROGRESS);
 
         // Same row, same stale phase_updated_at — only the lease has lapsed.
-        setLease(item, OTHER_INSTANCE, LocalDateTime.now().minusMinutes(1));
+        setLease(item, OTHER_INSTANCE, OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1));
 
         stuckItemReconciler.reconcileStuckItems();
 
@@ -97,14 +98,14 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
 
         assertThat(leaseService.runHasLiveLease(runId)).isFalse();
 
-        setLease(item, OTHER_INSTANCE, LocalDateTime.now().plusMinutes(5));
+        setLease(item, OTHER_INSTANCE, OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
         assertThat(leaseService.runHasLiveLease(runId)).isTrue();
 
-        setLease(item, OTHER_INSTANCE, LocalDateTime.now().minusMinutes(5));
+        setLease(item, OTHER_INSTANCE, OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5));
         assertThat(leaseService.runHasLiveLease(runId)).isFalse();
     }
 
-    private void setLease(PipelineRunItem item, String owner, LocalDateTime expiresAt) {
+    private void setLease(PipelineRunItem item, String owner, OffsetDateTime expiresAt) {
         runItemRepository.acquireLease(item.getId(), owner, expiresAt);
     }
 
@@ -113,7 +114,7 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
                 .status(RunStatus.IN_PROGRESS)
                 .videoUrl("https://example.com/video")
                 .phase(PipelineRunPhase.KNOWLEDGE)
-                .phaseUpdatedAt(LocalDateTime.now().minusHours(2))
+                .phaseUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusHours(2))
                 .build());
 
         return runItemRepository.saveAndFlush(PipelineRunItem.builder()
@@ -121,7 +122,7 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
                 .url("https://example.com/video-" + UUID.randomUUID())
                 .status(RunStatus.IN_PROGRESS)
                 .phase(PipelineRunPhase.KNOWLEDGE)
-                .phaseUpdatedAt(LocalDateTime.now().minusHours(2))
+                .phaseUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC).minusHours(2))
                 .build());
     }
 }

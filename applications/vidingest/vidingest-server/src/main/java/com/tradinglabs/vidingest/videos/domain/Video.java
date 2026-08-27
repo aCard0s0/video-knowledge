@@ -22,7 +22,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -44,6 +45,14 @@ public class Video {
     @JoinColumn(name = "pipeline_run_id")
     private PipelineRun pipelineRun;
 
+    /**
+     * Platform key, half of the video's identity with {@code sourceVideoId}
+     * ({@code UNIQUE (source, source_video_id)}). Not an enum on purpose: the value is
+     * yt-dlp's own {@code extractor} field, lowercased by
+     * {@code MetadataExtractor.extractSource} — an open set of several hundred platforms.
+     * Closing it would fold every unlisted platform into one constant, and two videos from
+     * different sites sharing a source id would then collide on that unique key.
+     */
     @Column(nullable = false, length = 50)
     private String source;
 
@@ -63,10 +72,10 @@ public class Video {
     private Integer durationSeconds;
 
     @Column(name = "published_at")
-    private LocalDateTime publishedAt;
+    private OffsetDateTime publishedAt;
 
     @Column(name = "downloaded_at")
-    private LocalDateTime downloadedAt;
+    private OffsetDateTime downloadedAt;
 
     @Column(name = "file_path", columnDefinition = "TEXT")
     private String filePath;
@@ -80,15 +89,15 @@ public class Video {
     private VideoStatus status;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (status == null) {
             status = VideoStatus.PENDING;
         }
@@ -96,7 +105,7 @@ public class Video {
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     @Override

@@ -109,18 +109,27 @@ phase took. `previousPhase` is populated on `ENTERED` only. This is what separat
 `PipelineRunItemEventType`: `ITEM_CREATED`, `ITEM_PHASE_ENTERED`, `ITEM_PHASE_COMPLETED`,
 `ITEM_VIDEO_ATTACHED`, `ITEM_COMPLETED`, `ITEM_FAILED`, `ITEM_CANCELLED`, `ITEM_RETRY_REQUESTED`.
 
-### 5. Timestamps are naive `LocalDateTime` — measured 1h skew
+### 5. Timestamps carry an offset (fixed 2026-08-27 — was a measured 1h skew)
 
-Fields serialize as `"2026-08-26T15:49:24.522757"` with no offset. The container runs **UTC**;
-the host browser was **WEST (UTC+1)**. A browser parsing a naive string treats it as local time,
-so every age reads **one hour too old** — which is exactly the signal the runs board depends on.
+Fields serialize as `"2026-08-26T15:49:24.522757Z"`. `new Date` is enough, and `parseServerTime`
+in `core/time.ts` is now just that.
 
-The frontend appends `Z` before parsing. That is correct only while the server runs UTC (true in
-Docker). The real fix is `Instant`/`OffsetDateTime` server-side, which changes the contract for
-the CLI and MCP consumers too.
+It used to be `"2026-08-26T15:49:24.522757"` with no offset, because the entities were
+`LocalDateTime`. The container runs **UTC** and the host browser was **WEST (UTC+1)**, so a browser
+reading the naive string as local time made every age **one hour too old** — exactly the signal the
+runs board exists to provide. The client's answer was to append `Z`, which was only right while the
+server itself ran UTC.
 
-Exceptions already typed `date-time`: `YoutubeChannelSummary.lastSyncSuccessAt`,
-`YoutubeChannelVideoSummary.publishedAt`.
+The server side is fixed: entities are `OffsetDateTime`, every `now()` is
+`OffsetDateTime.now(ZoneOffset.UTC)`, and `MetadataExtractor` reads yt-dlp's epoch through
+`ZoneOffset.UTC` instead of `ZoneId.systemDefault()`. Asserted from a JVM pinned to
+`America/Los_Angeles`, and verified end to end by running the jar in that zone: wire and stored
+instant both came back UTC.
+
+**The appended `Z` was deliberately not kept as a fallback.** It would silently re-assume UTC for
+any field that lost its offset, which is how the skew hid in the first place. Fixture literals in
+specs must carry the offset too — `lane.spec.ts` compared a zoneless literal against a `Z` one and
+failed by exactly 3600000 ms.
 
 ### 6. Absent values are `""`, not `null`
 

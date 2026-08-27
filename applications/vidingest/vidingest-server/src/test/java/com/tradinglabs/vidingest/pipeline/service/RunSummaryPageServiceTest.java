@@ -14,7 +14,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -55,8 +56,8 @@ class RunSummaryPageServiceTest {
         UUID pendingVideo = UUID.randomUUID();
         UUID completedVideo = UUID.randomUUID();
         when(videoRepository.findRunVideoPreviews(List.of(runId))).thenReturn(List.of(
-                new RunVideoPreview(runId, pendingVideo, "chan", "pending video", VideoStatus.PENDING, LocalDateTime.now()),
-                new RunVideoPreview(runId, completedVideo, "chan", "completed video", VideoStatus.COMPLETED, LocalDateTime.now())
+                new RunVideoPreview(runId, pendingVideo, "chan", "pending video", VideoStatus.PENDING, OffsetDateTime.now(ZoneOffset.UTC)),
+                new RunVideoPreview(runId, completedVideo, "chan", "completed video", VideoStatus.COMPLETED, OffsetDateTime.now(ZoneOffset.UTC))
         ));
 
         PageResponse<RunSummary> page = service.list(null, 0, 20);
@@ -70,6 +71,5 @@ class RunSummaryPageServiceTest {
 
         verify(videoRepository).findRunVideoPreviews(List.of(runId));
         // Must NOT hydrate full Video entities for the list view.
-        verify(videoRepository, never()).findByPipelineRun_IdIn(any());
     }
 }

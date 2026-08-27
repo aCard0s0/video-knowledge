@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -153,7 +153,7 @@ class KnowledgeControllerWebMvcTest {
 
             @Override
             public String getCreatedAt() {
-                return LocalDateTime.parse("2026-05-13T10:00:00").toString();
+                return OffsetDateTime.parse("2026-05-13T10:00:00Z").toString();
             }
         };
 

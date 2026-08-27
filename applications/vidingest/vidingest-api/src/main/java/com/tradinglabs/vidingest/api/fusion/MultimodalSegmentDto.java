@@ -14,7 +14,8 @@ import java.util.List;
  * @param endSeconds      exclusive window end
  * @param transcriptText  concatenated transcript segments overlapping this window — nullable
  * @param ocrText         deduplicated OCR text from frames in this window — nullable
- * @param speakerIds      distinct speaker UUIDs from the transcript segments — may be empty
+ * @param speakerLabels   distinct speaker labels ('SPEAKER_00', ...) from the transcript
+ *                        segments in this window — may be empty
  * @param createdAt       ISO-8601 timestamp
  */
 public record MultimodalSegmentDto(
@@ -25,7 +26,7 @@ public record MultimodalSegmentDto(
         double endSeconds,
         String transcriptText,
         String ocrText,
-        List<String> speakerIds,
+        List<String> speakerLabels,
         String createdAt
 ) {
 }
