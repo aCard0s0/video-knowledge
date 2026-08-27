@@ -1,13 +1,13 @@
 package com.tradinglabs.vidingest.api.youtube;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record YoutubeChannelSummary(
         String id,
         String url,
         String displayName,
         String status,
-        LocalDateTime lastSyncSuccessAt,
+        OffsetDateTime lastSyncSuccessAt,
         Long videoCount,
         String lastError
 ) {

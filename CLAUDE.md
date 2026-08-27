@@ -212,6 +212,36 @@ Schema is Liquibase-only (`ddl-auto=none`): SQL changesets under
 `db.changelog-master.yaml`. New migrations are a new numbered file plus an include —
 never edit an applied changeset.
 
+**The six changesets are grouped by scope, not by history** (`001-pipeline`, `002-transcription`,
+`003-frames-ocr`, `004-knowledge`, `005-search`, `006-youtube-channels`), so a table's current shape
+reads in one place instead of across a migration and three later `ALTER`s. That consolidation
+rewrote every changeset id and checksum, which was only possible because the database was recreated
+from a backup in the same change (Aug 2026) — it is **not** repeatable against a populated
+changelog. From here on, a schema change is a new numbered file, as it always was.
+
+**Two index rules the schema has already broken once.** A single-column index whose column is the
+leftmost prefix of an existing composite or unique index is dead weight — the planner just prefers
+the narrower one, which makes `pg_stat_user_indexes` read as if both were needed. Seven of those
+were dropped, and the consolidated changesets simply never create them — each omission carries its
+reason inline. And there is no GIN index on any `metadata` column: nothing queries JSONB
+by content (no `@>`, no `->>`), so all three were pure write cost, the `videos` one at 1656 kB
+against three rows. Add one back only alongside the query that needs it.
+
+**`multimodal_segments` stores speaker *labels*, not ids.** DIARIZE is wipe-then-repopulate, so
+re-running it alone recreates every speaker row under a new uuid; the old `speaker_ids UUID[]` had
+no foreign key to catch that and served ids for deleted rows. `UNIQUE (video_id, label)` already
+makes the label the natural key and a re-run reproduces it, so the reference cannot dangle.
+
+The database is **`pgvector/pgvector:pg17`**, the same tag `BaseVidingestIntegrationTest`
+gives Testcontainers — keep those two equal, or a pg/pgvector behaviour difference can pass
+tests and fail in compose. `vector` is the only extension the schema creates and there are
+no hypertables, no `time_bucket` and no full-text search anywhere, so the
+`timescale/timescaledb-ha:pg17` image this replaced (Aug 2026) was preloading `timescaledb`
+and `pg_textsearch` for nothing. Don't go back to it for "time-series" reasons: pipeline runs
+are queried by id and status, not by time range. Stay on pg17 unless you also move the volume
+mount — postgres 18 relocated PGDATA to `/var/lib/postgresql/<major>/docker`, which makes the
+volume major-version-specific.
+
 Feature packages under `core/` follow `client → service → domain/repo → mapper → dto`
 (MapStruct mappers, Lombok everywhere). External dependencies, all HTTP or process calls:
 yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), whisper (:9000),
@@ -281,8 +311,11 @@ What the generator cannot give us, and therefore lives by hand in `src/app/core/
 - `problem.ts` — the RFC 9457 `ProblemDetail` envelope. No operation in the spec documents a
   4xx/5xx, so error bodies generate as `any`. `errorCode` is a *pipeline* field, never an HTTP one;
   the two are rendered by different components and never merged.
-- `time.ts` — server timestamps are naive `LocalDateTime`; the container runs UTC and the browser
-  may not, so they are parsed as UTC. Without that, ages read an hour off.
+- `time.ts` — server timestamps carry an explicit offset (`OffsetDateTime`, written at UTC), so
+  `new Date` is enough. It deliberately does **not** fall back to appending `Z` for a zoneless
+  value: that fallback is what hid an hour of skew for a release, and a zoneless timestamp is now
+  a server bug that should read as one. Test fixtures must carry the offset too — comparing a
+  zoneless literal against a `Z` one silently shifts by the runner's zone.
 
 API facts worth not rediscovering: a **FAILED run still reports `phase: "DONE"`** (use
 `item.failedPhase` — but see below); **`?live=true` on `/pipelines` is only honoured together with
@@ -327,8 +360,10 @@ every other read with `hasValue()`. And **`linkedSignal(() => …)` resets whene
 reads changes identity**, so seeding a selection from a polled array throws the user's pick away
 on every tick; pass an explicit stable `source`.
 
-The container runs `-Duser.timezone=UTC` (see the Dockerfile), which is what makes the
-parse-as-UTC rule in `core/time.ts` correct rather than a guess.
+The container still runs `-Duser.timezone=UTC` (see the Dockerfile), but nothing depends on it
+any more: entities are `OffsetDateTime` and every `now()` is `OffsetDateTime.now(ZoneOffset.UTC)`,
+so the stored instant and the wire format are the same whatever zone the JVM is in. That is
+asserted from a JVM pinned to `America/Los_Angeles` in `MetadataExtractorTest`.
 
 Production serving is one jar: the Dockerfile builds the console in a node stage with
 `--base-href=/vidingest/` and copies it into `resources/static/`, and

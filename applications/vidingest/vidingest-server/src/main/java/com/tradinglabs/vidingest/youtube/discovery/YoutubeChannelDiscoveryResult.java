@@ -1,6 +1,6 @@
 package com.tradinglabs.vidingest.youtube.discovery;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -14,7 +14,7 @@ public record YoutubeChannelDiscoveryResult(
     public record YoutubeVideoCandidate(
             String youtubeVideoId,
             String title,
-            LocalDateTime publishedAt,
+            OffsetDateTime publishedAt,
             String watchUrl,
             Map<String, Object> metadata
     ) {

@@ -14,7 +14,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
 
@@ -69,7 +70,7 @@ class VideosApiIntegrationTest extends BaseVidingestIntegrationTest {
                 .title("Title")
                 .channelName("Channel")
                 .filePath("/data/videos/abc123.mp4")
-                .downloadedAt(LocalDateTime.now())
+                .downloadedAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .metadata(Map.of("extractor", "youtube", "id", "abc123"))
                 .status(VideoStatus.DOWNLOADED)
                 .build();

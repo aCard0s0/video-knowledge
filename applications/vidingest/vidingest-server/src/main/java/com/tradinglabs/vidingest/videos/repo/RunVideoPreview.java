@@ -2,7 +2,7 @@ package com.tradinglabs.vidingest.videos.repo;
 
 import com.tradinglabs.vidingest.videos.domain.VideoStatus;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.UUID;
 
@@ -19,7 +19,7 @@ public record RunVideoPreview(
         String channelName,
         String title,
         VideoStatus status,
-        LocalDateTime createdAt
+        OffsetDateTime createdAt
 ) {
 
     /**

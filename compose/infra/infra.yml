@@ -1,6 +1,13 @@
 services:
-  timescaledb:
-    image: 'timescale/timescaledb-ha:pg17'
+  postgres:
+    # pgvector on the official postgres base. `vector` is the only extension the schema needs
+    # (001-core-pipeline.sql); there are no hypertables and no time_bucket anywhere, so the
+    # timescaledb-ha image this replaced was carrying a preloaded extension nothing called.
+    # Pinned to the same tag Testcontainers uses in BaseVidingestIntegrationTest — keep them
+    # equal so a pg/pgvector behaviour difference cannot pass tests and fail in compose.
+    # Staying on pg17: postgres 18 moved PGDATA to /var/lib/postgresql/<major>/docker, which
+    # changes the mount below and makes the volume major-version-specific.
+    image: 'pgvector/pgvector:pg17'
     command:
       - postgres
       - -c
@@ -15,17 +22,21 @@ services:
       - 'POSTGRES_DB=tradingPlatformDB'
       - 'POSTGRES_USER=dealer'
       - 'POSTGRES_PASSWORD=dev_dealer'
-      - 'TIMESCALEDB_TELEMETRY=off'
     labels:
       - "org.springframework.boot.service-connection=postgres"
     ports:
-      - '${VK_BIND_ADDR:-127.0.0.1}:${TIMESCALEDB_PORT:-3030}:5432'
+      - '${VK_BIND_ADDR:-127.0.0.1}:${POSTGRES_PORT:-3030}:5432'
     volumes:
-      - timescaledb_data:/home/postgres/pgdata/data
+      - postgres_data:/var/lib/postgresql/data
     mem_limit: 2G
     mem_reservation: 1G
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dealer -d tradingPlatformDB"]
+      # -h 127.0.0.1 forces TCP. Without it pg_isready uses the unix socket, and the official
+      # entrypoint runs a socket-only temp server while it initialises a fresh volume — so the
+      # check reports healthy before the database exists and depends_on releases vidingest early.
+      # Never bit us on the old image because the volume was always already initialised; the new
+      # postgres_data volume makes the first-init path live.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U dealer -d tradingPlatformDB"]
       interval: 10s
       timeout: 5s
       retries: 5

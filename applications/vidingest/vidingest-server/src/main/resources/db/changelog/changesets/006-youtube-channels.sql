@@ -1,7 +1,9 @@
 -- liquibase formatted sql
--- changeset vidingest:002-youtube-channels
+-- changeset vidingest:006-youtube-channels
 
--- Tracked YouTube channels and the videos discovered on them.
+-- The discovery scope: tracked channels and the videos found on them. Independent of the ingestion
+-- pipeline by design — a row here is a *candidate*, and nothing links it to vidingest_videos except
+-- the (source, source_video_id) pair resolved at ingest time.
 
 CREATE TABLE vidingest_youtube_channels
 (
@@ -37,10 +39,10 @@ CREATE TABLE vidingest_youtube_channel_videos
     UNIQUE (channel_id, youtube_video_id)
 );
 
--- channel_id-only lookups are covered by UNIQUE (channel_id, youtube_video_id) leftmost column.
+-- No index on channel_id alone (leftmost column of the unique constraint) and none on metadata:
+-- nothing queries JSONB by content.
 CREATE INDEX idx_vidingest_youtube_channel_videos_published_at ON vidingest_youtube_channel_videos (published_at DESC);
 CREATE INDEX idx_vidingest_youtube_channel_videos_youtube_video_id ON vidingest_youtube_channel_videos (youtube_video_id);
-CREATE INDEX idx_vidingest_youtube_channel_videos_metadata ON vidingest_youtube_channel_videos USING GIN (metadata);
 
 --rollback DROP TABLE IF EXISTS vidingest_youtube_channel_videos CASCADE;
 --rollback DROP TABLE IF EXISTS vidingest_youtube_channels CASCADE;

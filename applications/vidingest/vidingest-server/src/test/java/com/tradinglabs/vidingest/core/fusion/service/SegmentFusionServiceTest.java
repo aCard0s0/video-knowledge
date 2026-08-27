@@ -2,6 +2,8 @@ package com.tradinglabs.vidingest.core.fusion.service;
 
 import com.tradinglabs.vidingest.config.FusionConfig;
 import com.tradinglabs.vidingest.core.frames.domain.SamplingReason;
+import com.tradinglabs.vidingest.core.diarization.domain.Speaker;
+import com.tradinglabs.vidingest.core.diarization.repo.SpeakerRepository;
 import com.tradinglabs.vidingest.core.frames.domain.VideoFrame;
 import com.tradinglabs.vidingest.core.frames.repo.VideoFrameRepository;
 import com.tradinglabs.vidingest.core.fusion.domain.MultimodalSegment;
@@ -49,6 +51,7 @@ class SegmentFusionServiceTest {
     @Mock private TranscriptionSegmentRepository transcriptionSegmentRepository;
     @Mock private VideoFrameRepository videoFrameRepository;
     @Mock private OcrResultRepository ocrResultRepository;
+    @Mock private SpeakerRepository speakerRepository;
     @Mock private MultimodalSegmentRepository multimodalSegmentRepository;
 
     private FusionConfig config;
@@ -68,6 +71,7 @@ class SegmentFusionServiceTest {
                 transcriptionSegmentRepository,
                 videoFrameRepository,
                 ocrResultRepository,
+                speakerRepository,
                 multimodalSegmentRepository,
                 TransactionOperations.withoutTransaction()
         );
@@ -92,11 +96,11 @@ class SegmentFusionServiceTest {
                 ts(40f, 45f, "later content", null)  // outside window
         );
 
-        SegmentFusionService.WindowAggregation agg =
-                SegmentFusionService.aggregate(0.0, 30.0, segs, List.of(), Map.of());
+        SegmentFusionService.WindowAggregation agg = SegmentFusionService.aggregate(
+                0.0, 30.0, segs, List.of(), Map.of(), Map.of(spk, "SPEAKER_00"));
 
         assertThat(agg.transcriptText()).isEqualTo("Hello world this is a test");
-        assertThat(agg.sortedSpeakerIds()).containsExactly(spk);
+        assertThat(agg.sortedSpeakerLabels()).containsExactly("SPEAKER_00");
         assertThat(agg.ocrText()).isEmpty();
         assertThat(agg.isEmpty()).isFalse();
     }
@@ -106,9 +110,9 @@ class SegmentFusionServiceTest {
         // Segment [28, 32] crosses the 30s boundary — should appear in both windows.
         TranscriptionSegment crossing = ts(28f, 32f, "near boundary", null);
         SegmentFusionService.WindowAggregation w0 =
-                SegmentFusionService.aggregate(0.0, 30.0, List.of(crossing), List.of(), Map.of());
+                SegmentFusionService.aggregate(0.0, 30.0, List.of(crossing), List.of(), Map.of(), Map.of());
         SegmentFusionService.WindowAggregation w1 =
-                SegmentFusionService.aggregate(25.0, 55.0, List.of(crossing), List.of(), Map.of());
+                SegmentFusionService.aggregate(25.0, 55.0, List.of(crossing), List.of(), Map.of(), Map.of());
 
         assertThat(w0.transcriptText()).contains("near boundary");
         assertThat(w1.transcriptText()).contains("near boundary");
@@ -122,7 +126,7 @@ class SegmentFusionServiceTest {
         TranscriptionSegment startsAtEnd = ts(60f, 70f, "future", null);
 
         SegmentFusionService.WindowAggregation agg = SegmentFusionService.aggregate(
-                30.0, 60.0, List.of(endsAtStart, startsAtEnd), List.of(), Map.of());
+                30.0, 60.0, List.of(endsAtStart, startsAtEnd), List.of(), Map.of(), Map.of());
 
         assertThat(agg.transcriptText()).isEmpty();
     }
@@ -144,14 +148,14 @@ class SegmentFusionServiceTest {
         ocrByFrame.put(frameB, List.of(ocrB));
 
         SegmentFusionService.WindowAggregation agg = SegmentFusionService.aggregate(
-                0.0, 30.0, List.of(), List.of(fA, fB), ocrByFrame);
+                0.0, 30.0, List.of(), List.of(fA, fB), ocrByFrame, Map.of());
 
         // "Same subtitle" should appear once even though it was detected on both frames.
         assertThat(agg.ocrText()).isEqualTo("Same subtitle Brand new line");
     }
 
     @Test
-    void aggregateCollectsDistinctSpeakerIdsInOrder() {
+    void aggregateCollectsDistinctSpeakerLabelsInOrder() {
         UUID s1 = UUID.fromString("11111111-1111-1111-1111-111111111111");
         UUID s2 = UUID.fromString("22222222-2222-2222-2222-222222222222");
         List<TranscriptionSegment> segs = List.of(
@@ -160,21 +164,43 @@ class SegmentFusionServiceTest {
                 ts(10f, 15f, "line", s1)  // duplicate; should appear once
         );
 
-        SegmentFusionService.WindowAggregation agg =
-                SegmentFusionService.aggregate(0.0, 30.0, segs, List.of(), Map.of());
+        SegmentFusionService.WindowAggregation agg = SegmentFusionService.aggregate(
+                0.0, 30.0, segs, List.of(), Map.of(),
+                Map.of(s1, "SPEAKER_00", s2, "SPEAKER_01"));
 
         // LinkedHashSet preserves first-seen order: [s1, s2].
-        assertThat(agg.speakerIds()).containsExactly(s1, s2);
+        assertThat(agg.speakerLabels()).containsExactly("SPEAKER_00", "SPEAKER_01");
+    }
+
+    /**
+     * The reason this stores labels rather than ids: DIARIZE wipes and recreates every speaker
+     * row under a new uuid, so a segment can point at a speaker that no longer exists. It must
+     * contribute nothing rather than a stale reference.
+     */
+    @Test
+    void aggregateSkipsSpeakersThatNoLongerExist() {
+        UUID live = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID orphaned = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        List<TranscriptionSegment> segs = List.of(
+                ts(0f, 5f, "kept", live),
+                ts(5f, 10f, "also kept", orphaned)
+        );
+
+        SegmentFusionService.WindowAggregation agg = SegmentFusionService.aggregate(
+                0.0, 30.0, segs, List.of(), Map.of(), Map.of(live, "SPEAKER_00"));
+
+        assertThat(agg.transcriptText()).isEqualTo("kept also kept");
+        assertThat(agg.speakerLabels()).containsExactly("SPEAKER_00");
     }
 
     @Test
     void aggregateIsEmptyWhenAllSignalsAreNull() {
         SegmentFusionService.WindowAggregation agg =
-                SegmentFusionService.aggregate(0.0, 30.0, List.of(), List.of(), Map.of());
+                SegmentFusionService.aggregate(0.0, 30.0, List.of(), List.of(), Map.of(), Map.of());
         assertThat(agg.isEmpty()).isTrue();
         assertThat(agg.transcriptText()).isEmpty();
         assertThat(agg.ocrText()).isEmpty();
-        assertThat(agg.speakerIds()).isEmpty();
+        assertThat(agg.speakerLabels()).isEmpty();
     }
 
     // -------------------- computeMaxEnd() --------------------
@@ -350,6 +376,7 @@ class SegmentFusionServiceTest {
         OcrResult ocrLine = ocr(f, "VISIBLE TEXT");
         when(ocrResultRepository.findByVideoIdOrderByFrameTimestamp(video.getId()))
                 .thenReturn(List.of(ocrLine));
+        when(speakerRepository.findByVideo_Id(video.getId())).thenReturn(List.of(speaker(video, spk, "SPEAKER_00")));
 
         service.fuse(video);
 
@@ -360,7 +387,7 @@ class SegmentFusionServiceTest {
         MultimodalSegment seg = saved.get(0);
         assertThat(seg.getTranscriptText()).isEqualTo("spoken text");
         assertThat(seg.getOcrText()).isEqualTo("VISIBLE TEXT");
-        assertThat(seg.getSpeakerIds()).containsExactly(spk);
+        assertThat(seg.getSpeakerLabels()).containsExactly("SPEAKER_00");
     }
 
     @Test
@@ -436,4 +463,10 @@ class SegmentFusionServiceTest {
     // Silence unused-import warnings used only in some test paths.
     @SuppressWarnings("unused") private static final Set<UUID> UNUSED = Set.of();
     @SuppressWarnings("unused") private static int unused() { times(0); return 0; }
+
+    private static Speaker speaker(Video video, UUID id, String label) {
+        Speaker sp = Speaker.builder().video(video).label(label).build();
+        sp.setId(id);
+        return sp;
+    }
 }

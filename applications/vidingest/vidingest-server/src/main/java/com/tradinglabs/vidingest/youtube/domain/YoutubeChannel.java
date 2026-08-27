@@ -18,7 +18,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -51,24 +52,24 @@ public class YoutubeChannel {
     private Map<String, Object> metadata;
 
     @Column(name = "last_sync_attempt_at")
-    private LocalDateTime lastSyncAttemptAt;
+    private OffsetDateTime lastSyncAttemptAt;
 
     @Column(name = "last_sync_success_at")
-    private LocalDateTime lastSyncSuccessAt;
+    private OffsetDateTime lastSyncSuccessAt;
 
     @Column(name = "last_error", columnDefinition = "TEXT")
     private String lastError;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (status == null) {
             status = YoutubeChannelStatus.NEW;
         }
@@ -76,7 +77,7 @@ public class YoutubeChannel {
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     @Override

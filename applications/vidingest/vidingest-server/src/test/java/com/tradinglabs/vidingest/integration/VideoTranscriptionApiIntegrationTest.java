@@ -14,7 +14,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,7 +33,7 @@ class VideoTranscriptionApiIntegrationTest extends BaseVidingestIntegrationTest 
                 .channelName("Channel")
                 .filePath("/tmp/tx-none-001.mp4")
                 .status(VideoStatus.DOWNLOADED)
-                .downloadedAt(LocalDateTime.now())
+                .downloadedAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
         stored = videoRepository.saveAndFlush(stored);
 
@@ -69,7 +70,7 @@ class VideoTranscriptionApiIntegrationTest extends BaseVidingestIntegrationTest 
                 .channelName("Channel")
                 .filePath("/tmp/tx-yes-001.mp4")
                 .status(VideoStatus.TRANSCRIBING)
-                .downloadedAt(LocalDateTime.now())
+                .downloadedAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
         stored = videoRepository.saveAndFlush(stored);
 

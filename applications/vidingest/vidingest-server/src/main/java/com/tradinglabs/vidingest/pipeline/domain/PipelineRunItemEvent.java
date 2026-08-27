@@ -15,7 +15,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Entity
@@ -67,12 +68,12 @@ public class PipelineRunItemEvent {
     private UUID videoId;
 
     @Column(name = "occurred_at", nullable = false, updatable = false)
-    private LocalDateTime occurredAt;
+    private OffsetDateTime occurredAt;
 
     @PrePersist
     protected void onCreate() {
         if (occurredAt == null) {
-            occurredAt = LocalDateTime.now();
+            occurredAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
     }
 }
