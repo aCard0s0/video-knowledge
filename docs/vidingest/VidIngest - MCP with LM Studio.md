@@ -197,7 +197,11 @@ Returns:
 
 ## semantic search defaults (local runs)
 
-By default, `vidingest-server` enables semantic search and uses **Ollama embeddings** on `http://localhost:11434`.
+By default, `vidingest-server` enables semantic search and uses the **Ollama-native embeddings**
+client on `http://localhost:11434`. If LM Studio is already serving an embedding model, point
+the server at it instead: `VIDINGEST_EMBEDDINGS_PROVIDER=openai-compatible` plus
+`VIDINGEST_EMBEDDINGS_BASE_URL=http://localhost:1234/v1`. The same applies to knowledge
+extraction — `VIDINGEST_KNOWLEDGE_PROVIDER=openai-compatible` and a `/v1` base URL.
 
 - To disable semantic search (and therefore skip context generation during ingestion): set `vidingest.search.semantic-enabled=false` or include `CONTEXT` in `skipPhases`.
 - To switch embedding providers (e.g., LM Studio OpenAI-compatible): set `vidingest.search.embeddings.provider=openai-compatible` and configure `vidingest.search.embeddings.base-url`.

@@ -21,7 +21,7 @@ flowchart LR
         WH["whisper:9000"]:::sidecar
         DZ["diarize-asr:9001"]:::sidecar
         PO["paddleocr-server:8002"]:::sidecar
-        OL["ollama:11434"]:::sidecar
+        OL["llm:11434"]:::sidecar
     end
 
     subgraph storage [Postgres - vidingest_*]

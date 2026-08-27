@@ -1,4 +1,4 @@
-package com.tradinglabs.vidingest.core.knowledge.client;
+package com.tradinglabs.vidingest.core.knowledge.client.ollama;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;

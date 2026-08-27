@@ -1,7 +1,7 @@
 # VidIngest — Knowledge Extraction (M2–M8)
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-08-26
+- **Last reviewed**: 2026-08-27
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
@@ -33,7 +33,7 @@ METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE �
 | FRAME_SAMPLE | M3       | off | downloaded video file        | `vidingest_video_frames` + JPGs at `{baseName}/frames/NNNN.jpg`   | ffmpeg (already in image) |
 | OCR          | M4       | off | sampled frames                | `vidingest_ocr_results`                                          | `paddleocr-server` sidecar |
 | FUSE         | M5       | on  | transcript + speakers + OCR  | `vidingest_multimodal_segments` (one row per fusion window)      | — pure Java |
-| KNOWLEDGE    | M6       | off | multimodal segments           | `vidingest_knowledge_units` + embeddings                         | Ollama (reuses embeddings daemon) |
+| KNOWLEDGE    | M6       | off | multimodal segments           | `vidingest_knowledge_units` + embeddings                         | chat LLM — the `llm` service by default, any OpenAI-compatible server otherwise |
 | CONTEXT      | (M7-enhanced) | off (semantic-search-gated) | multimodal segments → transcript fallback | `vidingest_context_chunks` (richer content) | embeddings client |
 
 Per-run opt-outs travel as one `skipPhases` list naming the phases to skip, exposed on
@@ -63,7 +63,7 @@ vidingest ────┤   ┌────────────────�
   server      ├──▶│ paddleocr-server (8002)  │── OCR       (PaddleOCR)
               │   └──────────────────────────┘
               │   ┌──────────────────────────┐
-              └──▶│ ollama      (port 11434) │── KNOWLEDGE + embeddings
+              └──▶│ llm         (port 11434) │── KNOWLEDGE + embeddings
                   └──────────────────────────┘
 ```
 
@@ -137,14 +137,32 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   alternate root keys, illustrative example output). User message renders one block per
   segment with a global index. `PROMPT_VERSION` is written into each row's
   `metadata.prompt_version` for offline auditing — currently `2`.
-- **Provider**: `vidingest.knowledge.provider=ollama` (default) — calls
-  `POST {ollama}/api/chat` with **`format: <JSON schema>`** (Ollama 0.5+ structured outputs).
-  The schema pins the response to `{units: [{type, title, content, ...}]}` so weaker open
-  models can't drift to other root keys (we observed qwen2.5:7b emit `{transcript: ...}`
-  before the schema was enforced). The provider abstraction (single Spring interface,
-  `KnowledgeChatClient`) leaves room for OpenAI / Anthropic impls behind the same config
-  flag.
-- **Fallback parser**: `OllamaKnowledgeChatClient.locateUnitsArray` looks for `units` first,
+- **Provider**: `vidingest.knowledge.provider` picks the *wire protocol*, not a vendor. Both
+  impls sit behind `KnowledgeChatClient` and are selected by `@ConditionalOnProperty`, so
+  `KnowledgeExtractionService` never learns which one it got:
+
+  | value | client | endpoint | schema goes in | output cap |
+  |---|---|---|---|---|
+  | `ollama` (default) | `core/knowledge/client/ollama/OllamaKnowledgeChatClient` | `POST {base-url}/api/chat` | `format` (Ollama 0.5+ structured outputs) | `options.num_predict` |
+  | `openai-compatible` | `core/knowledge/client/openai/OpenAiCompatibleKnowledgeChatClient` | `POST {base-url}/chat/completions` | `response_format.json_schema` | `max_tokens` |
+
+  `openai-compatible` is the one to use for **LM Studio, `llama-server`, mlx-lm, vLLM** or a
+  hosted API — they all serve that shape, and none of them serve Ollama's. Its `base-url` needs
+  the API prefix the server exposes, usually `/v1`
+  (`VIDINGEST_KNOWLEDGE_BASE_URL=http://localhost:1234/v1` for LM Studio), and
+  `vidingest.knowledge.api-key` is sent as `Authorization: Bearer` when set.
+
+  Either way the schema pins the response to `{units: [{type, title, content, ...}]}` so weaker
+  open models can't drift to other root keys (we observed qwen2.5:7b emit `{transcript: ...}`
+  before the schema was enforced). The schema itself and the parsing of what comes back live in
+  `core/knowledge/client/KnowledgeUnitJson` and are shared by both clients — a fallback added
+  for one runtime cannot silently not exist for the other.
+
+  An unrecognised `provider` value leaves no `KnowledgeChatClient` bean and **fails the context
+  at startup**. That is deliberate: unlike embeddings there is no `Disabled` floor here, because
+  `vidingest.knowledge.enabled=false` is already the off switch, and a typo that degrades
+  silently would only surface ten minutes into a run.
+- **Fallback parser**: `KnowledgeUnitJson.locateUnitsArray` looks for `units` first,
   then alternates (`knowledge_units`, `items`, `data`, `results`), then any value array of
   objects with `type` + `content` fields. Defence-in-depth even after schema enforcement.
 - **Recommended model**: `qwen2.5:14b-instruct` (`VIDINGEST_KNOWLEDGE_CHAT_MODEL`). Returns
@@ -166,7 +184,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 - **Any failed batch fails the phase.** Partial coverage is not a valid replacement for a
   complete extraction: salvaging the batches that worked used to swap a video's 300 units for the
   dozen a single surviving batch produced and report success. The replace is atomic and runs only
-  once every batch has succeeded, so a flaky ollama leaves the existing rows untouched and the run
+  once every batch has succeeded, so a flaky LLM runtime leaves the existing rows untouched and the run
   is marked FAILED. A run where every batch succeeded but nothing cleared the salience floor
   *does* clear the table — that is a real answer, not a failure.
 
@@ -232,7 +250,7 @@ VIDINGEST_KNOWLEDGE_ENABLED=true
 # Sidecar URLs
 VIDINGEST_DIARIZATION_BASE_URL=http://diarize-asr:9001
 VIDINGEST_OCR_BASE_URL=http://paddleocr-server:8002
-VIDINGEST_KNOWLEDGE_BASE_URL=http://ollama:11434
+VIDINGEST_KNOWLEDGE_BASE_URL=http://llm:11434
 
 # Diarization
 HUGGINGFACE_TOKEN=<your-token>   # required by the diarize-asr sidecar
@@ -307,8 +325,8 @@ EOF
 
 # 2. Pull the models. The embed model is required by CONTEXT whenever semantic search is
 #    on (the default) — the schema pins VECTOR(1536), so this model, not a 768-dim one.
-./scripts/tradey.sh ollama pull rjmalagon/gte-qwen2-1.5b-instruct-embed-f16
-./scripts/tradey.sh ollama pull qwen2.5:14b-instruct
+./scripts/tradey.sh llm pull rjmalagon/gte-qwen2-1.5b-instruct-embed-f16
+./scripts/tradey.sh llm pull qwen2.5:14b-instruct
 
 # 3. Build and start the sidecars, then restart the server onto the new .env
 ./scripts/tradey.sh start sidecars --build
@@ -354,7 +372,9 @@ WHERE video_id = '<videoId>' GROUP BY type;
 
 ### Troubleshooting
 
-- **`Knowledge LLM returned HTTP 500`** — usually the chat model isn't pulled in Ollama.
+- **`Knowledge LLM returned HTTP 500`** — usually the chat model isn't pulled/loaded on the
+  runtime. On `openai-compatible`, a `404` here usually means the `/v1` suffix is missing
+  from `base-url` (the client appends `/chat/completions` to whatever it is given).
   Run `ollama pull <model>` and retry.
 - **`diarize-asr` returns 500 on first call** — `HUGGINGFACE_TOKEN` is unset, or the
   pyannote model EULA hasn't been accepted on the HuggingFace web UI.
@@ -392,7 +412,7 @@ so a run pays a fresh load for each.
 Options, in the order worth trying:
 
 1. **Run ollama on the host instead of in the container** and point
-   `VIDINGEST_KNOWLEDGE_BASE_URL` / `VIDINGEST_OLLAMA_BASE_URL` at
+   `VIDINGEST_KNOWLEDGE_BASE_URL` / `VIDINGEST_LLM_BASE_URL` at
    `http://host.docker.internal:11434`. Host ollama uses Metal; this is the only option that
    makes a 14b model viable on a Mac.
 2. **Use a small chat model** — `qwen2.5:3b-instruct` is a reasonable floor for structured

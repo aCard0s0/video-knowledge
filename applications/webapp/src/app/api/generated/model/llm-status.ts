@@ -7,15 +7,16 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { OllamaModel } from './ollama-model';
+import { LlmModel } from './llm-model';
 
 
-export interface OllamaStatus { 
+export interface LlmStatus { 
     reachable?: boolean;
+    provider?: string;
     baseUrl?: string;
     embedModel?: string;
-    runningModels?: Array<OllamaModel>;
-    installedModels?: Array<OllamaModel>;
+    runningModels?: Array<LlmModel>;
+    installedModels?: Array<LlmModel>;
     error?: string;
 }
 

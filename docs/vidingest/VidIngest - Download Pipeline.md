@@ -1,7 +1,7 @@
 # VidIngest - Download Pipeline
 
 - **Primary packages**: `com.tradinglabs.vidingest.download.service`, `com.tradinglabs.vidingest.download.util`
-- **Last reviewed**: 2026-03-15
+- **Last reviewed**: 2026-08-27
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -138,7 +138,7 @@ All new phases are disabled by default and individually opt-in via config (maste
 switch) and per-run skip flags. See
 [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) for the
 detailed responsibility, wire contract, and configuration of each new phase and the
-sidecars they depend on (`diarize-asr`, `paddleocr-server`, plus Ollama for the chat
+sidecars they depend on (`diarize-asr`, `paddleocr-server`, plus the `llm` runtime for the chat
 model).
 
 ## Related pages
