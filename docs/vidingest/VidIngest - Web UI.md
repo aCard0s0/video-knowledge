@@ -45,7 +45,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | Screen | Endpoints |
 |---|---|
 | **Ingest** (home) | `POST /pipelines`, `GET /health/ready`, `GET /health/ollama` |
-| **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos`, `POST /{id}/pipelines` |
+| **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos?notIngestedOnly`, `POST /{id}/pipelines`, `GET /pipelines/capabilities` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
@@ -285,6 +285,30 @@ against it on a cron. `DELETE /youtube/channels/{channelId}` answers 204, or 404
 already gone; the discovered catalog follows through the `ON DELETE CASCADE` on
 `vidingest_youtube_channel_videos.channel_id`, and videos already ingested from the channel are
 untouched — they are `vidingest_videos` rows with no FK back.
+
+### 17. `skipPhases` is only half of what a run will do
+
+Every optional phase gates on a `vidingest.<phase>.enabled` property as well as on the request's
+opt-out, and four of them default to `false`. Nothing exposed that, so the phase picker showed all
+seven ticked over "all optional phases enabled" while the server was configured to skip most of
+them — a batch submitted for OCR and knowledge extraction came back with neither and no screen had
+said so.
+
+`GET /pipelines/capabilities` answers with `enabledPhases`, `maxUrlsPerRun` and `channelSyncLimit`.
+It asks the phases themselves — `applies(ctx)` against a context that skips nothing isolates the
+master switch — rather than re-reading five config beans, which would drift the first time a phase
+gained a dependency. `core/capabilities.ts` is a root singleton so the screens share one request;
+it treats *unknown* as enabled, because marking a phase unavailable on a failed fetch is a worse
+lie than the one it fixes.
+
+### 18. A client-side filter over a server page makes the pager lie
+
+`GET /youtube/channels/{id}/videos` takes `notIngestedOnly`. The console filtered its own page
+instead, so the total the pager rendered described a different set from the rows: ingest thirty and
+page 0 showed twenty rows under "1–50 of 200", and a mostly-ingested catalog became four pages of
+near-empty tables. The rows have to be cut before they are counted, which only the query can do —
+`not exists` against `vidingest_videos` on the same `(source, sourceVideoId)` identity that marks
+the rows it leaves out.
 
 ## Design direction
 
@@ -531,6 +555,8 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   the active item already shows. No screen has to publish a title to the shell.
 - **Adding a channel syncs it.** A new channel used to sit `NEW` with an empty catalog until the
   operator noticed the Sync button or the half-hour scheduler ran, which made Add look inert.
+- **A link out to what the channel produced.** `GET /videos` already filters on `channelName` and
+  the videos screen already reads `?channel=`; only the link from the channel was missing.
 - **A channel can be removed.** Add was one-way: the only escape hatch a mistyped URL had was the
   `DISABLED` status, which nothing set and no endpoint reached, so the row stayed `ERROR` while the
   scheduler re-ran yt-dlp against it forever (finding 16). Remove sits beside Sync on the list,
@@ -544,6 +570,24 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   ramp, and labelled `not started` rather than `not retried`: a video declined here is not
   something the operator can fix, because the URL came from the stored catalog and not from a box
   they typed into.
+- **The channel screen is one screen wide.** The ingest CTA sat ~1000px below the fold on a
+  fifty-row page — tick a box at the top, scroll a full screen to press it, with the selection
+  count out of sight the whole time it was being built — so the panel is `position: sticky` against
+  the bottom edge. The picking target went with it: the title cell is the checkbox's `<label>`,
+  because a 13×13px box in a 32px row was the only way to choose a video, fifty times over.
+- **Columns that say nothing are not drawn.** `Published` is empty for a whole catalog (finding
+  15), so it appears only when a row on the page actually carries a date; `State` reads `new` on
+  every row while "not ingested only" is ticked, so it appears only when the filter is off. The
+  catalog count says `(newest 200 only)` when it has hit `channelSyncLimit`, because a full
+  catalog is a window and not the channel's size.
+- **A failure gets a row, not a column.** The channel's `lastError` was clipped to a line — about
+  three quarters of it hidden behind a `title` no touch device can reach, the arrangement the
+  readiness checks were moved out of — and wrapping it in place made a twenty-line tower in a 14ch
+  column at 390px. It now takes a full-width row under its channel, the shape the runs board
+  already gives a run's error, capped at the same 92ch. **The shared rule needs
+  `table.grid tr.fault-row td`**: `table.grid td` sets `white-space: nowrap` at (0,1,2) and a bare
+  `.fault-row td` loses to it. Component styles hide that — Angular's scoping attribute lends the
+  same selector a point it does not have in `styles.scss`.
 - **An empty catalog says it is empty.** The empty state branched on the "not ingested only"
   filter, which defaults on, so a channel whose sync had just failed with a yt-dlp 404 reported
   `Every upload in this catalog is already ingested` — directly under the red panel naming the 404.

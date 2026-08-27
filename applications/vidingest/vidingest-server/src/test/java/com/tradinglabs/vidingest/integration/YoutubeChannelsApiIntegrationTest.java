@@ -2,6 +2,8 @@ package com.tradinglabs.vidingest.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradinglabs.vidingest.videos.domain.Video;
+import com.tradinglabs.vidingest.videos.domain.VideoStatus;
 import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryResult;
 import com.tradinglabs.vidingest.youtube.discovery.YoutubeChannelDiscoveryService;
 import org.junit.jupiter.api.Test;
@@ -152,6 +154,54 @@ class YoutubeChannelsApiIntegrationTest extends BaseVidingestIntegrationTest {
         // Deleting something already gone is a 404, not a silent success.
         assertThat(send(HttpRequest.newBuilder(uri("/youtube/channels/" + channelId)).DELETE()).statusCode())
                 .isEqualTo(404);
+    }
+
+    /**
+     * `notIngestedOnly` filters before the page is cut, so the total describes what is shown.
+     *
+     * The console filtered its own page client-side, which left the pager reporting the
+     * unfiltered count: two of three ingested and the screen rendered one row under "1–3 of 3".
+     */
+    @Test
+    void notIngestedOnlyFiltersBeforeTheTotalIsCounted() throws Exception {
+        when(youtubeChannelDiscoveryService.discover(anyString(), anyInt(), anyLong()))
+                .thenReturn(new YoutubeChannelDiscoveryResult(
+                        "https://www.youtube.com/@partial", "UC_PARTIAL", "Partial", Map.of(),
+                        List.of(candidate("one"), candidate("two"), candidate("three"))
+                ));
+
+        String channelId = createChannel("https://www.youtube.com/@partial");
+        assertThat(post("/youtube/channels/" + channelId + "/sync").statusCode()).isEqualTo(200);
+
+        // "ingested" is a vidingest_videos row on the same (source, sourceVideoId) identity.
+        videoRepository.save(Video.builder()
+                .source("youtube").sourceVideoId("one").status(VideoStatus.COMPLETED).build());
+
+        JsonNode all = objectMapper.readTree(get("/youtube/channels/" + channelId + "/videos?page=0&size=50").body());
+        assertThat(all.get("total").asInt()).isEqualTo(3);
+
+        JsonNode fresh = objectMapper.readTree(
+                get("/youtube/channels/" + channelId + "/videos?page=0&size=50&notIngestedOnly=true").body());
+        assertThat(fresh.get("total").asInt()).isEqualTo(2);
+        List<String> ids = new ArrayList<>();
+        fresh.get("items").forEach(item -> ids.add(item.get("youtubeVideoId").asText()));
+        assertThat(ids).containsExactly("two", "three");
+    }
+
+    /** The picker showed four phases enabled that this deployment is configured to skip. */
+    @Test
+    void capabilitiesReportOnlyThePhasesThisServerWillRun() throws Exception {
+        JsonNode caps = objectMapper.readTree(get("/pipelines/capabilities").body());
+
+        List<String> enabled = new ArrayList<>();
+        caps.get("enabledPhases").forEach(p -> enabled.add(p.asText()));
+
+        // The base test turns semantic search off, so CONTEXT is off with it; the four opt-in
+        // enrichment phases default to false and stay out.
+        assertThat(enabled).contains("TRANSCRIBE", "FUSE");
+        assertThat(enabled).doesNotContain("DIARIZE", "FRAME_SAMPLE", "OCR", "KNOWLEDGE", "CONTEXT");
+        assertThat(caps.get("channelSyncLimit").asInt()).isPositive();
+        assertThat(caps.get("maxUrlsPerRun").asInt()).isEqualTo(100);
     }
 
     private static YoutubeChannelDiscoveryResult.YoutubeVideoCandidate candidate(String id) {

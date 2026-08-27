@@ -301,14 +301,15 @@ export class YoutubeService extends BaseService {
      * @param channelId 
      * @param page 
      * @param size 
+     * @param notIngestedOnly 
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listChannelVideos(channelId: string, page?: number, size?: number, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PageResponseYoutubeChannelVideoSummary>;
-    public listChannelVideos(channelId: string, page?: number, size?: number, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PageResponseYoutubeChannelVideoSummary>>;
-    public listChannelVideos(channelId: string, page?: number, size?: number, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PageResponseYoutubeChannelVideoSummary>>;
-    public listChannelVideos(channelId: string, page?: number, size?: number, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listChannelVideos(channelId: string, page?: number, size?: number, notIngestedOnly?: boolean, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PageResponseYoutubeChannelVideoSummary>;
+    public listChannelVideos(channelId: string, page?: number, size?: number, notIngestedOnly?: boolean, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PageResponseYoutubeChannelVideoSummary>>;
+    public listChannelVideos(channelId: string, page?: number, size?: number, notIngestedOnly?: boolean, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PageResponseYoutubeChannelVideoSummary>>;
+    public listChannelVideos(channelId: string, page?: number, size?: number, notIngestedOnly?: boolean, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (channelId === null || channelId === undefined) {
             throw new Error('Required parameter channelId was null or undefined when calling listChannelVideos.');
         }
@@ -328,6 +329,15 @@ export class YoutubeService extends BaseService {
             localVarQueryParameters,
             'size',
             <any>size,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'notIngestedOnly',
+            <any>notIngestedOnly,
             QueryParamStyle.Form,
             true,
         );

@@ -13,6 +13,7 @@ import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
 import { Problem } from '../../ui/problem';
 import { syncQueryParams } from '../../core/url-state';
+import { clampPage } from '../../core/paging';
 
 const PAGE_SIZE = 25;
 
@@ -43,6 +44,8 @@ export class Channels {
 
   constructor() {
     syncQueryParams({ page: this.page });
+    // Removing the only channel on page 2 leaves this page past the end of the list.
+    clampPage(this.page, PAGE_SIZE, this.list);
     // The server syncs catalogs on its own every 30 minutes; this just keeps the page honest.
     this.poller.every(
       () => POLL_IDLE,

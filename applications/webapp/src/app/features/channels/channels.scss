@@ -19,10 +19,10 @@
   max-width: 100%;
 }
 
-.err {
-  display: block;
-  max-width: 48ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/*
+  The sync failure gets its own full-width row (styled in `styles.scss`, shared with the runs
+  board). Inside the channel cell it had one column's width: clipped to a line it lost about three
+  quarters of itself — 1418px of message in a 346px cell — into a `title` no touch device and no
+  keyboard can reach, which is the arrangement the readiness checks were moved out of. Wrapped in
+  place it became a twenty-line tower in a 14ch column at 390px.
+*/

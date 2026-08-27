@@ -1,6 +1,7 @@
-import { Component, computed, model } from '@angular/core';
+import { Component, computed, inject, model } from '@angular/core';
 
 import { OPTIONAL_PHASES, OptionalPhase } from '../core/domain';
+import { Capabilities } from '../core/capabilities';
 
 /**
  * Which phases a new run should execute. Only the seven optional phases can be toggled —
@@ -17,14 +18,27 @@ import { OPTIONAL_PHASES, OptionalPhase } from '../core/domain';
       <legend>Phases to run</legend>
       <div class="chips">
         @for (phase of phases; track phase) {
-          <label class="chip" [class.off]="isSkipped(phase)">
-            <input type="checkbox" [checked]="!isSkipped(phase)" (change)="toggle(phase)" />
+          <!--
+            A phase the server has switched off is shown, not hidden: which enrichment this
+            deployment does is exactly what the operator came here to learn. It just cannot be
+            ticked, because ticking it would promise work that will not happen.
+          -->
+          <label class="chip" [class.off]="isSkipped(phase)" [class.unavailable]="unavailable(phase)">
+            <input
+              type="checkbox"
+              [checked]="!isSkipped(phase) && !unavailable(phase)"
+              [disabled]="unavailable(phase)"
+              (change)="toggle(phase)"
+            />
             <span class="mono">{{ phase }}</span>
           </label>
         }
       </div>
       <p class="note mono muted">
-        {{ skipped().length ? skipped().length + ' phase(s) skipped for this run' : 'all optional phases enabled' }}
+        {{ skipped().length ? skipped().length + ' phase(s) skipped for this run' : 'all available phases enabled' }}
+        @if (unavailableCount()) {
+          · {{ unavailableCount() }} turned off on this server
+        }
         · metadata, download and persist always run
       </p>
     </fieldset>
@@ -78,6 +92,20 @@ import { OPTIONAL_PHASES, OptionalPhase } from '../core/domain';
       color: var(--fg-muted);
     }
 
+    /* Off by configuration, not by choice: same hatched read as a skipped lane segment, and
+       not clickable, because no click here can turn it on. */
+    .chip.unavailable {
+      border-color: var(--border);
+      border-style: dashed;
+      background: repeating-linear-gradient(
+        135deg,
+        transparent 0 4px,
+        color-mix(in srgb, var(--fg-muted) 14%, transparent) 4px 8px
+      );
+      color: var(--fg-muted);
+      cursor: not-allowed;
+    }
+
     input {
       margin: 0;
       accent-color: var(--accent);
@@ -93,14 +121,25 @@ export class PhasePicker {
   /** Phase names to send as `skipPhases`. */
   readonly skipped = model<string[]>([]);
 
+  private readonly capabilities = inject(Capabilities);
+
   protected readonly phases = OPTIONAL_PHASES;
   protected readonly skippedSet = computed(() => new Set(this.skipped()));
+
+  protected readonly unavailableCount = computed(
+    () => OPTIONAL_PHASES.filter((p) => this.capabilities.disabledOnServer(p)).length,
+  );
+
+  protected unavailable(phase: OptionalPhase): boolean {
+    return this.capabilities.disabledOnServer(phase);
+  }
 
   protected isSkipped(phase: OptionalPhase): boolean {
     return this.skippedSet().has(phase);
   }
 
   protected toggle(phase: OptionalPhase): void {
+    if (this.unavailable(phase)) return;
     const next = new Set(this.skipped());
     if (next.has(phase)) next.delete(phase);
     else next.add(phase);

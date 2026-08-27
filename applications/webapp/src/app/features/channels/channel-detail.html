@@ -10,12 +10,19 @@
       <h1 class="mono">{{ ch.displayName || 'channel' }}</h1>
       <p class="sub mono sm">
         <vk-status [status]="ch.status" />
-        · {{ ch.videoCount ?? 0 }} in catalog · synced
+        · {{ ch.videoCount ?? 0 }} in catalog
+        @if (catalogCapped()) {
+          <!-- A full catalog is `--playlist-end` deep, so the number is a window, not a count. -->
+          <span class="muted">(newest {{ syncLimit() }} only)</span>
+        }
+        · synced
         <span [title]="absoluteTime(ch.lastSyncSuccessAt)">{{ ch.lastSyncSuccessAt ? age(ch.lastSyncSuccessAt) : 'never' }}</span>
       </p>
     </div>
     <div class="head-actions">
       <a class="mono sm" routerLink="/channels">← all channels</a>
+      <!-- Where the ingested half of this catalog ended up; `?channelName` already filters it. -->
+      <a class="mono sm" routerLink="/videos" [queryParams]="{ channel: ch.displayName }">Ingested videos →</a>
       <a class="mono sm" [href]="ch.url" target="_blank" rel="noopener">Open on YouTube ↗</a>
       <button type="button" [disabled]="busy()" (click)="sync()">{{ busy() ? 'Working…' : 'Sync now' }}</button>
     </div>
@@ -94,23 +101,24 @@
       </div>
     </div>
 
-    @if (rows().length === 0 && allRows().length > 0) {
-      <!-- Filtered to nothing, but the catalog page is not empty: keep the pager reachable. -->
-      <p class="quiet muted">
-        All {{ allRows().length }} uploads on this page are already ingested. Try the next page, or
-        untick “not ingested only”.
-      </p>
-      <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
-    } @else if (rows().length === 0) {
+    @if (rows().length === 0) {
       <!--
-        Nothing on the page at all, filter or no filter, which means the catalog is empty — not
-        that everything in it was ingested. Keying this off `onlyNew()` made a channel whose sync
-        had just failed with a yt-dlp 404 report "Every upload in this catalog is already
-        ingested", directly under the red panel naming the 404.
+        Which nothing this is comes from the channel, not from the filter. Reading it off
+        `onlyNew()` alone made a channel whose sync had just failed with a yt-dlp 404 report
+        "Every upload in this catalog is already ingested", under the red panel naming the 404.
+        `videoCount` is the unfiltered catalog size, so it separates the two cases exactly.
       -->
-      <vk-empty message="This catalog is empty. Sync the channel to fetch its uploads.">
-        <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
-      </vk-empty>
+      @if ((ch.videoCount ?? 0) === 0) {
+        <vk-empty message="This catalog is empty. Sync the channel to fetch its uploads.">
+          <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
+        </vk-empty>
+      } @else if (onlyNew()) {
+        <vk-empty message="Every upload in this catalog is already ingested.">
+          <button class="btn-sm" type="button" (click)="onlyNew.set(false)">Show all {{ ch.videoCount }}</button>
+        </vk-empty>
+      } @else {
+        <vk-empty message="Nothing on this page." />
+      }
     } @else {
       <div class="table-scroll">
         <table class="grid" translate="no">
@@ -118,8 +126,12 @@
             <tr>
               <th scope="col" class="pick"><span class="sr-only">Selected</span></th>
               <th scope="col">Title</th>
-              <th scope="col" class="num">Published</th>
-              <th scope="col">State</th>
+              @if (showPublished()) {
+                <th scope="col" class="num">Published</th>
+              }
+              @if (showState()) {
+                <th scope="col">State</th>
+              }
               <th scope="col"><span class="sr-only">Link</span></th>
             </tr>
           </thead>
@@ -127,7 +139,6 @@
             @for (video of rows(); track video.id) {
               <tr [class.on]="isPicked(video)">
                 <td class="pick">
-                  <label class="sr-only" [attr.for]="'pick-' + video.id">Select {{ video.title }}</label>
                   <input
                     [id]="'pick-' + video.id"
                     type="checkbox"
@@ -136,9 +147,19 @@
                     (change)="toggle(video)"
                   />
                 </td>
-                <td class="truncate" [title]="video.title">{{ video.title }}</td>
-                <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
-                <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>
+                <!--
+                  The title is the checkbox's label, so the whole cell is the target. A 13px box
+                  in a 32px row was the only way to pick a video, fifty times over.
+                -->
+                <td class="pickable truncate" [title]="video.title">
+                  <label [attr.for]="'pick-' + video.id">{{ video.title }}</label>
+                </td>
+                @if (showPublished()) {
+                  <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
+                }
+                @if (showState()) {
+                  <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>
+                }
                 <td><a class="mono sm" [href]="video.watchUrl" target="_blank" rel="noopener">watch ↗</a></td>
               </tr>
             }

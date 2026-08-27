@@ -187,9 +187,29 @@ label {
   border-bottom: 1px solid var(--border);
 }
 
+/*
+  A table wider than its panel scrolls, and says so.
+
+  Below 767px the channel list's own actions sit past the right edge with nothing to suggest it —
+  the fade is the only cue that Sync and Remove exist. `background-attachment: local` paints the
+  white covers with the content and the shadows against the box, so both ends appear only while
+  there is more that way.
+*/
 .table-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  background:
+    linear-gradient(to right, var(--card) 30%, transparent) left center,
+    linear-gradient(to left, var(--card) 30%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--fg) 22%, transparent), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--fg) 22%, transparent), transparent) right center;
+  background-repeat: no-repeat;
+  background-size:
+    40px 100%,
+    40px 100%,
+    14px 100%,
+    14px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 
 table.grid {
@@ -391,4 +411,42 @@ table.grid th.sp {
   .watch-items {
     max-height: none;
   }
+}
+
+// --- a failure on its own row, under the record it belongs to --------------
+// The runs board and the channels list both carry one. `nowrap` cells deny a free-text message
+// the wrap it needs, and its tail is what separates one yt-dlp failure from the next.
+
+// `table.grid td` sets `white-space: nowrap` at (0,1,2); a bare `.fault-row td` is (0,1,1) and
+// loses to it, so the message stayed on one line and ran off the panel. Component styles hid that
+// — Angular's scoping attribute lends the same rule a point it does not have out here.
+table.grid tr.fault-row td {
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-bottom: var(--space-sm);
+}
+
+// It belongs to the row above: that row drops its rule so the two read as one record.
+table.grid tr:has(+ .fault-row) td {
+  border-bottom: 0;
+}
+
+// The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
+// tail off the right edge. Wrap it to the viewport instead: 7rem clears the collapsed 56px rail
+// plus the panel's padding on both sides, which is all the chrome there is below 900px.
+.fault-row vk-fault,
+.fault-row .err {
+  display: block;
+  max-width: calc(100vw - 7rem);
+}
+
+/*
+  A message with no cap of its own takes the viewport width as a *width*, and a table cell that
+  wide pushes the grid past its panel — which is how adding a second row action put Sync and
+  Remove off the right edge of a 1440px screen. 92ch is the cap `vk-fault` already applies to its
+  own text, so both fault rows wrap at the same measure.
+*/
+.fault-row .err {
+  max-width: min(92ch, calc(100vw - 7rem));
 }

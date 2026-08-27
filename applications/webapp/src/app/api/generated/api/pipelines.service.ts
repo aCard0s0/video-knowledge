@@ -25,6 +25,8 @@ import { PageResponseRunItemAuditEvent } from '../model/page-response-run-item-a
 // @ts-ignore
 import { PageResponseRunSummary } from '../model/page-response-run-summary';
 // @ts-ignore
+import { PipelineCapabilities } from '../model/pipeline-capabilities';
+// @ts-ignore
 import { RetryRunRequest } from '../model/retry-run-request';
 // @ts-ignore
 import { RunDetails } from '../model/run-details';
@@ -266,6 +268,59 @@ export class PipelinesService extends BaseService {
             {
                 context: localVarHttpContext,
                 body: createPipelineRunRequest,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Which optional phases this server will run
+     * Reports the optional phases enabled by configuration, plus the batch and channel-sync limits.
+     * @endpoint get /api/v1/pipelines/capabilities
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public getPipelineCapabilities(observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PipelineCapabilities>;
+    public getPipelineCapabilities(observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PipelineCapabilities>>;
+    public getPipelineCapabilities(observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PipelineCapabilities>>;
+    public getPipelineCapabilities(observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/pipelines/capabilities`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<PipelineCapabilities>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

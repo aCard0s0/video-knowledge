@@ -17,7 +17,7 @@
       <input id="displayName" type="text" formControlName="displayName" maxlength="255" autocomplete="off" />
     </div>
     <button class="btn-primary" type="submit" [disabled]="form.invalid || busy() === 'add'">
-      {{ busy() ? 'Adding…' : 'Add & sync' }}
+      {{ busy() === 'add' ? 'Adding…' : 'Add & sync' }}
     </button>
   </div>
 </form>
@@ -52,9 +52,6 @@
                 <a [routerLink]="['/channels', channel.id]" class="truncate" [title]="channel.url">
                   {{ channel.displayName || channel.url }}
                 </a>
-                @if (!blank(channel.lastError)) {
-                  <span class="err mono sm failed" [title]="channel.lastError">{{ channel.lastError }}</span>
-                }
               </td>
               <td class="num">{{ channel.videoCount ?? 0 }}</td>
               <td class="num sm" [title]="absoluteTime(channel.lastSyncSuccessAt)">
@@ -71,6 +68,21 @@
                 </span>
               </td>
             </tr>
+            <!--
+              The sync failure gets its own full-width row, the same shape the runs board gives a
+              run's error. Inside the channel cell it had a column to itself: clipped to one line
+              it hid three quarters of itself behind a `title` no touch device can reach, and
+              wrapped it became a twenty-line tower in a 14ch column at 390px. Every yt-dlp
+              failure opens identically and differs at the end, so the tail needs the width.
+            -->
+            @if (!blank(channel.lastError)) {
+              <tr class="fault-row">
+                <td class="spine" [style.--spine]="statusVar(channel.status)"></td>
+                <!-- The message is a child, not the cell: `display: block` on a `td` drops it out
+                     of the table layout, and the row below is drawn over it. -->
+                <td colspan="5"><span class="err mono sm failed">{{ channel.lastError }}</span></td>
+              </tr>
+            }
           }
         </tbody>
       </table>

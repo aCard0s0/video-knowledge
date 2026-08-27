@@ -212,19 +212,24 @@ public class YoutubeChannelCommandService {
         return ch;
     }
 
+    /**
+     * @param notIngestedOnly drops rows already ingested <em>before</em> the page is cut, so the
+     *                        total the pager renders describes what the operator can actually see.
+     */
     @Transactional(readOnly = true)
-    public PageResponse<YoutubeChannelVideoSummary> listChannelVideos(UUID channelId, Integer page, Integer size) {
+    public PageResponse<YoutubeChannelVideoSummary> listChannelVideos(
+            UUID channelId, Integer page, Integer size, Boolean notIngestedOnly) {
         if (!youtubeChannelRepository.existsById(channelId)) {
             throw new YoutubeChannelNotFoundException(channelId);
         }
 
         int pageValue = page != null ? Math.max(0, page) : 0;
         int sizeValue = size != null ? Math.clamp(size, 1, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+        var pageable = PageRequest.of(pageValue, sizeValue, DEFAULT_VIDEO_SORT);
 
-        var pageResult = youtubeChannelVideoRepository.findAllByChannel_Id(
-                channelId,
-                PageRequest.of(pageValue, sizeValue, DEFAULT_VIDEO_SORT)
-        );
+        var pageResult = Boolean.TRUE.equals(notIngestedOnly)
+                ? youtubeChannelVideoRepository.findNotIngestedByChannelId(channelId, pageable)
+                : youtubeChannelVideoRepository.findAllByChannel_Id(channelId, pageable);
 
         var ids = pageResult.getContent().stream().map(YoutubeChannelVideo::getYoutubeVideoId).toList();
         Set<String> ingested = ingestedYoutubeVideoIds(ids);

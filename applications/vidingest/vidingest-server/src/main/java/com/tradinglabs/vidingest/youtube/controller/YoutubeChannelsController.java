@@ -82,9 +82,10 @@ public class YoutubeChannelsController {
     public PageResponse<YoutubeChannelVideoSummary> listVideos(
             @PathVariable UUID channelId,
             @RequestParam(name = "page", required = false) Integer page,
-            @RequestParam(name = "size", required = false) Integer size
+            @RequestParam(name = "size", required = false) Integer size,
+            @RequestParam(name = "notIngestedOnly", required = false) Boolean notIngestedOnly
     ) {
-        return youtubeChannels.listChannelVideos(channelId, page, size);
+        return youtubeChannels.listChannelVideos(channelId, page, size, notIngestedOnly);
     }
 
     @PostMapping("/{channelId}/pipelines")

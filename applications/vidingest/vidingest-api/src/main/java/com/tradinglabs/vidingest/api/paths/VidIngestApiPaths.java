@@ -29,6 +29,8 @@ public final class VidIngestApiPaths {
     public static final String VIDEO_TRANSCRIPTION_WHISPER_JSON = VIDEO_TRANSCRIPTION + "/whisper.json";
     public static final String VIDEO_CONTEXT_REGENERATE = VIDEO + "/context/regenerate";
 
+    public static final String PIPELINE_CAPABILITIES = PIPELINES + "/capabilities";
+
     public static final String PIPELINE = PIPELINES + "/{runId}";
     public static final String PIPELINE_RETRY = PIPELINE + "/retry";
     public static final String PIPELINE_ITEM_RETRY = PIPELINE + "/items/{itemId}/retry";

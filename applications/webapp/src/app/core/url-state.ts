@@ -13,6 +13,18 @@ export function syncQueryParams(state: Record<string, WritableSignal<string | nu
   const router = inject(Router);
   const route = inject(ActivatedRoute);
 
+  /**
+   * Each signal's declared value *is* the default, captured before the URL is read.
+   *
+   * The rule used to be hardcoded — `'' | 'ALL' | 0 | false` — which is right only for a signal
+   * that starts there. `onlyNew` starts `true`, so the one state worth putting in a link, the
+   * filter turned *off*, was the one dropped: unticking wrote nothing, and a reload or a shared
+   * URL silently restored the filter.
+   */
+  const defaults = Object.fromEntries(
+    Object.entries(state).map(([key, signal]) => [key, signal()]),
+  );
+
   const initial = route.snapshot.queryParamMap;
   for (const [key, signal] of Object.entries(state)) {
     const raw = initial.get(key);
@@ -33,8 +45,7 @@ export function syncQueryParams(state: Record<string, WritableSignal<string | nu
     for (const [key, signal] of Object.entries(state)) {
       const value = signal();
       // Defaults stay out of the URL so a shared link carries only what was actually chosen.
-      const isDefault = value === '' || value === 'ALL' || value === 0 || value === false;
-      queryParams[key] = isDefault ? null : String(value);
+      queryParams[key] = value === defaults[key] ? null : String(value);
     }
     untracked(() =>
       router.navigate([], { relativeTo: route, queryParams, queryParamsHandling: 'merge', replaceUrl: true }),
