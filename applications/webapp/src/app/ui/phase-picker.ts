@@ -1,5 +1,6 @@
-import { Component, computed, input, model } from '@angular/core';
+import { Component, computed, inject, model } from '@angular/core';
 
+import { Capabilities } from '../core/capabilities';
 import { OPTIONAL_PHASES, OptionalPhase, PHASE_REQUIRES } from '../core/domain';
 
 /**
@@ -24,6 +25,11 @@ import { OPTIONAL_PHASES, OptionalPhase, PHASE_REQUIRES } from '../core/domain';
       <legend>Phases to run</legend>
       <div class="chips">
         @for (phase of phases; track phase) {
+          <!--
+            A phase the server has switched off is shown, not hidden: which enrichment this
+            deployment does is exactly what the operator came here to learn. It just cannot be
+            ticked, because ticking it would promise work that will not happen.
+          -->
           <label
             class="chip"
             [class.off]="isSkipped(phase)"
@@ -40,9 +46,7 @@ import { OPTIONAL_PHASES, OptionalPhase, PHASE_REQUIRES } from '../core/domain';
           </label>
         }
       </div>
-      <p class="note mono muted">
-        {{ chosen() }} · metadata, download and persist always run
-      </p>
+      <p class="note mono muted">{{ chosen() }} · metadata, download and persist always run</p>
       <!--
         Each reason spelled out rather than left in the chips' title attribute, which is
         unreachable by touch and by keyboard — the same trap the rail's health chips were
@@ -54,7 +58,9 @@ import { OPTIONAL_PHASES, OptionalPhase, PHASE_REQUIRES } from '../core/domain';
         </p>
       }
       @for (item of blocked(); track item.phase) {
-        <p class="note mono warn">{{ item.phase }} needs {{ item.requires }}, which is not running</p>
+        <p class="note mono warn">
+          {{ item.phase }} needs {{ item.requires }}, which is not running
+        </p>
       }
     </fieldset>
   `,
@@ -144,14 +150,17 @@ export class PhasePicker {
   readonly skipped = model<string[]>([]);
 
   /**
-   * Phases this deployment has turned off, from `GET /health/phases`. Defaults to none, so the
-   * screens that do not fetch it behave exactly as before.
+   * Which phases the deployment has off comes from the shared `Capabilities` singleton, not from
+   * an input: all three screens that draw this picker need the same answer, and threading it in
+   * per screen is how run detail ended up never asking at all.
    */
-  readonly disabled = input<string[]>([]);
+  private readonly capabilities = inject(Capabilities);
 
   protected readonly phases = OPTIONAL_PHASES;
   protected readonly skippedSet = computed(() => new Set(this.skipped()));
-  private readonly disabledSet = computed(() => new Set(this.disabled()));
+  private readonly disabledSet = computed(
+    () => new Set(OPTIONAL_PHASES.filter((p) => this.capabilities.disabledOnServer(p))),
+  );
 
   protected isSkipped(phase: OptionalPhase): boolean {
     return this.skippedSet().has(phase);
@@ -170,7 +179,10 @@ export class PhasePicker {
       const requires = PHASE_REQUIRES[phase];
       if (this.disabledSet().has(phase)) {
         out.set(phase, `${phase} is disabled on this server and cannot be enabled per run`);
-      } else if (requires && (this.skippedSet().has(requires) || this.disabledSet().has(requires))) {
+      } else if (
+        requires &&
+        (this.skippedSet().has(requires) || this.disabledSet().has(requires))
+      ) {
         out.set(phase, `${phase} needs ${requires}, which is not running`);
       }
     }
@@ -190,7 +202,9 @@ export class PhasePicker {
     return this.reasons().size ? 'nothing skipped for this run' : 'all optional phases enabled';
   });
 
-  protected readonly serverOff = computed(() => this.phases.filter((p) => this.disabledSet().has(p)));
+  protected readonly serverOff = computed(() =>
+    this.phases.filter((p) => this.disabledSet().has(p)),
+  );
 
   protected readonly blocked = computed(() =>
     [...this.reasons().keys()]

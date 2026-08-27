@@ -10,12 +10,19 @@
       <h1 class="mono">{{ ch.displayName || 'channel' }}</h1>
       <p class="sub mono sm">
         <vk-status [status]="ch.status" />
-        · {{ ch.videoCount ?? 0 }} in catalog · synced
+        · {{ ch.videoCount ?? 0 }} in catalog
+        @if (catalogCap(); as limit) {
+          <!-- A full catalog is `--playlist-end` deep, so the number is a window, not a count. -->
+          <span class="muted">(newest {{ limit }} only)</span>
+        }
+        · synced
         <span [title]="absoluteTime(ch.lastSyncSuccessAt)">{{ ch.lastSyncSuccessAt ? age(ch.lastSyncSuccessAt) : 'never' }}</span>
       </p>
     </div>
     <div class="head-actions">
       <a class="mono sm" routerLink="/channels">← all channels</a>
+      <!-- Where the ingested half of this catalog ended up; `?channelName` already filters it. -->
+      <a class="mono sm" routerLink="/videos" [queryParams]="{ channel: ch.displayName }">Ingested videos →</a>
       <a class="mono sm" [href]="ch.url" target="_blank" rel="noopener">Open on YouTube ↗</a>
       <button type="button" [disabled]="busy()" (click)="sync()">{{ busy() ? 'Working…' : 'Sync now' }}</button>
     </div>
@@ -27,11 +34,54 @@
 
   <vk-problem [failure]="failure()" />
 
-  @if (started(); as run) {
-    <p class="panel started mono sm" aria-live="polite">
-      Run started for {{ run.items?.length ?? 0 }} video(s).
-      <a [routerLink]="['/runs', run.runId]">Watch run {{ run.runId?.slice(0, 8) }} →</a>
-    </p>
+  <!--
+    The run this screen just started, advancing in place — same lane component as the run screen,
+    so what you learn to read here is what you read when something breaks. The rejects sit beside
+    it because a 202 is not an acceptance: the body names every video that was turned away.
+  -->
+  @if (started()) {
+    <section class="panel watch">
+      <div class="panel-head">
+        <span class="eyebrow">
+          started · {{ accepted().length }} accepted
+          @if (rejected().length) {
+            · {{ rejected().length }} rejected
+          }
+        </span>
+        @if (watched(); as run) {
+          <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
+        }
+      </div>
+
+      @if (watched(); as run) {
+        <p class="watch-meta mono sm" aria-live="polite">
+          <vk-status [status]="run.status" />
+          <span class="muted">· {{ watchedItems().length }} item(s) · {{ age(run.createdAt) }}</span>
+        </p>
+
+        <ul class="watch-items">
+          @for (item of watchedItems(); track item.itemId) {
+            <li>
+              <div class="watch-item-head">
+                <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
+                <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+              </div>
+              <vk-lane [segments]="lane(item)" />
+              <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+            </li>
+          }
+        </ul>
+      } @else if (accepted().length === 0) {
+        <p class="quiet muted">Nothing was accepted, so no run was created.</p>
+      }
+
+      <!--
+        The same panel the two retry screens use. Warn, not the failure ramp: a video the server
+        declined is not something the operator can fix here — the URLs come from the stored
+        catalog, not from a box they typed into.
+      -->
+      <vk-rejects [items]="rejected()" label="not started" />
+    </section>
   }
 
   <section class="panel">
@@ -51,23 +101,24 @@
       </div>
     </div>
 
-    @if (rows().length === 0 && allRows().length > 0) {
-      <!-- Filtered to nothing, but the catalog page is not empty: keep the pager reachable. -->
-      <p class="quiet muted">
-        All {{ allRows().length }} uploads on this page are already ingested. Try the next page, or
-        untick “not ingested only”.
-      </p>
-      <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
-    } @else if (rows().length === 0) {
-      <vk-empty
-        [message]="
-          onlyNew()
-            ? 'Every upload in this catalog is already ingested.'
-            : 'This catalog is empty. Sync the channel to fetch its uploads.'
-        "
-      >
-        <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
-      </vk-empty>
+    @if (rows().length === 0) {
+      <!--
+        Which nothing this is comes from the channel, not from the filter. Reading it off
+        `onlyNew()` alone made a channel whose sync had just failed with a yt-dlp 404 report
+        "Every upload in this catalog is already ingested", under the red panel naming the 404.
+        `videoCount` is the unfiltered catalog size, so it separates the two cases exactly.
+      -->
+      @if ((ch.videoCount ?? 0) === 0) {
+        <vk-empty message="This catalog is empty. Sync the channel to fetch its uploads.">
+          <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
+        </vk-empty>
+      } @else if (onlyNew()) {
+        <vk-empty message="Every upload in this catalog is already ingested.">
+          <button class="btn-sm" type="button" (click)="onlyNew.set(false)">Show all {{ ch.videoCount }}</button>
+        </vk-empty>
+      } @else {
+        <vk-empty message="Nothing on this page." />
+      }
     } @else {
       <div class="table-scroll">
         <table class="grid" translate="no">
@@ -75,8 +126,13 @@
             <tr>
               <th scope="col" class="pick"><span class="sr-only">Selected</span></th>
               <th scope="col">Title</th>
-              <th scope="col" class="num">Published</th>
-              <th scope="col">State</th>
+              @if (showPublished()) {
+                <th scope="col" class="num">Published</th>
+              }
+              <!-- With the filter on every row reads "new", so the column repeats the checkbox. -->
+              @if (!onlyNew()) {
+                <th scope="col">State</th>
+              }
               <th scope="col"><span class="sr-only">Link</span></th>
             </tr>
           </thead>
@@ -84,7 +140,6 @@
             @for (video of rows(); track video.id) {
               <tr [class.on]="isPicked(video)">
                 <td class="pick">
-                  <label class="sr-only" [attr.for]="'pick-' + video.id">Select {{ video.title }}</label>
                   <input
                     [id]="'pick-' + video.id"
                     type="checkbox"
@@ -93,9 +148,19 @@
                     (change)="toggle(video)"
                   />
                 </td>
-                <td class="truncate" [title]="video.title">{{ video.title }}</td>
-                <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
-                <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>
+                <!--
+                  The title is the checkbox's label, so the whole cell is the target. A 13px box
+                  in a 32px row was the only way to pick a video, fifty times over.
+                -->
+                <td class="pickable truncate" [title]="video.title">
+                  <label [attr.for]="'pick-' + video.id">{{ video.title }}</label>
+                </td>
+                @if (showPublished()) {
+                  <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
+                }
+                @if (!onlyNew()) {
+                  <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>
+                }
                 <td><a class="mono sm" [href]="video.watchUrl" target="_blank" rel="noopener">watch ↗</a></td>
               </tr>
             }

@@ -7,7 +7,8 @@ import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { Ingest, parseUrls, rejectsOf } from './ingest';
-import { HealthService, ItemResultStatusEnum, PipelinesService } from '../../api/generated';
+import { ItemResultStatusEnum, PipelinesService } from '../../api/generated';
+import { OPTIONAL_PHASES } from '../../core/domain';
 
 describe('rejectsOf', () => {
   it('keeps only the declined items', () => {
@@ -16,12 +17,20 @@ describe('rejectsOf', () => {
         runId: 'r1',
         items: [
           { url: 'https://a', status: ItemResultStatusEnum.Accepted },
-          { url: 'https://b', status: ItemResultStatusEnum.Rejected, reason: 'run item is already running' },
+          {
+            url: 'https://b',
+            status: ItemResultStatusEnum.Rejected,
+            reason: 'run item is already running',
+          },
           { url: 'https://c', status: ItemResultStatusEnum.Rejected },
         ],
       }),
     ).toEqual([
-      { url: 'https://b', status: ItemResultStatusEnum.Rejected, reason: 'run item is already running' },
+      {
+        url: 'https://b',
+        status: ItemResultStatusEnum.Rejected,
+        reason: 'run item is already running',
+      },
       { url: 'https://c', status: ItemResultStatusEnum.Rejected },
     ]);
   });
@@ -96,26 +105,36 @@ function stubPipelines(overrides: Record<string, unknown> = {}) {
   const calls: { createRuns: unknown[]; retryRun: unknown[] } = { createRuns: [], retryRun: [] };
   const service = {
     calls,
+    getPipelineCapabilities: () =>
+      of({ enabledPhases: [...OPTIONAL_PHASES], channelSyncLimit: 50 }),
     listRuns: () => of({ items: [], page: 0, size: 5, total: 0 }),
     getRun: () => of(FAILED_RUN),
     auditRun: () => of({ items: [], page: 0, size: 500, total: 0 }),
     createRuns: (request: unknown) => {
       calls.createRuns.push(request);
-      return of({ runId: 'run-1', items: [{ url: 'https://www.youtube.com/watch?v=xxxxxxxxxxx', status: ItemResultStatusEnum.Accepted }] });
+      return of({
+        runId: 'run-1',
+        items: [
+          {
+            url: 'https://www.youtube.com/watch?v=xxxxxxxxxxx',
+            status: ItemResultStatusEnum.Accepted,
+          },
+        ],
+      });
     },
     retryRun: (...args: unknown[]) => {
       calls.retryRun.push(args);
-      return of({ runId: 'run-1', items: [{ url: 'https://a', status: ItemResultStatusEnum.Accepted }] });
+      return of({
+        runId: 'run-1',
+        items: [{ url: 'https://a', status: ItemResultStatusEnum.Accepted }],
+      });
     },
     ...overrides,
   };
   return service;
 }
 
-async function screen(
-  pipelines: ReturnType<typeof stubPipelines>,
-  phases: Record<string, boolean> = { TRANSCRIBE: true, DIARIZE: true, FRAME_SAMPLE: true, OCR: true, FUSE: true, KNOWLEDGE: true, CONTEXT: true },
-) {
+async function screen(pipelines: ReturnType<typeof stubPipelines>) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter([
@@ -124,7 +143,6 @@ async function screen(
       ]),
       provideLocationMocks(),
       { provide: PipelinesService, useValue: pipelines },
-      { provide: HealthService, useValue: { phaseAvailability: () => of({ phases }) } },
     ],
   });
   const fixture = TestBed.createComponent(Host);
@@ -218,7 +236,16 @@ describe('Ingest', () => {
   it('reads the rejects out of a 202 rather than trusting the envelope', async () => {
     const pipelines = stubPipelines({
       retryRun: () =>
-        of({ runId: 'run-1', items: [{ url: 'https://a', status: ItemResultStatusEnum.Rejected, reason: 'run item was cancelled' }] }),
+        of({
+          runId: 'run-1',
+          items: [
+            {
+              url: 'https://a',
+              status: ItemResultStatusEnum.Rejected,
+              reason: 'run item was cancelled',
+            },
+          ],
+        }),
     });
     const { el } = await screen(pipelines);
 
@@ -237,7 +264,11 @@ describe('Ingest', () => {
             new HttpErrorResponse({
               status: 409,
               statusText: 'Conflict',
-              error: { status: 409, title: 'Conflict', detail: 'Only a FAILED run may be retried.' },
+              error: {
+                status: 409,
+                title: 'Conflict',
+                detail: 'Only a FAILED run may be retried.',
+              },
               headers: new HttpHeaders({ 'X-Correlation-Id': 'corr-42' }),
             }),
         ),
@@ -254,7 +285,10 @@ describe('Ingest', () => {
   it('warns about the lines it will leave out rather than counting them at the same weight', async () => {
     const { el } = await screen(stubPipelines());
 
-    type(el, ['https://www.youtube.com/watch?v=xxxxxxxxxxx', 'www.youtube.com/watch?v=TYPO'].join('\n'));
+    type(
+      el,
+      ['https://www.youtube.com/watch?v=xxxxxxxxxxx', 'www.youtube.com/watch?v=TYPO'].join('\n'),
+    );
 
     expect(el.querySelector('.counts')!.textContent).toContain('1 line(s) are not http(s)');
     expect(el.querySelector('.counts')!.classList.contains('warn')).toBe(true);
@@ -263,16 +297,23 @@ describe('Ingest', () => {
   });
 
   it('says which phases this deployment will not run, instead of ticking them', async () => {
-    const { el } = await screen(stubPipelines(), {
-      TRANSCRIBE: true, DIARIZE: false, FRAME_SAMPLE: false, OCR: false, FUSE: true, KNOWLEDGE: false, CONTEXT: true,
-    });
+    const { el } = await screen(
+      stubPipelines({
+        getPipelineCapabilities: () =>
+          of({ enabledPhases: ['TRANSCRIBE', 'FUSE', 'CONTEXT'], channelSyncLimit: 50 }),
+      }),
+    );
 
-    const unavailable = [...el.querySelectorAll('label.chip.unavailable')].map((c) => c.textContent?.trim());
+    const unavailable = [...el.querySelectorAll('label.chip.unavailable')].map((c) =>
+      c.textContent?.trim(),
+    );
     expect(unavailable).toEqual(['DIARIZE', 'FRAME_SAMPLE', 'OCR', 'KNOWLEDGE']);
   });
 
   it('does not report an unanswered list as an empty one', async () => {
-    const { el } = await screen(stubPipelines({ listRuns: () => throwError(() => new HttpErrorResponse({ status: 500 })) }));
+    const { el } = await screen(
+      stubPipelines({ listRuns: () => throwError(() => new HttpErrorResponse({ status: 500 })) }),
+    );
 
     // Nothing at all, not a "Loading…" that never resolves: the panel above is the answer.
     expect(el.querySelector('.quiet')).toBeNull();
@@ -282,13 +323,27 @@ describe('Ingest', () => {
   it('reads the per-URL reasons out of the 400 that carries them, not as a bare HTTP fault', async () => {
     // POST /pipelines answers 400 with a CreatePipelineRunResponse — not a ProblemDetail — when
     // every URL was rejected.
-    const { el } = await screen(stubPipelines({
-      createRuns: () =>
-        throwError(() => new HttpErrorResponse({
-          status: 400,
-          error: { runId: null, items: [{ url: 'https://a', status: ItemResultStatusEnum.Rejected, reason: 'duplicate url in request' }] },
-        })),
-    }));
+    const { el } = await screen(
+      stubPipelines({
+        createRuns: () =>
+          throwError(
+            () =>
+              new HttpErrorResponse({
+                status: 400,
+                error: {
+                  runId: null,
+                  items: [
+                    {
+                      url: 'https://a',
+                      status: ItemResultStatusEnum.Rejected,
+                      reason: 'duplicate url in request',
+                    },
+                  ],
+                },
+              }),
+          ),
+      }),
+    );
 
     type(el, 'https://a');
     press(el, 'button[type=submit]');
@@ -299,10 +354,23 @@ describe('Ingest', () => {
 
   it('gives the recent list a status in words, not only a coloured bar', async () => {
     const pipelines = stubPipelines({
-      listRuns: () => of({
-        items: [{ id: 'run-9', status: 'FAILED', errorCode: 'UPSTREAM_TOOL_FAILURE', error: 'yt-dlp failed', videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', videoTitle: '', createdAt: '2026-08-27T15:43:56.094678Z' }],
-        page: 0, size: 5, total: 1,
-      }),
+      listRuns: () =>
+        of({
+          items: [
+            {
+              id: 'run-9',
+              status: 'FAILED',
+              errorCode: 'UPSTREAM_TOOL_FAILURE',
+              error: 'yt-dlp failed',
+              videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+              videoTitle: '',
+              createdAt: '2026-08-27T15:43:56.094678Z',
+            },
+          ],
+          page: 0,
+          size: 5,
+          total: 1,
+        }),
     });
     const { el } = await screen(pipelines);
 
@@ -316,16 +384,30 @@ describe('Ingest', () => {
 
   it('sends a lane segment to the run screen with the trail filtered to that phase', async () => {
     // A lane needs a segment that actually ran: the CREATED case collapses to one disabled void.
-    const { el, router } = await screen(stubPipelines({
-      getRun: () => of({
-        ...FAILED_RUN,
-        items: [{ ...FAILED_RUN.items[0], failedPhase: 'METADATA' }],
+    const { el, router } = await screen(
+      stubPipelines({
+        getRun: () =>
+          of({
+            ...FAILED_RUN,
+            items: [{ ...FAILED_RUN.items[0], failedPhase: 'METADATA' }],
+          }),
+        auditRun: () =>
+          of({
+            items: [
+              {
+                itemId: 'item-1',
+                attempt: 1,
+                eventType: 'ITEM_PHASE_ENTERED',
+                phase: 'METADATA',
+                occurredAt: '2026-08-27T15:43:56.094678Z',
+              },
+            ],
+            page: 0,
+            size: 500,
+            total: 1,
+          }),
       }),
-      auditRun: () => of({
-        items: [{ itemId: 'item-1', attempt: 1, eventType: 'ITEM_PHASE_ENTERED', phase: 'METADATA', occurredAt: '2026-08-27T15:43:56.094678Z' }],
-        page: 0, size: 500, total: 1,
-      }),
-    }));
+    );
 
     type(el, 'https://www.youtube.com/watch?v=xxxxxxxxxxx');
     press(el, 'button[type=submit]');

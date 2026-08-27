@@ -187,9 +187,30 @@ label {
   border-bottom: 1px solid var(--border);
 }
 
+/*
+  A table wider than its panel scrolls, and says so.
+
+  Below 767px the channel list's own actions sit past the right edge with nothing to suggest it.
+  Right edge only: a table never loads already scrolled, so the left end has nothing to announce.
+  The shadow is `scroll`-attached and sits against the box; the cover is `local` and rides the
+  content, so it reaches the shadow and hides it exactly when there is no more to the right.
+*/
 .table-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  background:
+    linear-gradient(to left, var(--card) 30%, transparent) right center,
+    radial-gradient(
+        farthest-side at 100% 50%,
+        color-mix(in srgb, var(--fg) 22%, transparent),
+        transparent
+      )
+      right center;
+  background-repeat: no-repeat;
+  background-size:
+    40px 100%,
+    14px 100%;
+  background-attachment: local, scroll;
 }
 
 table.grid {
@@ -333,4 +354,108 @@ table.grid th.sp {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+// --- the run a screen just started, watched in place -----------------------
+// Two screens draw it now — ingest and channel detail — and both had it declared locally. What
+// stays with each screen is where the panel sits (ingest makes it a sticky right-hand column);
+// what a lane and a reject look like is the same on both, and is here.
+
+.watch-meta {
+  display: flex;
+  // The row wraps rather than letting the status and the age share a line that cannot hold them:
+  // at 390px that broke "46.2s ago" across two lines, and the age is the number being read.
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.watch-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.watch-items > li {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.watch-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  min-width: 0;
+}
+
+.spine-dot {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 14px;
+  border-radius: 1px;
+}
+
+// Ellipsis from the column it sits in, not from `.truncate`'s fixed 34ch / 18ch cap: it already
+// sits in a track that constrains it, so the cap only ever cut the label shorter than the space
+// available — at 390px to 18 characters, which is `youtube.com/watch…` again.
+.url {
+  min-width: 0;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1199px) {
+  .watch-items {
+    max-height: none;
+  }
+}
+
+// --- a failure on its own row, under the record it belongs to --------------
+// The runs board and the channels list both carry one. `nowrap` cells deny a free-text message
+// the wrap it needs, and its tail is what separates one yt-dlp failure from the next.
+
+// `table.grid td` sets `white-space: nowrap` at (0,1,2); a bare `.fault-row td` is (0,1,1) and
+// loses to it, so the message stayed on one line and ran off the panel. Component styles hid that
+// — Angular's scoping attribute lends the same rule a point it does not have out here.
+table.grid tr.fault-row td {
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-bottom: var(--space-sm);
+}
+
+// It belongs to the row above: that row drops its rule so the two read as one record.
+table.grid tr:has(+ .fault-row) td {
+  border-bottom: 0;
+}
+
+// The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
+// tail off the right edge. Wrap it to the viewport instead: 7rem clears the collapsed 56px rail
+// plus the panel's padding on both sides, which is all the chrome there is below 900px.
+.fault-row vk-fault {
+  display: block;
+  max-width: calc(100vw - 7rem);
+}
+
+/*
+  `vk-fault` caps its own text at 92ch; a bare message does not, and takes the viewport width as a
+  *width* — a table cell that wide pushes the grid past its panel, which is how adding a second row
+  action put Sync and Remove off the right edge of a 1440px screen. Same measure, both fault rows.
+*/
+.fault-row .err {
+  display: block;
+  max-width: min(92ch, calc(100vw - 7rem));
 }

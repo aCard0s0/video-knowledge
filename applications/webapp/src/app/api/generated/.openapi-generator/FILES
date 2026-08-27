@@ -43,7 +43,7 @@ model/page-response-transcription-segment-summary.ts
 model/page-response-video-summary.ts
 model/page-response-youtube-channel-summary.ts
 model/page-response-youtube-channel-video-summary.ts
-model/phase-availability.ts
+model/pipeline-capabilities.ts
 model/readiness-result.ts
 model/regenerate-context-result.ts
 model/regenerate-knowledge-result.ts

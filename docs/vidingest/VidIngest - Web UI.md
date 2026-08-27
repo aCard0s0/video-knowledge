@@ -44,10 +44,10 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 
 | Screen | Endpoints |
 |---|---|
-| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /health/ready`, `/health/ollama`, `/health/phases` |
-| **Channels** | `GET/POST /youtube/channels`, `POST /{id}/sync`, `GET /{id}/videos`, `POST /{id}/pipelines` |
+| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/ollama` |
+| **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos?notIngestedOnly`, `POST /{id}/pipelines`, `GET /pipelines/{runId}`, `/audit`, `GET /pipelines/capabilities` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
-| **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry` |
+| **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `GET /pipelines/capabilities` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
 | **Video detail** | `/detail`, `/file`, `/transcription/segments`, `/ocr/frames`, `/frames/{frameId}/image`, `/multimodal-timeline/page`, `/knowledge`, `/speakers`, `PATCH /speakers/{speakerId}`, `POST /phases/{phase}/run`, `/context/regenerate`, `/knowledge/regenerate` |
 | **Audit feed** | `GET /audit/events?runId&eventType&status&fromDate&toDate&page&size` |
@@ -55,7 +55,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 ## API discovery findings
 
 Measured against the running server on 2026-08-26 (18 runs, 3 videos, 303 audit events),
-not inferred from source. 39 operations, 42 schemas.
+not inferred from source. 40 operations, 42 schemas (39 before `deleteChannel`).
 
 ### 1. Errors are RFC 9457 ProblemDetail, not `ApiErrorResponse`
 
@@ -71,9 +71,9 @@ Titles are a closed set: `Bad request`, `Validation failed` (adds `fields`), `No
 `Conflict`, `Upstream failure` (502), `Internal error`. Every response also carries an
 `X-Correlation-Id` header — that is the log grep key, so the error panel shows it.
 
-**No operation documents any 4xx/5xx** (0 of 39) and no error schema exists in the spec, so the
+**No operation documents any 4xx/5xx** (0 of 40) and no error schema exists in the spec, so the
 generated client types error bodies as `any`. The frontend declares the `ProblemDetail` interface
-by hand; annotating 39 endpoints server-side is not worth it.
+by hand; annotating 40 endpoints server-side is not worth it.
 
 ### 2. `errorCode` is a pipeline field, not an HTTP field
 
@@ -259,28 +259,65 @@ rejects out of either shape.
   in warn rather than the failure ramp: nothing broke, the server declined.
 - `GET /pipelines?live=true` is the cheap poll for the live zone of the runs board.
 
-### 15. Deployment phase toggles were invisible — added `GET /health/phases`
+### 15. A channel catalog has no upload dates, so its order rests on two fallbacks
 
-`vidingest.<phase>.enabled` decides whether an optional phase runs at all, and the compose defaults
-turn **DIARIZE, FRAME_SAMPLE, OCR and KNOWLEDGE off**. Nothing in the API exposed that, so the ingest
-picker rendered all seven ticked and "will run", four of them falsely, and the lane afterwards drew
-those four as hatched voids — which reads as "the operator turned these off".
+`YoutubeChannelVideoSummary.publishedAt` is typed `date-time` and is **null on every row** —
+yt-dlp's `--flat-playlist` emits no upload date for a channel tab, measured 0 of 200 populated on
+a real sync. So the `Published` column is empty for a whole catalog, and the sort falls through to
+its fallbacks every time.
 
-`PhaseAvailabilityService` answers from **`PipelinePhase.applies(ctx)` itself**, with a probe context
-carrying an empty skip set, rather than re-reading the six config beans: that gate is the one thing
-that decides, and a second reader of the same properties drifts the first time a phase grows a
-condition. Every `applies` override reads only its config bean and `ctx.skipped(...)`, so a context
-with no run, item, url or video is safe to hand it.
+Which is what made the screen open on the wrong end. `upsertVideos` keeps existing rows and
+inserts new ones, stamping `createdAt` per row in `@PrePersist` while it saves the discovered list
+in one pass — and yt-dlp lists a channel newest first. So `firstSeenAt` (one timestamp per sync
+batch) orders the batches and `createdAt` **ascending** preserves discovery order inside one.
+Sorting `createdAt` descending, as the original did, reversed each batch: the first sync puts the
+whole catalog in one batch, so page 0 held the fifty *oldest* uploads and the newest was on the
+last page — on the screen whose reason to exist is catching new ones.
 
-```json
-{"phases":{"TRANSCRIBE":true,"DIARIZE":false,"FRAME_SAMPLE":false,"OCR":false,"FUSE":true,"KNOWLEDGE":false,"CONTEXT":true}}
-```
+The catalog is also capped: `vidingest.youtube.sync.playlistLimit=200` becomes `--playlist-end`,
+so "200 in catalog" on a 700-upload channel is a window, not a count.
 
-The dependent-phase gates are mirrored client-side in `core/domain.ts` as `PHASE_REQUIRES` (OCR needs
-FRAME_SAMPLE, DIARIZE needs TRANSCRIBE) — the server skips those silently too, so unticking
-FRAME_SAMPLE while OCR stayed ticked was the same lie one gate over. **A phase the server has off is
-never added to `skipPhases`**: that set records what the *operator* chose, and a retry inherits it as
-a deliberate opt-out.
+### 16. Nothing reached `DISABLED`, so a bad channel was permanent
+
+`YoutubeChannelSyncScheduler` sweeps `findAllByStatusNot(DISABLED)` every half hour, and no
+endpoint ever set `DISABLED`. A mistyped URL therefore sat `ERROR` forever with yt-dlp re-run
+against it on a cron. `DELETE /youtube/channels/{channelId}` answers 204, or 404 for an id that is
+already gone; the discovered catalog follows through the `ON DELETE CASCADE` on
+`vidingest_youtube_channel_videos.channel_id`, and videos already ingested from the channel are
+untouched — they are `vidingest_videos` rows with no FK back.
+
+### 17. `skipPhases` is only half of what a run will do
+
+Every optional phase gates on a `vidingest.<phase>.enabled` property as well as on the request's
+opt-out, and four of them default to `false`. Nothing exposed that, so the phase picker showed all
+seven ticked over "all optional phases enabled" while the server was configured to skip most of
+them — a batch submitted for OCR and knowledge extraction came back with neither and no screen had
+said so.
+
+`GET /pipelines/capabilities` answers with `enabledPhases` and `channelSyncLimit`. It asks the
+phases themselves — `applies(ctx)` against a context that skips nothing isolates the master switch
+— rather than re-reading five config beans, which would drift the first time a phase gained a
+dependency. `core/capabilities.ts` is a root singleton so the screens share one request; it treats
+*unknown* as enabled, because marking a phase unavailable on a failed fetch is a worse lie than the
+one it fixes.
+
+The **dependent**-phase gates are mirrored client-side in `core/domain.ts` as `PHASE_REQUIRES` (OCR
+needs FRAME_SAMPLE, DIARIZE needs TRANSCRIBE) — the server skips those silently too, so unticking
+FRAME_SAMPLE while OCR stayed ticked was the same lie one gate over. The picker separates the two
+causes because the operator can act on only one of them, and spells each out in text rather than in
+a `title` attribute, which is unreachable by touch and by keyboard.
+
+**A phase the server has off is never added to `skipPhases`**: that set records what the *operator*
+chose, and a retry inherits it as a deliberate opt-out.
+
+### 18. A client-side filter over a server page makes the pager lie
+
+`GET /youtube/channels/{id}/videos` takes `notIngestedOnly`. The console filtered its own page
+instead, so the total the pager rendered described a different set from the rows: ingest thirty and
+page 0 showed twenty rows under "1–50 of 200", and a mostly-ingested catalog became four pages of
+near-empty tables. The rows have to be cut before they are counted, which only the query can do —
+`not exists` against `vidingest_videos` on the same `(source, sourceVideoId)` identity that marks
+the rows it leaves out.
 
 ## Design direction
 
@@ -452,11 +489,12 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   and left the operator to find it again on the runs board. Nothing else on the screen is URL state:
   the textarea is a draft and the picker configures the next run, but the run in flight is the thing
   someone would want to reopen. With no `?run` the column falls back to the last five runs.
-- **A ticked phase chip means the phase will run.** The picker reads `GET /health/phases` (finding
-  15) and renders what the deployment has off as struck-through and unpickable, with the reason in
-  text rather than in a `title` no touch device can reach — and it does the same for a phase whose
-  upstream the operator just unticked. The other two screens carrying a picker pass no `disabled`
-  list, so they are unchanged.
+- **A ticked phase chip means the phase will run.** The picker reads `GET /pipelines/capabilities`
+  (finding 17) and renders what the deployment has off as struck-through and unpickable, with the
+  reason in text rather than in a `title` no touch device can reach — and it does the same for a
+  phase whose upstream the operator just unticked. It injects the shared singleton rather than
+  taking a list as an input, so channel detail and run detail draw the identical picker without
+  each having to fetch and thread the answer through.
 - **The recent-runs column says what happened, in words.** Status was a 3px coloured bar with
   `aria-hidden`, so five FAILED runs read as five unremarkable rows; `errorCode` and `error` are on
   every `RunSummary` and neither was rendered at all. Labels go through `shortUrl` (`core/url.ts`),
@@ -552,6 +590,43 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   the active item already shows. No screen has to publish a title to the shell.
 - **Adding a channel syncs it.** A new channel used to sit `NEW` with an empty catalog until the
   operator noticed the Sync button or the half-hour scheduler ran, which made Add look inert.
+- **A link out to what the channel produced.** `GET /videos` already filters on `channelName` and
+  the videos screen already reads `?channel=`; only the link from the channel was missing.
+- **A channel can be removed.** Add was one-way: the only escape hatch a mistyped URL had was the
+  `DISABLED` status, which nothing set and no endpoint reached, so the row stayed `ERROR` while the
+  scheduler re-ran yt-dlp against it forever (finding 16). Remove sits beside Sync on the list,
+  behind a confirm that says what goes — the catalog — and what does not: the videos already
+  ingested from it.
+- **Starting a channel batch does not dead-end either.** It used to leave `Run started for N
+  video(s)` and a link, which is the dead end ingest had already been given lanes to fix — and the
+  N was `items.length`, so videos the server *refused* were counted as started. The panel now reads
+  `1 accepted · 1 rejected`, watches the run in place through the same `core/watch-run.ts` that
+  feeds ingest and run detail, and hands the refusals to `vk-rejects`. Warn rather than the failure
+  ramp, and labelled `not started` rather than `not retried`: a video declined here is not
+  something the operator can fix, because the URL came from the stored catalog and not from a box
+  they typed into.
+- **The channel screen is one screen wide.** The ingest CTA sat ~1000px below the fold on a
+  fifty-row page — tick a box at the top, scroll a full screen to press it, with the selection
+  count out of sight the whole time it was being built — so the panel is `position: sticky` against
+  the bottom edge. The picking target went with it: the title cell is the checkbox's `<label>`,
+  because a 13×13px box in a 32px row was the only way to choose a video, fifty times over.
+- **Columns that say nothing are not drawn.** `Published` is empty for a whole catalog (finding
+  15), so it appears only when a row on the page actually carries a date; `State` reads `new` on
+  every row while "not ingested only" is ticked, so it appears only when the filter is off. The
+  catalog count says `(newest 200 only)` when it has hit `channelSyncLimit`, because a full
+  catalog is a window and not the channel's size.
+- **A failure gets a row, not a column.** The channel's `lastError` was clipped to a line — about
+  three quarters of it hidden behind a `title` no touch device can reach, the arrangement the
+  readiness checks were moved out of — and wrapping it in place made a twenty-line tower in a 14ch
+  column at 390px. It now takes a full-width row under its channel, the shape the runs board
+  already gives a run's error, capped at the same 92ch. **The shared rule needs
+  `table.grid tr.fault-row td`**: `table.grid td` sets `white-space: nowrap` at (0,1,2) and a bare
+  `.fault-row td` loses to it. Component styles hide that — Angular's scoping attribute lends the
+  same selector a point it does not have in `styles.scss`.
+- **An empty catalog says it is empty.** The empty state branched on the "not ingested only"
+  filter, which defaults on, so a channel whose sync had just failed with a yt-dlp 404 reported
+  `Every upload in this catalog is already ingested` — directly under the red panel naming the 404.
+  Nothing on the page with the filter off means no uploads, not that they all ran.
 
 ### The phase lane
 

@@ -380,6 +380,22 @@ public class PipelineService {
     }
 
     /**
+     * Whether this instance is holding any ingestion work at all — running or queued behind the
+     * gate.
+     *
+     * <p>The set empties in the submitted task's outermost {@code finally}, which is the last
+     * thing to run after {@link #runPipelineRunItem} has released its lease. That ordering is why
+     * this, and not a run's status, is the honest answer to "is the pipeline finished writing?":
+     * {@code refreshRunState} makes a run terminal *before* the lease release writes to
+     * {@code vidingest_pipeline_run_items} again, so a caller that stops at COMPLETED is still
+     * racing a write. The integration tests wipe those tables between methods and deadlocked
+     * against exactly that window.
+     */
+    public boolean hasWorkInFlight() {
+        return !ownedItemIds.isEmpty();
+    }
+
+    /**
      * Keeps this instance's leases alive while it is executing items. Lives here because this is
      * where both halves already are — the in-flight set and the lease service. The interval must
      * stay well below {@code vidingest.lease.ttl}; the defaults leave a 5x margin, so several

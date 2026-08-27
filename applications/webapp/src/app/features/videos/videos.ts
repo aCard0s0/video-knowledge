@@ -38,7 +38,7 @@ export class Videos {
   private readonly actionFailure = signal<ApiFailure | null>(null);
 
   constructor() {
-    syncQueryParams({ status: this.status, channel: this.channel, page: this.page }, { status: 'ALL' });
+    syncQueryParams({ status: this.status, channel: this.channel, page: this.page });
     // Deleting the only row on the last page leaves this page past the end of the list.
     clampPage(this.page, PAGE_SIZE, this.list);
   }

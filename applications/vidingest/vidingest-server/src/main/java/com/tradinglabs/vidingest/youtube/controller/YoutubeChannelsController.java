@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,6 +60,15 @@ public class YoutubeChannelsController {
         return youtubeChannels.getChannel(channelId);
     }
 
+    @DeleteMapping("/{channelId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(operationId = "deleteChannel", summary = "Stop tracking a YouTube channel",
+            description = "Removes the channel and its discovered catalog. Videos already ingested from it are kept.")
+    public void delete(@PathVariable UUID channelId) {
+        log.info("REST delete YouTube channel: channelId={}", channelId);
+        youtubeChannels.deleteChannel(channelId);
+    }
+
     @PostMapping("/{channelId}/sync")
     @ResponseStatus(HttpStatus.OK)
     @Operation(operationId = "syncChannel", summary = "Sync a YouTube channel now", description = "Refreshes the stored list of available videos for the channel using yt-dlp.")
@@ -72,9 +82,10 @@ public class YoutubeChannelsController {
     public PageResponse<YoutubeChannelVideoSummary> listVideos(
             @PathVariable UUID channelId,
             @RequestParam(name = "page", required = false) Integer page,
-            @RequestParam(name = "size", required = false) Integer size
+            @RequestParam(name = "size", required = false) Integer size,
+            @RequestParam(name = "notIngestedOnly", required = false) Boolean notIngestedOnly
     ) {
-        return youtubeChannels.listChannelVideos(channelId, page, size);
+        return youtubeChannels.listChannelVideos(channelId, page, size, notIngestedOnly);
     }
 
     @PostMapping("/{channelId}/pipelines")

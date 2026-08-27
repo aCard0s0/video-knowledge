@@ -1,8 +1,11 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { PhasePicker } from './phase-picker';
+import { PipelinesService } from '../api/generated';
+import { OPTIONAL_PHASES } from '../core/domain';
 
 /**
  * A ticked chip claims the phase will run. These are the two ways that used to be false with the
@@ -11,21 +14,33 @@ import { PhasePicker } from './phase-picker';
 @Component({
   selector: 'vk-test-host',
   imports: [PhasePicker],
-  template: '<vk-phase-picker [(skipped)]="skipped" [disabled]="disabled()" />',
+  template: '<vk-phase-picker [(skipped)]="skipped" />',
 })
 class Host {
   readonly skipped = signal<string[]>([]);
-  readonly disabled = signal<string[]>([]);
 }
 
+/**
+ * Which phases the deployment runs arrives through the shared `Capabilities` singleton, which
+ * reads `GET /pipelines/capabilities` — so the stub is the pipelines client, not an input.
+ */
 function picker(disabled: string[] = []) {
-  TestBed.configureTestingModule({});
+  const enabledPhases = OPTIONAL_PHASES.filter((p) => !disabled.includes(p));
+  TestBed.configureTestingModule({
+    providers: [
+      {
+        provide: PipelinesService,
+        useValue: { getPipelineCapabilities: () => of({ enabledPhases, channelSyncLimit: 50 }) },
+      },
+    ],
+  });
   const fixture = TestBed.createComponent(Host);
-  fixture.componentInstance.disabled.set(disabled);
   TestBed.tick();
   const el = fixture.nativeElement as HTMLElement;
   const chip = (phase: string) =>
-    [...el.querySelectorAll('label.chip')].find((l) => l.textContent?.trim() === phase) as HTMLLabelElement;
+    [...el.querySelectorAll('label.chip')].find(
+      (l) => l.textContent?.trim() === phase,
+    ) as HTMLLabelElement;
   return { fixture, el, chip, host: fixture.componentInstance };
 }
 

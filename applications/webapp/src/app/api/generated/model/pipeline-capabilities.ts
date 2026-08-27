@@ -9,7 +9,8 @@
  */
 
 
-export interface PhaseAvailability { 
-    phases?: { [key: string]: boolean; };
+export interface PipelineCapabilities { 
+    enabledPhases?: Array<string>;
+    channelSyncLimit?: number;
 }
 

@@ -5,9 +5,15 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { CreatePipelineRunResponse, HealthService, ItemResult, ItemResultStatusEnum, PipelinesService, RunItem } from '../../api/generated';
+import {
+  CreatePipelineRunResponse,
+  ItemResult,
+  ItemResultStatusEnum,
+  PipelinesService,
+  RunItem,
+} from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { OptionalPhase, blank, statusVar } from '../../core/domain';
+import { blank, statusVar } from '../../core/domain';
 import { watchRun } from '../../core/watch-run';
 import { absoluteTime, humanAge } from '../../core/time';
 import { shortUrl } from '../../core/url';
@@ -43,7 +49,10 @@ export function parseUrls(raw: string): { valid: string[]; invalid: string[]; du
   const invalid: string[] = [];
   let duplicates = 0;
 
-  for (const line of raw.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)) {
+  for (const line of raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)) {
     const tokens = line.split(/[\s,]+/).filter(Boolean);
     if (!tokens.every((t) => HTTP_URL.test(t))) {
       invalid.push(line);
@@ -62,13 +71,21 @@ export function parseUrls(raw: string): { valid: string[]; invalid: string[]; du
 
 @Component({
   selector: 'vk-ingest',
-  imports: [ReactiveFormsModule, RouterLink, Problem, PhasePicker, Lane, Fault, StatusBadge, Rejects],
+  imports: [
+    ReactiveFormsModule,
+    RouterLink,
+    Problem,
+    PhasePicker,
+    Lane,
+    Fault,
+    StatusBadge,
+    Rejects,
+  ],
   templateUrl: './ingest.html',
   styleUrl: './ingest.scss',
 })
 export class Ingest {
   private readonly pipelines = inject(PipelinesService);
-  private readonly health = inject(HealthService);
   private readonly router = inject(Router);
   protected readonly poller = inject(Poller);
 
@@ -127,22 +144,6 @@ export class Ingest {
   /** When nothing has been started yet, the column shows what was started last instead of nothing. */
   protected readonly recent = rxResource({ stream: () => this.pipelines.listRuns('ALL', 0, 5) });
 
-  /**
-   * Which optional phases this deployment will actually execute.
-   *
-   * Fetched once — it is deployment config, not state, so it cannot change under a session the way
-   * a run can. Without it the picker rendered all seven ticked and "will run" while the compose
-   * defaults have DIARIZE, FRAME_SAMPLE, OCR and KNOWLEDGE off, and the lane then drew them as
-   * phases the *operator* had turned off.
-   */
-  protected readonly availability = rxResource({ stream: () => this.health.phaseAvailability() });
-  protected readonly disabledPhases = computed<OptionalPhase[]>(() => {
-    const phases = valueOf(this.availability)?.phases ?? {};
-    return Object.entries(phases)
-      .filter(([, enabled]) => !enabled)
-      .map(([phase]) => phase as OptionalPhase);
-  });
-
   protected readonly watched = this.watch.detail;
   protected readonly watchedItems = this.watch.items;
   protected readonly lane = this.watch.lane;
@@ -162,7 +163,9 @@ export class Ingest {
     return blank(title) ? shortUrl(url) : title!;
   }
 
-  protected readonly accepted = computed(() => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? []);
+  protected readonly accepted = computed(
+    () => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? [],
+  );
 
   /**
    * Lines that will not run: the ones the server declined, plus the ones this screen never sent.
@@ -177,7 +180,9 @@ export class Ingest {
   /** What the retry declined, out of a 202 that still says ACCEPTED on the envelope. */
   protected readonly retryRejects = signal<ItemResult[]>([]);
   /** Only a FAILED run may be retried — the server answers 409 for anything else. */
-  protected readonly canRetry = computed(() => !this.retrying() && this.watched()?.status === 'FAILED');
+  protected readonly canRetry = computed(
+    () => !this.retrying() && this.watched()?.status === 'FAILED',
+  );
 
   /** "started · 2 accepted" is only true for the run this session started; a reopened one is watched. */
   protected readonly headline = computed(() => {
@@ -235,7 +240,8 @@ export class Ingest {
         // ProblemDetail — when every URL was rejected. Read as an HTTP fault it collapses to
         // "400 Bad Request / Http failure response for …" and throws away the per-URL reasons,
         // which are the entire content of that answer.
-        const body = err instanceof HttpErrorResponse ? (err.error as CreatePipelineRunResponse | null) : null;
+        const body =
+          err instanceof HttpErrorResponse ? (err.error as CreatePipelineRunResponse | null) : null;
         if (body?.items?.length) this.accept(body, notSent);
         else this.actionFailure.set(toApiFailure(err));
         this.submitting.set(false);
@@ -255,7 +261,9 @@ export class Ingest {
     // Everything that did not start stays in the box so it can be fixed and resubmitted — the
     // server's rejects *and* the lines the client never sent. Dropping the latter deleted the
     // operator's typos along with the record that they had ever been pasted.
-    this.urls.setValue([...notSent.map((r) => r.url), ...rejectsOf(response).map((r) => r.url)].join('\n'));
+    this.urls.setValue(
+      [...notSent.map((r) => r.url), ...rejectsOf(response).map((r) => r.url)].join('\n'),
+    );
   }
 
   /**

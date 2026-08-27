@@ -1,40 +1,91 @@
-import { describe, expect, it } from 'vitest';
+import { WritableSignal, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { ActivatedRoute, Router } from '@angular/router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { isDefaultValue } from './url-state';
+import { syncQueryParams } from './url-state';
 
-describe('isDefaultValue', () => {
-  it('treats the empty-ish values as unset when a key declares no default', () => {
-    expect(isDefaultValue('channel', '', {})).toBe(true);
-    expect(isDefaultValue('page', 0, {})).toBe(true);
-    expect(isDefaultValue('live', false, {})).toBe(true);
+/** The last query params `syncQueryParams` asked the router to write. */
+let written: Record<string, string | null>;
+
+function setup(initialUrl: Record<string, string> = {}) {
+  written = {};
+  const navigate = vi.fn((_: unknown[], extras: { queryParams: Record<string, string | null> }) => {
+    written = extras.queryParams;
+    return Promise.resolve(true);
+  });
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: Router, useValue: { navigate } },
+      {
+        provide: ActivatedRoute,
+        useValue: { snapshot: { queryParamMap: { get: (k: string) => initialUrl[k] ?? null } } },
+      },
+    ],
+  });
+}
+
+function sync(state: Record<string, WritableSignal<string | number | boolean>>) {
+  TestBed.runInInjectionContext(() => syncQueryParams(state));
+  TestBed.tick();
+}
+
+describe('syncQueryParams', () => {
+  beforeEach(() => setup());
+
+  it('keeps a signal at its declared value out of the URL', () => {
+    sync({ page: signal(0), status: signal('ALL') });
+    expect(written).toEqual({ page: null, status: null });
   });
 
-  it('keeps anything else a key declares no default for', () => {
-    expect(isDefaultValue('channel', 'LuxAlgo', {})).toBe(false);
-    expect(isDefaultValue('page', 2, {})).toBe(false);
+  /** The regression: a filter that *starts* true has `false` as its interesting state. */
+  it('writes false when the declared default is true', () => {
+    const onlyNew = signal(true);
+    sync({ onlyNew });
+    expect(written['onlyNew']).toBeNull();
+
+    onlyNew.set(false);
+    TestBed.tick();
+    expect(written['onlyNew']).toBe('false');
   });
 
-  it('keeps a screen default that is a real value out of the URL', () => {
-    // Three screens shipped writing one of these on load, with nothing chosen.
-    expect(isDefaultValue('sortBy', 'createdAt', { sortBy: 'createdAt' })).toBe(true);
-    expect(isDefaultValue('pane', 'transcript', { pane: 'transcript' })).toBe(true);
-    expect(isDefaultValue('status', 'ALL', { status: 'ALL' })).toBe(true);
+  it('writes true when the declared default is false', () => {
+    const live = signal(false);
+    sync({ live });
+    expect(written['live']).toBeNull();
+
+    live.set(true);
+    TestBed.tick();
+    expect(written['live']).toBe('true');
   });
 
-  it('still writes the value the operator actually chose', () => {
-    expect(isDefaultValue('sortBy', 'updatedAt', { sortBy: 'createdAt' })).toBe(false);
-    expect(isDefaultValue('pane', 'frames', { pane: 'transcript' })).toBe(false);
-    expect(isDefaultValue('status', 'FAILED', { status: 'ALL' })).toBe(false);
+  /** 'ALL' used to be hardcoded as empty-ish; it is a status chip on two screens, not a concept. */
+  it('does not treat ALL as universally empty', () => {
+    const eventType = signal('');
+    sync({ eventType });
+    expect(written['eventType']).toBeNull();
+
+    eventType.set('ALL');
+    TestBed.tick();
+    expect(written['eventType']).toBe('ALL');
   });
 
-  it('does not let the empty-ish rule swallow a false that is the choice', () => {
-    // `onlyNew` starts true, so false is what the operator picked — and it is the one value a
-    // shared link has to carry. A declared default is exhaustive for its key.
-    expect(isDefaultValue('onlyNew', true, { onlyNew: true })).toBe(true);
-    expect(isDefaultValue('onlyNew', false, { onlyNew: true })).toBe(false);
+  it('reads a boolean back off the URL', () => {
+    setup({ onlyNew: 'false' });
+    const onlyNew = signal(true);
+    sync({ onlyNew });
+    expect(onlyNew()).toBe(false);
   });
 
-  it('no longer treats ALL as universally empty — it is a status chip, not a concept', () => {
-    expect(isDefaultValue('eventType', 'ALL', {})).toBe(false);
+  it('takes the declared value as the default even when the URL disagrees on entry', () => {
+    setup({ page: '3' });
+    const page = signal(0);
+    sync({ page });
+    expect(page()).toBe(3);
+    expect(written['page']).toBe('3');
+
+    page.set(0);
+    TestBed.tick();
+    expect(written['page']).toBeNull();
   });
 });

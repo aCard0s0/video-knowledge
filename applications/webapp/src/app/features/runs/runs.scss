@@ -30,30 +30,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The reason a run stopped, in a full-width row under it rather than a ninth column. `error` is
-   free text and the useful part is its tail, so it needs the width and the wrap that the grid's
-   `nowrap` cells deny it. */
-.fault-row td {
-  height: auto;
-  white-space: normal;
-  padding-bottom: var(--space-sm);
-}
-
-/* It belongs to the row above: that row drops its rule so the two read as one record. */
-tr:has(+ .fault-row) td {
-  border-bottom: 0;
-}
-
-/* The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
-   tail — the part that separates one yt-dlp failure from the next — off the right edge. Wrap it to
-   the viewport instead: 7rem clears the collapsed 56px rail plus the panel's padding on both sides,
-   which is all the chrome there is below 900px. On a desktop the message's own 92ch cap is narrower,
-   so this does nothing. */
-.fault-row vk-fault {
-  display: block;
-  max-width: calc(100vw - 7rem);
-}
-
 /* Retry rides the right edge instead of the far end of a table five columns wider than a phone.
    At 390px the grid is 792px, so the button the screen exists for sat 412px past the viewport and
    cost a horizontal scroll per row. `background: inherit` rather than a token, so the row's hover

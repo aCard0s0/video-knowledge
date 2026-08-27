@@ -1,6 +1,6 @@
-package com.tradinglabs.vidingest.health;
+package com.tradinglabs.vidingest.pipeline.controller;
 
-import com.tradinglabs.vidingest.api.health.PhaseAvailability;
+import com.tradinglabs.vidingest.api.pipeline.PipelineCapabilities;
 import com.tradinglabs.vidingest.config.DiarizationConfig;
 import com.tradinglabs.vidingest.config.FrameSamplingConfig;
 import com.tradinglabs.vidingest.config.FusionConfig;
@@ -19,6 +19,7 @@ import com.tradinglabs.vidingest.pipeline.service.phase.OcrPhase;
 import com.tradinglabs.vidingest.pipeline.service.phase.PersistPhase;
 import com.tradinglabs.vidingest.pipeline.service.phase.PipelinePhaseRegistry;
 import com.tradinglabs.vidingest.pipeline.service.phase.TranscribePhase;
+import com.tradinglabs.vidingest.youtube.config.YoutubeSyncProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -30,13 +31,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 /**
- * The availability probe answers from the phases' own {@code applies}, so these assert the two
- * things that separates it from re-reading the config: it reports the deployment toggle, and it
+ * The capabilities endpoint answers from the phases' own {@code applies}, so these assert the two
+ * things that separate it from re-reading the config: it reports the deployment toggle, and it
  * reports it for a run that skips nothing.
+ *
+ * <p>Only the optional phases are reported. METADATA/DOWNLOAD/PERSIST always run and the server
+ * 400s a request that tries to skip them, so listing them here would invite the console's picker
+ * to offer a toggle that cannot be turned off.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class PhaseAvailabilityServiceTest {
+class PipelineCapabilitiesControllerTest {
 
     @Mock private MetadataPhase metadataPhase;
     @Mock private DownloadPhase downloadPhase;
@@ -44,27 +49,39 @@ class PhaseAvailabilityServiceTest {
 
     @Test
     void reportsTheDeploymentToggleForEveryOptionalPhase() {
-        PhaseAvailability result = availability(false);
-
         // The compose defaults: enrichment off, fusion and context on.
-        assertThat(result.phases())
-                .containsEntry(PipelineRunPhase.DIARIZE.name(), false)
-                .containsEntry(PipelineRunPhase.FRAME_SAMPLE.name(), false)
-                .containsEntry(PipelineRunPhase.OCR.name(), false)
-                .containsEntry(PipelineRunPhase.KNOWLEDGE.name(), false)
-                .containsEntry(PipelineRunPhase.FUSE.name(), true)
-                .containsEntry(PipelineRunPhase.CONTEXT.name(), true);
+        assertThat(capabilities(false).enabledPhases())
+                .contains(PipelineRunPhase.FUSE.name(), PipelineRunPhase.CONTEXT.name())
+                .doesNotContain(
+                        PipelineRunPhase.DIARIZE.name(),
+                        PipelineRunPhase.FRAME_SAMPLE.name(),
+                        PipelineRunPhase.OCR.name(),
+                        PipelineRunPhase.KNOWLEDGE.name());
     }
 
     @Test
     void turningTheTogglesOnFlipsEveryAnswer() {
-        assertThat(availability(true).phases()).containsOnlyKeys(
-                        PipelineRunPhase.optionalPhases().stream().map(Enum::name).toArray(String[]::new))
-                .containsValue(true)
-                .doesNotContainValue(false);
+        assertThat(capabilities(true).enabledPhases())
+                .containsExactlyInAnyOrderElementsOf(
+                        PipelineRunPhase.optionalPhases().stream().map(Enum::name).toList());
     }
 
-    private PhaseAvailability availability(boolean enrichmentEnabled) {
+    @Test
+    void neverReportsAMandatoryPhase() {
+        assertThat(capabilities(true).enabledPhases())
+                .doesNotContain(
+                        PipelineRunPhase.METADATA.name(),
+                        PipelineRunPhase.DOWNLOAD.name(),
+                        PipelineRunPhase.PERSIST.name());
+    }
+
+    @Test
+    void carriesTheChannelSyncLimit() {
+        assertThat(capabilities(true).channelSyncLimit())
+                .isEqualTo(new YoutubeSyncProperties().getPlaylistLimit());
+    }
+
+    private PipelineCapabilities capabilities(boolean enrichmentEnabled) {
         // The registry indexes by phase(), so the three mandatory phases have to answer with theirs;
         // nothing else about them is reached — they are never optional, so never probed.
         when(metadataPhase.phase()).thenReturn(PipelineRunPhase.METADATA);
@@ -96,6 +113,6 @@ class PhaseAvailabilityServiceTest {
                 new KnowledgePhase(null, knowledge),
                 new ContextPhase(null, null, search)
         );
-        return new PhaseAvailabilityService(registry).availability();
+        return new PipelineCapabilitiesController(registry, new YoutubeSyncProperties()).get();
     }
 }

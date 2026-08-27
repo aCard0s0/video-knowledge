@@ -42,7 +42,27 @@ import java.util.UUID;
 @Slf4j
 public class YoutubeChannelCommandService {
 
-    private static final Sort DEFAULT_VIDEO_SORT = Sort.by(Sort.Direction.DESC, "publishedAt").and(Sort.by(Sort.Direction.DESC, "createdAt"));
+    /**
+     * Newest upload first, which is the only order the channel screen is for.
+     *
+     * {@code publishedAt} is null on every row a {@code --flat-playlist} discovery produces —
+     * yt-dlp does not emit upload dates for a channel tab — so in practice the two columns behind
+     * it carry the order. {@code firstSeenAt} is one timestamp per sync batch, and {@code createdAt}
+     * is stamped per row in {@code @PrePersist} while {@link #upsertVideos} saves the discovered
+     * list in one ordered pass, and yt-dlp lists newest first. So later batches sort above earlier
+     * ones, and inside a batch the discovery order survives.
+     *
+     * <p>Sorting {@code createdAt} descending reversed each batch instead: on a freshly synced
+     * 200-video catalog every upload arrives in one batch, so page 0 held the *oldest* fifty and
+     * the newest upload was on the last page.
+     *
+     * <p>ponytail: leans on insert order matching discovery order. A stored playlist position is
+     * the upgrade if the sync ever stops saving the list in one ordered pass.
+     */
+    private static final Sort DEFAULT_VIDEO_SORT = Sort.by(
+            Sort.Order.desc("publishedAt").nullsLast(),
+            Sort.Order.desc("firstSeenAt"),
+            Sort.Order.asc("createdAt"));
     private static final int DEFAULT_PAGE_SIZE = 50;
     private static final int MAX_PAGE_SIZE = 200;
 
@@ -93,6 +113,29 @@ public class YoutubeChannelCommandService {
                 .orElseThrow(() -> new YoutubeChannelNotFoundException(channelId));
         long count = youtubeChannelVideoRepository.countByChannel_Id(channelId);
         return youtubeChannelMapper.toSummary(ch, count);
+    }
+
+    /**
+     * Stops tracking a channel.
+     *
+     * <p>The only escape hatch a mistyped URL had was the {@code DISABLED} status, which nothing
+     * sets and no endpoint reaches — so a bad channel sat {@code ERROR} forever while
+     * {@link com.tradinglabs.vidingest.youtube.scheduler.YoutubeChannelSyncScheduler} re-ran
+     * yt-dlp against it every half hour, because that sweep takes every channel that is not
+     * {@code DISABLED}.
+     *
+     * <p>The discovered catalog goes with it through the {@code ON DELETE CASCADE} on
+     * {@code vidingest_youtube_channel_videos.channel_id}. Videos already ingested from the
+     * channel are untouched: they are {@code vidingest_videos} rows with no FK back here, and
+     * removing a channel is how a typo is undone, not how a corpus is wiped.
+     */
+    @Transactional
+    public void deleteChannel(UUID channelId) {
+        if (!youtubeChannelRepository.existsById(channelId)) {
+            throw new YoutubeChannelNotFoundException(channelId);
+        }
+        youtubeChannelRepository.deleteById(channelId);
+        log.info("Deleted YouTube channel: channelId={}", channelId);
     }
 
     /**
@@ -169,19 +212,24 @@ public class YoutubeChannelCommandService {
         return ch;
     }
 
+    /**
+     * @param notIngestedOnly drops rows already ingested <em>before</em> the page is cut, so the
+     *                        total the pager renders describes what the operator can actually see.
+     */
     @Transactional(readOnly = true)
-    public PageResponse<YoutubeChannelVideoSummary> listChannelVideos(UUID channelId, Integer page, Integer size) {
+    public PageResponse<YoutubeChannelVideoSummary> listChannelVideos(
+            UUID channelId, Integer page, Integer size, Boolean notIngestedOnly) {
         if (!youtubeChannelRepository.existsById(channelId)) {
             throw new YoutubeChannelNotFoundException(channelId);
         }
 
         int pageValue = page != null ? Math.max(0, page) : 0;
         int sizeValue = size != null ? Math.clamp(size, 1, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+        var pageable = PageRequest.of(pageValue, sizeValue, DEFAULT_VIDEO_SORT);
 
-        var pageResult = youtubeChannelVideoRepository.findAllByChannel_Id(
-                channelId,
-                PageRequest.of(pageValue, sizeValue, DEFAULT_VIDEO_SORT)
-        );
+        var pageResult = Boolean.TRUE.equals(notIngestedOnly)
+                ? youtubeChannelVideoRepository.findNotIngestedByChannelId(channelId, pageable)
+                : youtubeChannelVideoRepository.findAllByChannel_Id(channelId, pageable);
 
         var ids = pageResult.getContent().stream().map(YoutubeChannelVideo::getYoutubeVideoId).toList();
         Set<String> ingested = ingestedYoutubeVideoIds(ids);

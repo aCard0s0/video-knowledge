@@ -15,7 +15,6 @@ public final class VidIngestApiPaths {
     public static final String HEALTH = API_V1 + "/health";
     public static final String HEALTH_READY = HEALTH + "/ready";
     public static final String HEALTH_OLLAMA = HEALTH + "/ollama";
-    public static final String HEALTH_PHASES = HEALTH + "/phases";
     public static final String YOUTUBE = API_V1 + "/youtube";
     public static final String YOUTUBE_CHANNELS = YOUTUBE + "/channels";
 
@@ -29,6 +28,8 @@ public final class VidIngestApiPaths {
     public static final String VIDEO_TRANSCRIPTION_WHISPER_TXT = VIDEO_TRANSCRIPTION + "/whisper.txt";
     public static final String VIDEO_TRANSCRIPTION_WHISPER_JSON = VIDEO_TRANSCRIPTION + "/whisper.json";
     public static final String VIDEO_CONTEXT_REGENERATE = VIDEO + "/context/regenerate";
+
+    public static final String PIPELINE_CAPABILITIES = PIPELINES + "/capabilities";
 
     public static final String PIPELINE = PIPELINES + "/{runId}";
     public static final String PIPELINE_RETRY = PIPELINE + "/retry";

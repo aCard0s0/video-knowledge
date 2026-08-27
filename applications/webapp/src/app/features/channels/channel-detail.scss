@@ -19,19 +19,21 @@
   gap: var(--space-md);
 }
 
-.sync-error,
-.started {
+.sync-error {
   margin: 0 0 var(--space-md);
   padding: var(--space-sm) var(--space-md);
-}
-
-.sync-error {
   border-color: var(--st-failed-fill);
   overflow-wrap: anywhere;
 }
 
-.started {
+// The run just started. Accent-bordered because it is the thing the operator did, not a fault.
+.watch {
+  margin-bottom: var(--space-md);
   border-color: var(--accent);
+}
+
+.watch .table-scroll {
+  border-top: 1px solid var(--border);
 }
 
 .head-tools {
@@ -73,4 +75,34 @@ input[type='checkbox'] {
   gap: var(--space-lg);
   padding: var(--space-md);
   flex-wrap: wrap;
+}
+
+/*
+  The CTA follows the list instead of sitting under it.
+
+  With fifty rows the panel landed ~1000px below the fold: tick a box at the top, then scroll a
+  full screen to reach the button, with the selection count out of sight the whole time you were
+  building it. Sticky keeps both against the bottom edge while the catalog scrolls past.
+*/
+.ingest {
+  position: sticky;
+  bottom: var(--space-md);
+  z-index: 2;
+  box-shadow: 0 -6px 18px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+/* The title cell is the checkbox's label, so the whole cell is a target, not a 13px box. */
+td.pickable label {
+  display: block;
+  cursor: pointer;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+  color: inherit;
+}
+
+td.pick input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
 }
