@@ -12,7 +12,7 @@ import {
 } from '../../api/generated';
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
 import { humanDuration, timecode } from '../../core/time';
-import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
 import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
@@ -22,6 +22,8 @@ import { Problem } from '../../ui/problem';
 import { syncQueryParams } from '../../core/url-state';
 
 type Pane = 'transcript' | 'frames' | 'fused' | 'knowledge' | 'speakers';
+
+type PaneTab = { key: Pane; label: string; count: () => number; resource: { reload(): void } };
 
 const SEG_SIZE = 50;
 const FRAME_SIZE = 25;
@@ -51,7 +53,7 @@ export class VideoDetail {
 
   protected readonly running = signal<string | null>(null);
   protected readonly lastRun = signal<string | null>(null);
-  protected readonly failure = signal<ApiFailure | null>(null);
+  private readonly actionFailure = signal<ApiFailure | null>(null);
   protected readonly renaming = signal<string | null>(null);
 
   constructor() {
@@ -94,12 +96,20 @@ export class VideoDetail {
     stream: ({ params }) => this.speakersApi.listVideoSpeakers(params.id),
   });
 
-  protected readonly panes: { key: Pane; label: string; count: () => number }[] = [
-    { key: 'transcript', label: 'Transcript', count: () => this.counts()?.transcriptionSegments ?? 0 },
-    { key: 'frames', label: 'OCR frames', count: () => this.counts()?.ocrFrames ?? 0 },
-    { key: 'fused', label: 'Fused timeline', count: () => this.counts()?.multimodalSegments ?? 0 },
-    { key: 'knowledge', label: 'Knowledge', count: () => this.counts()?.knowledgeUnits ?? 0 },
-    { key: 'speakers', label: 'Speakers', count: () => this.counts()?.speakers ?? 0 },
+  /**
+   * The one table of panes: label, count, and the resource behind it. Adding a pane used to mean
+   * four lists — this one, the `Pane` union, the resource itself, and a second `key → resource`
+   * record inside `reloadPane` holding the same five constants, rebuilt on every call.
+   */
+  protected readonly panes: PaneTab[] = [
+    // prettier-ignore
+    { key: 'transcript', label: 'Transcript', count: () => this.counts()?.transcriptionSegments ?? 0, resource: this.segments },
+    { key: 'frames', label: 'OCR frames', count: () => this.counts()?.ocrFrames ?? 0, resource: this.frames },
+    // prettier-ignore
+    { key: 'fused', label: 'Fused timeline', count: () => this.counts()?.multimodalSegments ?? 0, resource: this.fused },
+    // prettier-ignore
+    { key: 'knowledge', label: 'Knowledge', count: () => this.counts()?.knowledgeUnits ?? 0, resource: this.knowledge },
+    { key: 'speakers', label: 'Speakers', count: () => this.counts()?.speakers ?? 0, resource: this.speakers },
   ];
 
   protected readonly optionalPhases = OPTIONAL_PHASES;
@@ -127,15 +137,12 @@ export class VideoDetail {
   protected readonly txtUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.txt`);
   protected readonly jsonUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.json`);
 
-  protected readonly detailFailure = computed(() => {
-    const err = this.detail.error();
-    return err ? toApiFailure(err) : this.failure();
-  });
+  protected readonly failure = computed(() => firstFailure(this.actionFailure, this.detail));
 
-  protected readonly paneFailure = computed(() => {
-    const err = this.segments.error() ?? this.frames.error() ?? this.fused.error() ?? this.knowledge.error() ?? this.speakers.error();
-    return err ? toApiFailure(err) : null;
-  });
+  /** The panes get a panel of their own: which artifact list failed is a different question. */
+  protected readonly paneFailure = computed(() =>
+    firstFailure(this.segments, this.frames, this.fused, this.knowledge, this.speakers),
+  );
 
   protected frameUrl(frameId: string | undefined): string {
     return frameId ? `${API_V1}/frames/${frameId}/image` : '';
@@ -173,7 +180,7 @@ export class VideoDetail {
    */
   protected runPhase(phase: OptionalPhase): void {
     this.running.set(phase);
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.lastRun.set(null);
     this.phases.runVideoPhase(this.videoId(), phase).subscribe({
       next: (result) => {
@@ -194,7 +201,7 @@ export class VideoDetail {
       },
       error: (err: unknown) => {
         this.running.set(null);
-        this.failure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
       },
     });
   }
@@ -202,7 +209,7 @@ export class VideoDetail {
   protected rename(speaker: SpeakerDto, displayName: string): void {
     if (!speaker.id) return;
     this.renaming.set(speaker.id);
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.speakersApi.renameSpeaker(speaker.id, { displayName }).subscribe({
       next: () => {
         this.renaming.set(null);
@@ -210,19 +217,12 @@ export class VideoDetail {
       },
       error: (err: unknown) => {
         this.renaming.set(null);
-        this.failure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
       },
     });
   }
 
   private reloadPane(): void {
-    const byPane: Record<Pane, { reload(): void }> = {
-      transcript: this.segments,
-      frames: this.frames,
-      fused: this.fused,
-      knowledge: this.knowledge,
-      speakers: this.speakers,
-    };
-    byPane[this.pane()].reload();
+    this.panes.find((p) => p.key === this.pane())?.resource.reload();
   }
 }

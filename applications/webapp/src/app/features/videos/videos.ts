@@ -6,7 +6,7 @@ import { VideoSummary, VideosService } from '../../api/generated';
 import { VIDEO_STATUSES, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { Poller } from '../../core/poller';
-import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
@@ -35,7 +35,7 @@ export class Videos {
   /** Two-step delete: the first click arms the row, the second sends it. */
   protected readonly armed = signal<string | null>(null);
   protected readonly deleting = signal(false);
-  protected readonly failure = signal<ApiFailure | null>(null);
+  private readonly actionFailure = signal<ApiFailure | null>(null);
 
   constructor() {
     syncQueryParams({ status: this.status, channel: this.channel, page: this.page });
@@ -57,10 +57,7 @@ export class Videos {
 
   protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
-  protected readonly listFailure = computed(() => {
-    const err = this.list.error();
-    return err ? toApiFailure(err) : this.failure();
-  });
+  protected readonly failure = computed(() => firstFailure(this.actionFailure, this.list));
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
@@ -86,7 +83,7 @@ export class Videos {
       return;
     }
     this.deleting.set(true);
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.videos.deleteVideo(video.id).subscribe({
       next: () => {
         this.deleting.set(false);
@@ -95,7 +92,7 @@ export class Videos {
       },
       error: (err: unknown) => {
         this.deleting.set(false);
-        this.failure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
       },
     });
   }

@@ -2,7 +2,7 @@
   <!-- Before the value branch: reading value() on an errored resource throws, and the guard
        throwing means this branch is never reached. -->
   <h1 class="mono">channel</h1>
-  <vk-problem [failure]="listFailure()" />
+  <vk-problem [failure]="failure()" />
   <a class="mono sm" routerLink="/channels">← all channels</a>
 } @else if (valueOf(channel); as ch) {
   <div class="head">
@@ -25,7 +25,7 @@
     <p class="panel sync-error mono sm failed">{{ ch.lastError }}</p>
   }
 
-  <vk-problem [failure]="listFailure()" />
+  <vk-problem [failure]="failure()" />
 
   @if (started(); as run) {
     <p class="panel started mono sm" aria-live="polite">

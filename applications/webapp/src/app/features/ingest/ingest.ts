@@ -4,16 +4,15 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { CreatePipelineRunResponse, PipelinesService, RunItem } from '../../api/generated';
+import { CreatePipelineRunResponse, PipelinesService } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { isLive, statusVar } from '../../core/domain';
-import { LaneSegment, buildLanes } from '../../core/lane';
-import { auditTail } from '../../core/audit';
+import { statusVar } from '../../core/domain';
+import { watchRun } from '../../core/watch-run';
 import { humanAge } from '../../core/time';
 import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
 import { StatusBadge } from '../../ui/status-badge';
-import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { Problem } from '../../ui/problem';
 import { PhasePicker } from '../../ui/phase-picker';
 
@@ -42,11 +41,9 @@ export class Ingest {
    * "last five runs" column and say nothing at all about why.
    */
   private readonly submitFailure = signal<ApiFailure | null>(null);
-  protected readonly failure = computed(() => {
-    if (this.submitFailure()) return this.submitFailure();
-    const err = this.recent.error() ?? this.watching.error() ?? this.watchingAudit.error();
-    return err ? toApiFailure(err) : null;
-  });
+  protected readonly failure = computed(() =>
+    firstFailure(this.submitFailure, this.recent, this.watch.run, this.watch.audit),
+  );
   protected readonly result = signal<CreatePipelineRunResponse | null>(null);
 
   /** Recomputed on every keystroke so the count and the rejects are visible before submitting. */
@@ -70,41 +67,22 @@ export class Ingest {
    * Watching the run you just started, here. Submitting used to end the screen: the only feedback
    * was a count, and the actual work was one navigation away. Now the accepted items appear below
    * the form as live lanes, so paste → start → watch happens without moving.
+   *
+   * The same helper the run screen uses, so the audit tail and the lane build are fixed in one
+   * place rather than two. Idle until a submit answers: `watchRun` leaves both its resources alone
+   * while the id is undefined.
    */
-  private readonly watching = rxResource({
-    params: () => (this.result()?.runId ? { id: this.result()!.runId! } : undefined),
-    stream: ({ params }) => this.pipelines.getRun(params.id),
-  });
-
-  /**
-   * Same tail fetch as the run screen: a 100-URL batch passes 500 events within minutes, and page 0
-   * of an ascending feed is the *oldest* window — the lanes being watched here are at the end.
-   */
-  private readonly watchingAudit = rxResource({
-    params: () => (this.result()?.runId ? { id: this.result()!.runId! } : undefined),
-    stream: ({ params }) => auditTail(this.pipelines, params.id),
-  });
+  private readonly watch = watchRun(() => this.result()?.runId);
 
   /** When nothing has been started yet, the column shows what was started last instead of nothing. */
   protected readonly recent = rxResource({ stream: () => this.pipelines.listRuns('ALL', 0, 5) });
 
-  protected readonly watched = computed(() => valueOf(this.watching));
-  protected readonly watchedItems = computed<RunItem[]>(() => this.watched()?.items ?? []);
+  protected readonly watched = this.watch.detail;
+  protected readonly watchedItems = this.watch.items;
+  protected readonly lane = this.watch.lane;
   protected readonly recentRuns = computed(() => valueOf(this.recent)?.items ?? []);
 
-  private readonly clock = computed(() =>
-    this.watchedItems().some((i) => isLive(i.status)) ? this.poller.now() : 0,
-  );
-
-  private readonly lanes = computed(() =>
-    buildLanes(this.watchedItems(), valueOf(this.watchingAudit)?.items ?? [], this.clock()),
-  );
-
   protected readonly statusVar = statusVar;
-
-  protected lane(item: RunItem): LaneSegment[] {
-    return this.lanes().get(item.itemId) ?? [];
-  }
 
   protected age(value: string | undefined): string {
     return humanAge(value, this.poller.now());
@@ -115,12 +93,9 @@ export class Ingest {
 
   constructor() {
     this.poller.every(
-      () => (this.watchedItems().some((i) => isLive(i.status)) ? POLL_LIVE : POLL_IDLE),
+      () => (this.watch.live() ? POLL_LIVE : POLL_IDLE),
       () => {
-        if (this.result()?.runId) {
-          this.watching.reload();
-          this.watchingAudit.reload();
-        }
+        if (this.result()?.runId) this.watch.reload();
         this.recent.reload();
       },
     );

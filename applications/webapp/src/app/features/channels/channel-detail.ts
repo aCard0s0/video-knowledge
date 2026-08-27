@@ -6,7 +6,7 @@ import { CreatePipelineRunResponse, YoutubeChannelVideoSummary, YoutubeService }
 import { blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { Poller } from '../../core/poller';
-import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
@@ -35,7 +35,7 @@ export class ChannelDetail {
   protected readonly picked = signal<Set<string>>(new Set());
   protected readonly skipped = signal<string[]>([]);
   protected readonly busy = signal(false);
-  protected readonly failure = signal<ApiFailure | null>(null);
+  private readonly actionFailure = signal<ApiFailure | null>(null);
   protected readonly started = signal<CreatePipelineRunResponse | null>(null);
   protected readonly maxPerRun = MAX_PER_RUN;
 
@@ -62,10 +62,9 @@ export class ChannelDetail {
   protected readonly pickedCount = computed(() => this.picked().size);
   protected readonly overLimit = computed(() => this.pickedCount() > MAX_PER_RUN);
 
-  protected readonly listFailure = computed(() => {
-    const err = this.channel.error() ?? this.videos.error();
-    return err ? toApiFailure(err) : this.failure();
-  });
+  protected readonly failure = computed(() =>
+    firstFailure(this.actionFailure, this.channel, this.videos),
+  );
 
   protected readonly statusVar = statusVar;
   protected readonly valueOf = valueOf;
@@ -104,7 +103,7 @@ export class ChannelDetail {
 
   protected sync(): void {
     this.busy.set(true);
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.youtube.syncChannel(this.channelId()).subscribe({
       next: () => {
         this.busy.set(false);
@@ -113,7 +112,7 @@ export class ChannelDetail {
       },
       error: (err: unknown) => {
         this.busy.set(false);
-        this.failure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
       },
     });
   }
@@ -121,7 +120,7 @@ export class ChannelDetail {
   protected ingest(): void {
     if (this.pickedCount() === 0 || this.overLimit()) return;
     this.busy.set(true);
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.started.set(null);
     this.youtube
       .createRunsFromChannel(this.channelId(), {
@@ -137,7 +136,7 @@ export class ChannelDetail {
         },
         error: (err: unknown) => {
           this.busy.set(false);
-          this.failure.set(toApiFailure(err));
+          this.actionFailure.set(toApiFailure(err));
         },
       });
   }
