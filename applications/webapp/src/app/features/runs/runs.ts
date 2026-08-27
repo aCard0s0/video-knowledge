@@ -36,6 +36,20 @@ export function marker(run: RunSummary): string {
 }
 
 /**
+ * What the retry did, for the line that says so.
+ *
+ * A retry fired under the FAILED chip takes the run out of the filter it was listed under, so the
+ * row disappears — which on its own is indistinguishable from a press that did nothing. Empty when
+ * nothing was queued: the rejects panel and the problem panel are already saying why, and a third
+ * voice repeating "0" adds nothing.
+ */
+export function retrySaid(queued: number, asked: number): string {
+  if (queued === 0) return '';
+  if (queued === asked) return `Queued ${queued} run${queued > 1 ? 's' : ''}.`;
+  return `Queued ${queued} of ${asked} runs.`;
+}
+
+/**
  * A URL with its boilerplate off.
  *
  * The row label truncates at 34ch with an ellipsis on the tail, and a YouTube watch URL spends its
@@ -79,6 +93,14 @@ export class Runs {
   protected readonly statuses = ['ALL', ...RUN_STATUSES];
   protected readonly status = signal('ALL');
   protected readonly page = signal(0);
+  /**
+   * Which age orders the list, and it is the *server* that orders it.
+   *
+   * Sorting the 25 rows in hand would answer "what moved most recently" with "of the 25 oldest-
+   * created, which moved last" — a different question, and wrong in the way that looks right.
+   * `RunQueryService` whitelists the two columns; anything else falls back to `createdAt`.
+   */
+  protected readonly sortBy = signal('createdAt');
   protected readonly size = PAGE_SIZE;
 
   /**
@@ -99,12 +121,13 @@ export class Runs {
   });
 
   protected readonly history = rxResource({
-    params: () => ({ status: this.status(), page: this.page() }),
-    stream: ({ params }) => this.pipelines.listRuns(params.status, params.page, PAGE_SIZE),
+    params: () => ({ status: this.status(), page: this.page(), sortBy: this.sortBy() }),
+    stream: ({ params }) =>
+      this.pipelines.listRuns(params.status, params.page, PAGE_SIZE, undefined, undefined, params.sortBy),
   });
 
   constructor() {
-    syncQueryParams({ status: this.status, page: this.page });
+    syncQueryParams({ status: this.status, page: this.page, sortBy: this.sortBy });
     // Retrying the FAILED runs on a page empties it out from under the FAILED filter.
     clampPage(this.page, PAGE_SIZE, this.history);
     this.poller.every(
@@ -124,6 +147,17 @@ export class Runs {
     ),
   );
   protected readonly historyRuns = computed(() => valueOf(this.history)?.items ?? []);
+  /**
+   * The live runs the history is not already showing.
+   *
+   * Under ALL — the filter the screen opens on — every running run is in both tables, so the same
+   * id sat on screen twice. Matching by id rather than by filter is what makes it exact: a live run
+   * on page 2 is genuinely not below, and PENDING under the IN_PROGRESS chip is not either.
+   */
+  protected readonly liveElsewhere = computed(() => {
+    const below = new Set(this.historyRuns().map((r) => r.id));
+    return this.liveRuns().filter((r) => !below.has(r.id));
+  });
   protected readonly total = computed(() => valueOf(this.history)?.total ?? 0);
   protected readonly failure = computed(
     () => this.retryFailure() ?? firstFailure(this.history, this.running, this.pending),
@@ -154,9 +188,17 @@ export class Runs {
   protected readonly retrying = signal<ReadonlySet<string>>(new Set());
   protected readonly retryFailure = signal<ApiFailure | null>(null);
   protected readonly retryRejects = signal<ItemResult[]>([]);
+  protected readonly retryOutcome = signal('');
 
   protected setStatus(value: string): void {
     this.status.set(value);
+    this.page.set(0);
+  }
+
+  /** Re-ordering the whole list invalidates the page you were on, the same as changing the filter. */
+  protected setSort(value: string): void {
+    if (this.sortBy() === value) return;
+    this.sortBy.set(value);
     this.page.set(0);
   }
 
@@ -207,20 +249,23 @@ export class Runs {
     this.retrying.set(new Set(ids));
     this.retryFailure.set(null);
     this.retryRejects.set([]);
+    this.retryOutcome.set('');
     forkJoin(
       ids.map((id) =>
         this.pipelines.retryRun(id).pipe(
           map((response) => ({
+            queued: (response.items ?? []).some((i) => i.status === 'ACCEPTED'),
             rejects: (response.items ?? []).filter((i) => i.status === 'REJECTED'),
             failure: null as ApiFailure | null,
           })),
-          catchError((err: unknown) => of({ rejects: [] as ItemResult[], failure: toApiFailure(err) })),
+          catchError((err: unknown) => of({ queued: false, rejects: [] as ItemResult[], failure: toApiFailure(err) })),
         ),
       ),
     ).subscribe((results) => {
       this.retrying.set(new Set());
       this.retryRejects.set(results.flatMap((r) => r.rejects));
       this.retryFailure.set(results.find((r) => r.failure)?.failure ?? null);
+      this.retryOutcome.set(retrySaid(results.filter((r) => r.queued).length, ids.length));
       this.running.reload();
       this.pending.reload();
       this.history.reload();

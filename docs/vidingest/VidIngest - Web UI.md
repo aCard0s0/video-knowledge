@@ -135,6 +135,11 @@ Exceptions already typed `date-time`: `YoutubeChannelSummary.lastSyncSuccessAt`,
 `errorCode`, `error`, `videoId`, `channelName`, `videoTitle`, `previousPhase` all come back as
 empty strings. One `blank()` guard keeps empty badges from rendering.
 
+`videoCount` is the numeric equivalent: it counts the **video rows attached to the run**
+(`RunSummaryPageService` groups `findRunVideoPreviews`), not the URLs submitted, so a run that died
+before PERSIST and a COMPLETED run whose video was later deleted both report `0`. The board renders
+that as `—`.
+
 ### 7. No status/phase enums in the spec
 
 Only `KnowledgeUnitType` and `ItemResult.status` are typed as enums; run status, item status,
@@ -232,6 +237,11 @@ rejects out of either shape.
 
 - `?status` on `GET /pipelines` accepts `RunStatus` ∪ `ALL`; an unknown value 400s with the raw
   Java enum message, so the UI offers a fixed set of chips.
+- `?sortBy` accepts `createdAt` (default) or `updatedAt`, descending, and **silently falls back**
+  rather than 400ing: the value reaches `Sort.by` as a JPA property name, so an unknown one would be
+  a 500 from inside the persistence layer and an attacker-chosen one a way to order by — and so
+  probe — any field on the entity. A view preference is not part of what was asked for, so a bad
+  one is ignored rather than failing the request.
 - `202` on exactly three operations: run retry, item retry, channel→pipelines. `POST /pipelines`
   returns `200`. All are treated as fire-then-poll regardless — but **a 202 is not a queue
   receipt**. `PipelineService.enqueueRetryBatch` answers with a per-item verdict, and every item
@@ -423,6 +433,29 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   screen exists for sat 412px past the viewport and cost a horizontal scroll per row; the actions
   column is `position: sticky; right: 0` with a hairline, so what scrolls under it reads as covered
   rather than as mangled data. Inert at any width where the table already fits.
+- **The whole identity cell is the link.** It used to be the eight hex characters alone — 62×17px
+  in a 389px cell, under the 24×24 target minimum — with the label beside it a dead span, so the
+  obvious thing to click did nothing. The id keeps the underline; the label stays `--fg-muted`.
+- **A retry says what it did.** `Queued 3 of 4 runs.` in a `role="status"` line that is always in
+  the DOM, so a screen reader has a region to announce into. Under the FAILED chip a successful
+  retry takes the row out of the filter it was listed under, and a row silently disappearing is
+  indistinguishable from a press that did nothing.
+- **`videoCount` counts videos, so the column says Videos.** `RunSummaryPageService` counts the
+  video rows attached to the run, not the URLs submitted — a run whose video was deleted reports
+  `0`, and most COMPLETED runs on the dev box did. The header names what it is, and none renders as
+  `—` rather than a `0` that reads like a failure.
+- **The live panel never repeats the history.** Under ALL, every running run was in both tables, so
+  the same id sat on screen twice. The panel lists the live runs whose ids are *not* on the history
+  page — matched by id, so a live run on page 2 still shows — and says "Listed in the history below"
+  when that leaves nothing. The count in the head stays either way, because it is status.
+- **Sorting is the server's, and it is two columns.** `GET /pipelines?sortBy=createdAt|updatedAt`,
+  whitelisted in `RunQueryService` because the value becomes a JPA property name. Sorting the 25
+  rows in hand would have answered "what moved most recently" with "of the 25 oldest-created, which
+  moved last" — a different question, and wrong in the way that looks right.
+- **A phone gives up four columns.** PHASE (`—` for every terminal run), CHANNEL, VIDEOS and CREATED
+  hide below 767px, leaving STATUS, RUN, UPDATED and Retry; the live panel keeps PHASE and STARTED,
+  which are the two things it exists to show. The RUN cell wraps id over label rather than forcing
+  them onto one line.
 - **The video screen shows its dossier.** Transcription provider/language/character count,
   artifact counts and the file path fill the column under the player, all from the `/detail`
   response the screen was already fetching.

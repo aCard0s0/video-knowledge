@@ -24,8 +24,8 @@ public class RunSummaryPageService {
     private final RunSummaryMapper runSummaryMapper;
 
     @Transactional(readOnly = true)
-    public PageResponse<RunSummary> list(String status, Integer page, Integer size) {
-        Page<PipelineRun> pageResult = runQueryService.listPipelineRunsPage(status, page, size);
+    public PageResponse<RunSummary> list(String status, Integer page, Integer size, String sortBy) {
+        Page<PipelineRun> pageResult = runQueryService.listPipelineRunsPage(status, page, size, sortBy);
 
         List<PipelineRun> runs = pageResult.getContent();
         List<UUID> runIds = runs.stream()

@@ -2,6 +2,10 @@
 
 <vk-problem [failure]="failure()" />
 <vk-rejects [items]="retryRejects()" />
+<!-- Always in the DOM, so a screen reader has a live region to announce into rather than one that
+     appears with its own text already in it. A retry under the FAILED chip moves the row out of the
+     filter, which on its own looks exactly like nothing having happened. -->
+<p class="retry-said mono muted" role="status">{{ retryOutcome() }}</p>
 
 <section class="panel live">
   <div class="panel-head">
@@ -11,6 +15,10 @@
 
   @if (liveRuns().length === 0) {
     <p class="quiet mono muted">Nothing running. Submitted runs appear here within a couple of seconds.</p>
+  } @else if (liveElsewhere().length === 0) {
+    <!-- The history below is already listing every one of them; repeating the rows here put the
+         same run id on screen twice. The count stays, because it is status. -->
+    <p class="quiet mono muted">Listed in the history below.</p>
   } @else {
     <div class="table-scroll">
       <table class="grid" translate="no">
@@ -20,23 +28,25 @@
             <th scope="col">Status</th>
             <th scope="col">Phase</th>
             <th scope="col">Run</th>
-            <th scope="col">Channel</th>
-            <th scope="col" class="num">Items</th>
+            <th scope="col" class="hide-sm">Channel</th>
+            <th scope="col" class="num hide-sm">Videos</th>
             <th scope="col" class="num">Started</th>
           </tr>
         </thead>
         <tbody>
-          @for (run of liveRuns(); track run.id) {
+          @for (run of liveElsewhere(); track run.id) {
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
               <td class="mono sm">{{ marker(run) }}</td>
               <td>
-                <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-                <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                <a class="run-link" [routerLink]="['/runs', run.id]">
+                  <span class="id mono">{{ run.id?.slice(0, 8) }}</span>
+                  <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                </a>
               </td>
-              <td class="truncate">{{ run.channelName || '—' }}</td>
-              <td class="num">{{ run.videoCount }}</td>
+              <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
+              <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
               <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
             </tr>
           }
@@ -85,12 +95,20 @@
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
             <th scope="col">Status</th>
-            <th scope="col">Phase</th>
+            <th scope="col" class="hide-sm">Phase</th>
             <th scope="col">Run</th>
-            <th scope="col">Channel</th>
-            <th scope="col" class="num">Items</th>
-            <th scope="col" class="num">Created</th>
-            <th scope="col" class="num">Updated</th>
+            <th scope="col" class="hide-sm">Channel</th>
+            <th scope="col" class="num hide-sm">Videos</th>
+            <th scope="col" class="num hide-sm" [attr.aria-sort]="sortBy() === 'createdAt' ? 'descending' : 'none'">
+              <button class="sort mono" type="button" (click)="setSort('createdAt')">
+                Created<span aria-hidden="true">{{ sortBy() === 'createdAt' ? ' ↓' : '' }}</span>
+              </button>
+            </th>
+            <th scope="col" class="num" [attr.aria-sort]="sortBy() === 'updatedAt' ? 'descending' : 'none'">
+              <button class="sort mono" type="button" (click)="setSort('updatedAt')">
+                Updated<span aria-hidden="true">{{ sortBy() === 'updatedAt' ? ' ↓' : '' }}</span>
+              </button>
+            </th>
             <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -99,14 +117,16 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
-              <td class="mono sm">{{ marker(run) }}</td>
+              <td class="mono sm hide-sm">{{ marker(run) }}</td>
               <td>
-                <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-                <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                <a class="run-link" [routerLink]="['/runs', run.id]">
+                  <span class="id mono">{{ run.id?.slice(0, 8) }}</span>
+                  <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
+                </a>
               </td>
-              <td class="truncate">{{ run.channelName || '—' }}</td>
-              <td class="num">{{ run.videoCount }}</td>
-              <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
+              <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
+              <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
+              <td class="num sm hide-sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
               <td class="num sm" [title]="absoluteTime(run.updatedAt)">{{ age(run.updatedAt) }}</td>
               <td class="stick">
                 <span class="row-actions">

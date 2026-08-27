@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasFault, marker, shortUrl } from './runs';
+import { hasFault, marker, retrySaid, shortUrl } from './runs';
 import { RunSummary } from '../../api/generated';
 
 /** The API spells absent as "", never null — every string field on a summary comes back set. */
@@ -96,5 +96,21 @@ describe('shortUrl', () => {
   it('hands back anything URL cannot parse — a half-typed paste is the row you need to read', () => {
     expect(shortUrl('not a url at all')).toBe('not a url at all');
     expect(shortUrl('')).toBe('');
+  });
+});
+
+describe('retrySaid', () => {
+  it('acknowledges a retry whose row leaves the filter it was listed under', () => {
+    expect(retrySaid(1, 1)).toBe('Queued 1 run.');
+    expect(retrySaid(4, 4)).toBe('Queued 4 runs.');
+  });
+
+  it('names both numbers when the server took only some of them', () => {
+    expect(retrySaid(3, 4)).toBe('Queued 3 of 4 runs.');
+  });
+
+  it('says nothing when nothing was queued — the rejects and problem panels already have', () => {
+    expect(retrySaid(0, 4)).toBe('');
+    expect(retrySaid(0, 1)).toBe('');
   });
 });

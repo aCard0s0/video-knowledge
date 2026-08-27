@@ -92,3 +92,74 @@ tr:has(+ .fault-row) td {
   margin-left: auto;
   white-space: nowrap;
 }
+
+/* The whole identity cell is the link. It used to be the eight hex characters alone — 62×17px in a
+   389px cell, under the 24×24 target minimum — with the title beside it a dead span, so the obvious
+   thing to click was the one part that did nothing. */
+.run-link {
+  display: flex;
+  align-items: center;
+  /* Wraps rather than forcing id and label onto one line: on a phone that line is what widened the
+     identifying column past the viewport, and the two stack perfectly well. */
+  flex-wrap: wrap;
+  gap: 0 var(--space-sm);
+  min-height: 24px;
+  text-decoration: none;
+
+  .id {
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 2px;
+  }
+
+  .title {
+    margin-left: 0;
+  }
+
+  &:hover .id {
+    text-decoration-color: var(--fg-muted);
+  }
+}
+
+/* Present even when empty, so it is a live region to announce into rather than one that appears
+   with its text already in place. */
+.retry-said {
+  margin: 0;
+  font-size: var(--fs-sm);
+
+  &:not(:empty) {
+    margin-bottom: var(--space-md);
+  }
+}
+
+/* What a 390px viewport gives up. Four of these five are the ones a phone can least afford: PHASE
+   is `—` for every terminal run, CHANNEL is empty on anything not from a channel sync, VIDEOS is a
+   count the run screen repeats, and CREATED is the older of two ages — UPDATED is the one that
+   answers "is this moving?". They are back the moment there is room. */
+@media (max-width: 767px) {
+  .hide-sm {
+    display: none;
+  }
+}
+
+/* The two sortable headers. A button, not a click handler on the `th`: sorting is an action, and
+   this way it is in the tab order and answers the keyboard for free. It inherits the header's own
+   type so the row still reads as a header row. */
+.sort {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fg);
+  }
+}
+
+th[aria-sort='descending'] .sort {
+  color: var(--fg);
+}
