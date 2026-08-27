@@ -459,3 +459,63 @@ table.grid tr:has(+ .fault-row) td {
   display: block;
   max-width: min(92ch, calc(100vw - 7rem));
 }
+
+// --- route transitions ----------------------------------------------------
+
+/*
+  Navigation animates through the browser's View Transitions API, driven by the router
+  (`withViewTransitions` in app.config.ts). Nothing is imported to do it: a browser without the
+  API navigates instantly, which is the same screen a beat sooner, not a broken one.
+
+  `main` takes a name, which is the whole trick — a named element is lifted *out* of the root
+  snapshot, so `root` ends up holding only the rail. The rail is chrome that survives the
+  navigation; cross-fading it with the page would blink the one thing on screen that did not change.
+*/
+main {
+  view-transition-name: main;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(main),
+  ::view-transition-new(main) {
+    // The UA pairs old and new with `plus-lighter`, which adds the two together: over this
+    // near-black ground the overlap reads as a flash, not a fade.
+    mix-blend-mode: normal;
+  }
+
+  // Out fast, in slower: the operator is waiting on the incoming screen, not the leaving one.
+  ::view-transition-old(main) {
+    animation: vt-leave 90ms ease-in both;
+  }
+
+  ::view-transition-new(main) {
+    animation: vt-enter 160ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+}
+
+// No animation on the pseudo-elements ends the transition on the next frame — an instant cut,
+// which is what "reduce" asks for. A cross-fade is still a fade.
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}
+
+@keyframes vt-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
