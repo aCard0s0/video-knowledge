@@ -72,29 +72,23 @@ export class VideoDetail {
 
   // Each pane fetches only while it is the visible one — undefined params keep a resource idle.
   protected readonly segments = rxResource({
-    params: () =>
-      this.pane() === 'transcript' ? { id: this.videoId(), page: this.page() } : undefined,
+    params: () => (this.pane() === 'transcript' ? { id: this.videoId(), page: this.page() } : undefined),
     stream: ({ params }) => this.videos.listTranscriptionSegments(params.id, params.page, SEG_SIZE),
   });
 
   protected readonly frames = rxResource({
-    params: () =>
-      this.pane() === 'frames' ? { id: this.videoId(), page: this.page() } : undefined,
-    stream: ({ params }) =>
-      this.artifacts.ocrResultsByFramePage(params.id, params.page, FRAME_SIZE),
+    params: () => (this.pane() === 'frames' ? { id: this.videoId(), page: this.page() } : undefined),
+    stream: ({ params }) => this.artifacts.ocrResultsByFramePage(params.id, params.page, FRAME_SIZE),
   });
 
   protected readonly fused = rxResource({
     params: () => (this.pane() === 'fused' ? { id: this.videoId(), page: this.page() } : undefined),
-    stream: ({ params }) =>
-      this.artifacts.multimodalTimelinePage(params.id, params.page, FUSED_SIZE),
+    stream: ({ params }) => this.artifacts.multimodalTimelinePage(params.id, params.page, FUSED_SIZE),
   });
 
   protected readonly knowledge = rxResource({
-    params: () =>
-      this.pane() === 'knowledge' ? { id: this.videoId(), type: this.knowledgeType() } : undefined,
-    stream: ({ params }) =>
-      this.knowledgeApi.listVideoKnowledge(params.id, (params.type || undefined) as never),
+    params: () => (this.pane() === 'knowledge' ? { id: this.videoId(), type: this.knowledgeType() } : undefined),
+    stream: ({ params }) => this.knowledgeApi.listVideoKnowledge(params.id, (params.type || undefined) as never),
   });
 
   protected readonly speakers = rxResource({
@@ -108,36 +102,11 @@ export class VideoDetail {
    * record inside `reloadPane` holding the same five constants, rebuilt on every call.
    */
   protected readonly panes: PaneTab[] = [
-    {
-      key: 'transcript',
-      label: 'Transcript',
-      count: () => this.counts()?.transcriptionSegments ?? 0,
-      resource: this.segments,
-    },
-    {
-      key: 'frames',
-      label: 'OCR frames',
-      count: () => this.counts()?.ocrFrames ?? 0,
-      resource: this.frames,
-    },
-    {
-      key: 'fused',
-      label: 'Fused timeline',
-      count: () => this.counts()?.multimodalSegments ?? 0,
-      resource: this.fused,
-    },
-    {
-      key: 'knowledge',
-      label: 'Knowledge',
-      count: () => this.counts()?.knowledgeUnits ?? 0,
-      resource: this.knowledge,
-    },
-    {
-      key: 'speakers',
-      label: 'Speakers',
-      count: () => this.counts()?.speakers ?? 0,
-      resource: this.speakers,
-    },
+    { key: 'transcript', label: 'Transcript', count: () => this.counts()?.transcriptionSegments ?? 0, resource: this.segments },
+    { key: 'frames', label: 'OCR frames', count: () => this.counts()?.ocrFrames ?? 0, resource: this.frames },
+    { key: 'fused', label: 'Fused timeline', count: () => this.counts()?.multimodalSegments ?? 0, resource: this.fused },
+    { key: 'knowledge', label: 'Knowledge', count: () => this.counts()?.knowledgeUnits ?? 0, resource: this.knowledge },
+    { key: 'speakers', label: 'Speakers', count: () => this.counts()?.speakers ?? 0, resource: this.speakers },
   ];
 
   protected readonly optionalPhases = OPTIONAL_PHASES;
@@ -153,9 +122,7 @@ export class VideoDetail {
    */
   protected readonly KNOWLEDGE_CAP = 200;
   protected readonly knowledgeAll = computed(() => valueOf(this.knowledge) ?? []);
-  protected readonly knowledgeShown = computed(() =>
-    this.knowledgeAll().slice(0, this.KNOWLEDGE_CAP),
-  );
+  protected readonly knowledgeShown = computed(() => this.knowledgeAll().slice(0, this.KNOWLEDGE_CAP));
 
   protected readonly video = computed(() => valueOf(this.detail)?.video);
   protected readonly counts = computed(() => valueOf(this.detail)?.counts);
@@ -164,12 +131,8 @@ export class VideoDetail {
   // Media and artifact URLs are bound straight into <video>, <img> and <a>, bypassing the
   // generated client, so they carry the API prefix themselves.
   protected readonly fileUrl = computed(() => `${API_V1}/videos/${this.videoId()}/file`);
-  protected readonly txtUrl = computed(
-    () => `${API_V1}/videos/${this.videoId()}/transcription/whisper.txt`,
-  );
-  protected readonly jsonUrl = computed(
-    () => `${API_V1}/videos/${this.videoId()}/transcription/whisper.json`,
-  );
+  protected readonly txtUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.txt`);
+  protected readonly jsonUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.json`);
 
   protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.detail));
 

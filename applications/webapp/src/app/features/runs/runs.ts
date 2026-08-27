@@ -87,12 +87,8 @@ export class Runs {
    * falls through to the plain paged list — so asking for live without ids returns everything,
    * COMPLETED runs included. Asking for the two live statuses is the honest question.
    */
-  protected readonly running = rxResource({
-    stream: () => this.pipelines.listRuns('IN_PROGRESS', 0, PAGE_SIZE),
-  });
-  protected readonly pending = rxResource({
-    stream: () => this.pipelines.listRuns('PENDING', 0, PAGE_SIZE),
-  });
+  protected readonly running = rxResource({ stream: () => this.pipelines.listRuns('IN_PROGRESS', 0, PAGE_SIZE) });
+  protected readonly pending = rxResource({ stream: () => this.pipelines.listRuns('PENDING', 0, PAGE_SIZE) });
 
   /**
    * One extra one-row query so the FAILED chip can carry a count: that number is the whole reason
@@ -105,14 +101,7 @@ export class Runs {
   protected readonly history = rxResource({
     params: () => ({ status: this.status(), page: this.page(), sortBy: this.sortBy() }),
     stream: ({ params }) =>
-      this.pipelines.listRuns(
-        params.status,
-        params.page,
-        PAGE_SIZE,
-        undefined,
-        undefined,
-        params.sortBy,
-      ),
+      this.pipelines.listRuns(params.status, params.page, PAGE_SIZE, undefined, undefined, params.sortBy),
   });
 
   constructor() {
