@@ -362,6 +362,19 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
 - **The video screen shows its dossier.** Transcription provider/language/character count,
   artifact counts and the file path fill the column under the player, all from the `/detail`
   response the screen was already fetching.
+- **The shell is one nav shape at every width.** The rail carries an inline SVG per section and
+  collapses to `--nav-w-collapsed` (56px, icons only, state in `localStorage`); below 900px it is
+  that rail, because the old wrapping row of labels read as leftovers. The labels drop out on a
+  **container query** over the rail's own width, so the toggle and the breakpoint reach them by
+  one route, and they stay in the DOM as screen-reader text — that is what names an icon-only link.
+- **The status strip says what is broken, where you are, and how stale this is.** The `/health/ready`
+  checks and `/health/ollama` merge into one list: the count reads `1 down` the moment anything is
+  (never `3 ok` while `videoPath` is not writable), the failing checks are named beside it down to
+  560px, and a native `popover` — light dismiss and Esc for free — lists every check with the value
+  the server gave it. Those values used to live in a `title` no touch device and no keyboard could
+  reach. `crumb()` derives `runs / 710a9419` from the URL on detail screens only — a list screen's
+  rail and `h1` already answer "where" — so no screen has to publish a title to the shell. The poll
+  age keeps its pause control at every width (icon-only under 560px).
 - **Adding a channel syncs it.** A new channel used to sit `NEW` with an empty catalog until the
   operator noticed the Sync button or the half-hour scheduler ran, which made Add look inert.
 
@@ -385,6 +398,8 @@ trail to that phase. `CREATED` and `DONE` never appear — they are run markers.
 | Submit stays enabled until the request starts | Ingest and channel-ingest disable submit at zero selection — there is nothing to send, and the count line above says so |
 | Meaningful media needs captions | The transcript pane sits beside the player and seeks it; the API exposes no WebVTT to attach as a `<track>` |
 | Critical fonts preloaded | Fira is self-hosted via `@fontsource` with hashed filenames, so there is no stable href to preload; `font-display: swap` still applies |
+| Dates and durations via `Intl.*` | Ages are `humanDuration` (`4s ago`), not `Intl.RelativeTimeFormat` (`4 seconds ago`) — the gutter is 28px of 11px mono, and the runs board compares hundreds of them |
+| Deep-link all stateful UI | The rail's collapsed state is `localStorage`, not a query param: it describes the operator's chrome, not the screen, and putting it in the URL would ship it in every link they paste |
 
 ## Change checklist
 

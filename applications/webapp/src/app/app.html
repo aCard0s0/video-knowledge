@@ -2,26 +2,52 @@
 
 <!--
   Status gutter: a tmux-style strip, not a dashboard header. Every dependency the pipeline
-  needs, the age of the last poll, and a switch to stop polling — "live" is only claimed while
-  something is actually refreshing.
+  needs, where you are, the age of the last poll, and a switch to stop polling — "live" is only
+  claimed while something is actually refreshing.
+
+  The checks fold into one count because a 28px strip cannot carry their values: `videoPath` is
+  only useful as `not-writable: /data/videos`, and that lived in a `title` no touch device and no
+  keyboard could reach. The popover is where the full report lives.
+
+  The count reports the *failures* the moment there are any — "3 ok" while videoPath is down is
+  the one thing this strip must never say. Which ones are named beside it, until 560px leaves no
+  room for names; the count and its colour survive every width, and the popover is one tap away.
 -->
 <header class="gutter">
-  <div class="deps mono">
-    @if (unreachable()) {
-      <span class="chip bad">server unreachable</span>
-    } @else {
-      @for (check of checks(); track check.name) {
-        <span class="chip" [class.bad]="!check.ok" [title]="check.name + ': ' + check.value">
-          {{ check.name }} {{ check.ok ? 'ok' : 'down' }}
-        </span>
-      }
+  <!-- Polite, because a dependency dying between polls is otherwise a silent change. -->
+  <div class="deps mono" aria-live="polite" translate="no">
+    @if (deps().length) {
+      <button
+        class="deps-btn chip"
+        [class.bad]="badDeps().length > 0"
+        type="button"
+        popovertarget="deps-detail"
+        title="Dependency checks"
+      >
+        <span class="sr-only">dependency checks: </span>
+        @if (badDeps().length) {
+          {{ badDeps().length }} down
+        } @else {
+          {{ okDeps().length }} ok
+        }
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
     }
-    @if (ollama.error()) {
-      <span class="chip bad">ollama probe failed</span>
-    } @else if (ollama.value(); as o) {
-      <span class="chip" [class.bad]="!o.reachable" [title]="o.embedModel ? 'embed model: ' + o.embedModel : ''">
-        {{ ollamaLabel() }}
-      </span>
+    @for (dep of badDeps(); track dep.name) {
+      <span class="chip bad">{{ dep.name }}</span>
+    }
+  </div>
+
+  <!--
+    Only on a detail screen: the id is the part that had nowhere else to live. On a list screen the
+    rail's active item and the page's own h1 already answer "where", and repeating it three times
+    across 28px of strip is noise.
+  -->
+  <div class="where mono">
+    @if (where().leaf; as leaf) {
+      <a [routerLink]="'/' + where().section">{{ where().section }}</a>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="leaf" translate="no">{{ leaf }}</span>
     }
   </div>
 
@@ -31,21 +57,90 @@
     } @else if (poller.paused()) {
       <span class="muted">paused</span>
     } @else {
-      <span class="muted">updated {{ tickLabel() }}</span>
+      <span class="muted"><span class="wide">updated </span>{{ tickLabel() }}</span>
     }
-    <button class="btn-sm" type="button" (click)="poller.toggle()" [attr.aria-pressed]="poller.paused()">
-      {{ poller.paused() ? 'Resume polling' : 'Pause polling' }}
+    <!-- The label collapses to screen-reader-only under 560px; the icon and the title carry it. -->
+    <button
+      class="btn-sm"
+      type="button"
+      (click)="poller.toggle()"
+      [title]="poller.paused() ? 'Resume polling' : 'Pause polling'"
+    >
+      @if (poller.paused()) {
+        <svg class="icon solid" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m6 3 14 9-14 9z" />
+        </svg>
+      } @else {
+        <svg class="icon solid" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+        </svg>
+      }
+      <span class="label">{{ poller.paused() ? 'Resume polling' : 'Pause polling' }}</span>
     </button>
   </div>
 </header>
 
-<div class="frame">
+<!-- Native popover: light dismiss, Esc and top-layer stacking without a line of JS. -->
+<div id="deps-detail" class="deps-pop mono" popover translate="no">
+  @for (dep of deps(); track dep.name) {
+    <p>
+      <span class="dep-name">{{ dep.name }}</span>
+      <span [class.warn]="!dep.ok">{{ dep.detail }}</span>
+    </p>
+  }
+</div>
+
+<div class="frame" [class.collapsed]="collapsed()">
+  <!--
+    One nav shape at every width. The labels drop out below ~120px of rail — a container query, so
+    the collapse toggle and the ≤900px media query reach it by the same route — and they stay in
+    the DOM as screen-reader text, which is what names the link once the icon is all that shows.
+  -->
   <nav aria-label="Sections">
-    <a routerLink="/ingest" routerLinkActive="on">Ingest</a>
-    <a routerLink="/channels" routerLinkActive="on">Channels</a>
-    <a routerLink="/runs" routerLinkActive="on">Runs</a>
-    <a routerLink="/videos" routerLinkActive="on">Videos</a>
-    <a routerLink="/audit" routerLinkActive="on">Audit</a>
+    <a routerLink="/ingest" routerLinkActive="on" title="Ingest">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+      </svg>
+      <span>Ingest</span>
+    </a>
+    <a routerLink="/channels" routerLinkActive="on" title="Channels">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16M5 19h.01" />
+      </svg>
+      <span>Channels</span>
+    </a>
+    <a routerLink="/runs" routerLinkActive="on" title="Runs">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+      </svg>
+      <span>Runs</span>
+    </a>
+    <a routerLink="/videos" routerLinkActive="on" title="Videos">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2" y="6" width="14" height="12" rx="2" />
+        <path d="m16 10.5 6-3.5v10l-6-3.5" />
+      </svg>
+      <span>Videos</span>
+    </a>
+    <a routerLink="/audit" routerLinkActive="on" title="Audit">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+      </svg>
+      <span>Audit</span>
+    </a>
+
+    <button
+      class="nav-toggle"
+      type="button"
+      (click)="toggleNav()"
+      [attr.aria-expanded]="!collapsed()"
+      [title]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+    >
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />
+      </svg>
+      <span>{{ collapsed() ? 'Expand' : 'Collapse' }}</span>
+    </button>
   </nav>
 
   <main id="main" tabindex="-1">

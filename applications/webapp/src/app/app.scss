@@ -1,3 +1,15 @@
+@mixin visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .skip {
   position: absolute;
   left: var(--space-sm);
@@ -20,16 +32,33 @@
   min-height: 100%;
 }
 
+// Every inline icon in the shell: stroke geometry from CSS so the markup carries only the path.
+svg.icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  &.solid {
+    fill: currentcolor;
+    stroke: none;
+  }
+}
+
 .gutter {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-md);
   height: var(--gutter-h);
-  padding: 0 max(var(--space-md), env(safe-area-inset-right)) 0 max(var(--space-md), env(safe-area-inset-left));
+  padding: 0 max(var(--space-md), env(safe-area-inset-right)) 0
+    max(var(--space-md), env(safe-area-inset-left));
   background: var(--card);
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-xs);
@@ -40,12 +69,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  min-width: 0;
+  flex: none;
 }
 
-.deps {
-  overflow-x: auto;
-  scrollbar-width: none;
+.tick {
+  margin-left: auto;
 }
 
 .chip {
@@ -66,18 +94,119 @@
   }
 }
 
+// Carries `.chip` too — the dot and the ok/bad colours are the same ones the named chips use.
+.deps-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px 5px;
+  background: none;
+  border: 1px solid transparent;
+  font: 400 var(--fs-xs) / 1 var(--font-mono);
+
+  &:hover:not(:disabled) {
+    background: var(--muted);
+    border-color: var(--border);
+  }
+}
+
+.deps-btn svg.icon,
+.tick button svg.icon {
+  width: 10px;
+  height: 10px;
+}
+
+// The popover sits in the top layer, so it is anchored to the gutter by hand rather than by DOM
+// order. Overriding `inset` is what stops the UA centring it in the viewport.
+.deps-pop {
+  position: fixed;
+  inset: auto;
+  top: var(--gutter-h);
+  left: max(var(--space-md), env(safe-area-inset-left));
+  margin: 0;
+  padding: var(--space-sm) 0;
+  min-width: 240px;
+  max-width: min(92vw, 420px);
+  overscroll-behavior: contain;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  font-size: var(--fs-xs);
+
+  p {
+    display: flex;
+    gap: var(--space-md);
+    margin: 0;
+    padding: 2px var(--space-md);
+  }
+
+  .dep-name {
+    flex: none;
+    width: 9ch;
+    color: var(--fg-muted);
+  }
+
+  // Paths and model names are long and unbreakable; wrap rather than widen the panel.
+  p span:last-child {
+    overflow-wrap: anywhere;
+  }
+}
+
+// Where you are, from the URL. The section truncates first — the id is the half worth keeping.
+.where {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-muted);
+
+  a {
+    color: var(--fg-muted);
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+      color: var(--fg);
+      text-decoration: underline;
+    }
+  }
+
+  .sep,
+  .leaf {
+    flex: none;
+  }
+
+  .leaf {
+    color: var(--fg);
+  }
+}
+
 .tick button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 6px;
   font-size: var(--fs-xs);
 }
 
 .frame {
+  --nav-now: var(--nav-w);
+
   display: grid;
-  grid-template-columns: var(--nav-w) 1fr;
+  grid-template-columns: var(--nav-now) 1fr;
   align-items: start;
+
+  &.collapsed {
+    --nav-now: var(--nav-w-collapsed);
+  }
 }
 
 nav {
+  container-type: inline-size;
   position: sticky;
   top: var(--gutter-h);
   display: flex;
@@ -86,8 +215,12 @@ nav {
   padding: var(--space-md) var(--space-sm);
   border-right: 1px solid var(--border);
   height: calc(100vh - var(--gutter-h));
+  overflow: hidden;
 
   a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 7px var(--space-sm);
     border-radius: var(--radius);
     border-left: 2px solid transparent;
@@ -113,8 +246,54 @@ nav {
   }
 }
 
+.nav-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: auto;
+  padding: var(--space-sm);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--fg-muted);
+  font: 500 var(--fs-xs) / 1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
+  &:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--muted);
+  }
+
+  svg.icon {
+    transition: transform var(--t-med) ease;
+  }
+}
+
+.frame.collapsed .nav-toggle svg.icon {
+  transform: rotate(180deg);
+}
+
+// One rule for "the rail is too narrow for words", whether the operator collapsed it or the
+// viewport did.
+@container (max-width: 120px) {
+  nav a,
+  .nav-toggle {
+    justify-content: center;
+    gap: 0;
+  }
+
+  nav a span,
+  .nav-toggle span {
+    @include visually-hidden;
+  }
+}
+
 main {
-  padding: var(--space-md) max(var(--space-md), env(safe-area-inset-right)) max(var(--space-md), env(safe-area-inset-bottom))
+  padding: var(--space-md) max(var(--space-md), env(safe-area-inset-right))
+    max(var(--space-md), env(safe-area-inset-bottom))
     max(var(--space-md), env(safe-area-inset-left));
   min-width: 0;
 
@@ -124,17 +303,40 @@ main {
   }
 }
 
+// Below this the rail is icons only and there is nothing to toggle.
 @media (max-width: 900px) {
   .frame {
-    grid-template-columns: 1fr;
+    --nav-now: var(--nav-w-collapsed);
   }
 
-  nav {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+  .nav-toggle {
+    display: none;
+  }
+}
+
+// The strip is 390px wide before the poll control has anywhere to wrap to. The chips naming the
+// failing checks go with it — four of them overflow a 390px strip, and the count keeps their
+// number and their colour.
+@media (max-width: 560px) {
+  // `span.chip`, not `.chip` — the summary button carries that class too, and it is the one
+  // thing on the strip that must survive every width.
+  .deps span.chip {
+    @include visually-hidden;
+  }
+
+  .tick .wide {
+    display: none;
+  }
+
+  .tick .label {
+    @include visually-hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip,
+  nav a,
+  .nav-toggle svg.icon {
+    transition: none;
   }
 }
