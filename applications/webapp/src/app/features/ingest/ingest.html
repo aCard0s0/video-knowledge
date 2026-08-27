@@ -44,15 +44,6 @@
           · over the {{ maxUrls }}-URL limit for one run
         }
       </p>
-
-      @if (parsed().invalid.length) {
-        <!-- Naming them is the point: "3 line(s)" in a 100-line paste is not findable. -->
-        <ul class="not-http mono" translate="no">
-          @for (line of parsed().invalid; track $index) {
-            <li>{{ line }}</li>
-          }
-        </ul>
-      }
     </div>
 
     <div class="field">
@@ -119,23 +110,14 @@
         }
       </p>
 
-      @if (retryRejects().length) {
-        <ul class="retry-rejects mono sm" aria-live="polite">
-          @for (item of retryRejects(); track item.url) {
-            <li>
-              <span class="truncate" [title]="item.url">{{ shortUrl(item.url) || 'run' }}</span>
-              <span class="reason">{{ item.reason }}</span>
-            </li>
-          }
-        </ul>
-      }
+      <vk-rejects [items]="retryRejects()" />
 
       <ul class="watch-items">
         @for (item of watchedItems(); track item.itemId) {
           <li>
             <div class="watch-item-head">
               <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
-              <span class="url" [title]="item.url">{{ label(item) }}</span>
+              <span class="url" [title]="item.url">{{ label(item.videoTitle, item.url) }}</span>
               <vk-status [status]="item.status" />
             </div>
             <!--
@@ -157,7 +139,7 @@
         <a class="mono sm" routerLink="/runs">all runs →</a>
       </div>
 
-      @if (!recentLoaded()) {
+      @if (!recent.hasValue()) {
         <p class="quiet muted">Loading…</p>
       } @else if (recentRuns().length === 0) {
         <p class="quiet muted">Nothing ingested yet. The run you start appears here and keeps advancing.</p>
@@ -167,7 +149,7 @@
             <li>
               <span class="spine-dot" [style.background]="statusVar(run.status)" aria-hidden="true"></span>
               <a class="mono sm" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-              <span class="url" [title]="run.videoTitle || run.videoUrl">{{ label(run) }}</span>
+              <span class="url" [title]="run.videoTitle || run.videoUrl">{{ label(run.videoTitle, run.videoUrl) }}</span>
               <!--
                 The status was a 3px coloured bar and nothing else — aria-hidden, so five FAILED
                 runs read to a screen reader as five unremarkable rows, and to anyone else as five

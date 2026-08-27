@@ -10,6 +10,8 @@ describe('shortUrl', () => {
 
   it('keeps a host that is not www, and any path that is not a watch URL', () => {
     expect(shortUrl('https://vimeo.com/123456789')).toBe('vimeo.com/123456789');
+    // `www.` is a whole label, not a prefix — `wwwtube` keeps its w's.
+    expect(shortUrl('https://wwwtube.example/watch?v=x')).toBe('wwwtube.example/watch?v=x');
     expect(shortUrl('http://media.example.co.uk/a/b.mp4')).toBe('media.example.co.uk/a/b.mp4');
   });
 

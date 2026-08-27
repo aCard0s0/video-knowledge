@@ -157,33 +157,45 @@ export class PhasePicker {
     return this.skippedSet().has(phase);
   }
 
-  /** Why this phase cannot run, or `''` when it can. Empty string so it is falsy in the template. */
-  protected reason(phase: OptionalPhase): string {
-    if (this.disabledSet().has(phase)) return `${phase} is disabled on this server and cannot be enabled per run`;
-    const requires = PHASE_REQUIRES[phase];
-    if (requires && (this.skippedSet().has(requires) || this.disabledSet().has(requires))) {
-      return `${phase} needs ${requires}, which is not running`;
+  /**
+   * Why each phase cannot run, keyed by phase; absent means it can.
+   *
+   * One pass, one place the rule is written. It used to be spelled out twice — once in `reason()`
+   * per chip and once in the two summary computeds — which is two things to keep in step the next
+   * time a phase grows a gate.
+   */
+  private readonly reasons = computed(() => {
+    const out = new Map<OptionalPhase, string>();
+    for (const phase of this.phases) {
+      const requires = PHASE_REQUIRES[phase];
+      if (this.disabledSet().has(phase)) {
+        out.set(phase, `${phase} is disabled on this server and cannot be enabled per run`);
+      } else if (requires && (this.skippedSet().has(requires) || this.disabledSet().has(requires))) {
+        out.set(phase, `${phase} needs ${requires}, which is not running`);
+      }
     }
-    return '';
+    return out;
+  });
+
+  /** Empty string rather than undefined, so it is falsy in the template. */
+  protected reason(phase: OptionalPhase): string {
+    return this.reasons().get(phase) ?? '';
   }
 
   /** What the operator chose, which is a separate thing from what the deployment allows. */
   protected readonly chosen = computed(() => {
     if (this.skipped().length) return `${this.skipped().length} phase(s) skipped for this run`;
-    // "all optional phases enabled" is false the moment the server has any of them off, and it
-    // sat directly above the line saying so.
-    return this.serverOff().length || this.blocked().length
-      ? 'nothing skipped for this run'
-      : 'all optional phases enabled';
+    // "all optional phases enabled" is false the moment anything is unavailable, and it sat
+    // directly above the line saying so.
+    return this.reasons().size ? 'nothing skipped for this run' : 'all optional phases enabled';
   });
 
   protected readonly serverOff = computed(() => this.phases.filter((p) => this.disabledSet().has(p)));
 
   protected readonly blocked = computed(() =>
-    this.phases
-      .filter((p) => !this.disabledSet().has(p))
-      .map((phase) => ({ phase, requires: PHASE_REQUIRES[phase] }))
-      .filter((x) => !!x.requires && (this.skippedSet().has(x.requires) || this.disabledSet().has(x.requires))),
+    [...this.reasons().keys()]
+      .filter((phase) => !this.disabledSet().has(phase))
+      .map((phase) => ({ phase, requires: PHASE_REQUIRES[phase] })),
   );
 
   protected toggle(phase: OptionalPhase): void {

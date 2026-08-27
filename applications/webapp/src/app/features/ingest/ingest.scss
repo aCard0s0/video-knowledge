@@ -26,7 +26,6 @@ textarea {
   // was ~290px of empty box between the operator and the run they had just started; `rows` stays
   // as the fallback where field-sizing is not supported.
   field-sizing: content;
-  min-height: 6lh;
   max-height: 18lh;
 }
 
@@ -34,22 +33,6 @@ textarea {
   margin: var(--space-sm) 0 0;
   font-size: var(--fs-xs);
   color: var(--fg-muted);
-}
-
-// Which lines, not just how many: "3 line(s) are not http(s)" is unfindable in a 100-line paste.
-.not-http {
-  list-style: none;
-  margin: var(--space-xs) 0 0;
-  padding: 0;
-  font-size: var(--fs-xs);
-  color: var(--st-warn);
-
-  // Wrapped, not clipped: naming a bad line is for finding it in a hundred-line paste, and
-  // `.truncate` would cut it at 34ch — usually before the part that is wrong.
-  li {
-    padding: 1px 0;
-    overflow-wrap: anywhere;
-  }
 }
 
 .actions {
@@ -109,25 +92,6 @@ caption {
 .retry {
   margin-left: auto;
   white-space: nowrap;
-}
-
-// What the retry declined. A 202 still answers with REJECTED items, so this is not an error panel —
-// it is the rest of the answer, and it sits with the run it is about.
-.retry-rejects {
-  list-style: none;
-  margin: 0;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border);
-
-  li {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-sm);
-  }
-
-  .reason {
-    color: var(--st-warn);
-  }
 }
 
 .watch-items,

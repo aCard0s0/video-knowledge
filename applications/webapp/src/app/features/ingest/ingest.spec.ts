@@ -10,7 +10,7 @@ import { Ingest, parseUrls, rejectsOf } from './ingest';
 import { HealthService, ItemResultStatusEnum, PipelinesService } from '../../api/generated';
 
 describe('rejectsOf', () => {
-  it('keeps only the declined items, and gives a blank reason something to say', () => {
+  it('keeps only the declined items', () => {
     expect(
       rejectsOf({
         runId: 'r1',
@@ -21,8 +21,8 @@ describe('rejectsOf', () => {
         ],
       }),
     ).toEqual([
-      { url: 'https://b', reason: 'run item is already running' },
-      { url: 'https://c', reason: 'rejected' },
+      { url: 'https://b', status: ItemResultStatusEnum.Rejected, reason: 'run item is already running' },
+      { url: 'https://c', status: ItemResultStatusEnum.Rejected },
     ]);
   });
 
@@ -226,7 +226,7 @@ describe('Ingest', () => {
     press(el, 'button[type=submit]');
     press(el, 'button.retry');
 
-    expect(el.querySelector('.retry-rejects')?.textContent).toContain('run item was cancelled');
+    expect(el.querySelector('vk-rejects')!.textContent).toContain('run item was cancelled');
   });
 
   it('shows a declined retry in full, and never as a bare failure', async () => {
@@ -251,12 +251,12 @@ describe('Ingest', () => {
     const panel = el.querySelector('vk-problem')!.textContent!;
     expect(panel).toContain('Only a FAILED run may be retried.');
   });
-  it('names the lines it will leave out, and warns rather than reporting them as a count', async () => {
+  it('warns about the lines it will leave out rather than counting them at the same weight', async () => {
     const { el } = await screen(stubPipelines());
 
     type(el, ['https://www.youtube.com/watch?v=xxxxxxxxxxx', 'www.youtube.com/watch?v=TYPO'].join('\n'));
 
-    expect(el.querySelector('.not-http')!.textContent).toContain('www.youtube.com/watch?v=TYPO');
+    expect(el.querySelector('.counts')!.textContent).toContain('1 line(s) are not http(s)');
     expect(el.querySelector('.counts')!.classList.contains('warn')).toBe(true);
     // On the field, not in a live region: this changes on every keystroke.
     expect(el.querySelector('#urls')!.getAttribute('aria-describedby')).toBe('url-counts');

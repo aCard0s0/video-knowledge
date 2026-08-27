@@ -5,7 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { CreatePipelineRunResponse, HealthService, ItemResult, PipelinesService, RunItem, RunSummary } from '../../api/generated';
+import { CreatePipelineRunResponse, HealthService, ItemResult, ItemResultStatusEnum, PipelinesService, RunItem } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { OptionalPhase, blank, statusVar } from '../../core/domain';
 import { watchRun } from '../../core/watch-run';
@@ -18,21 +18,14 @@ import { StatusBadge } from '../../ui/status-badge';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { Problem } from '../../ui/problem';
 import { PhasePicker } from '../../ui/phase-picker';
+import { Rejects } from '../../ui/rejects';
 
 const MAX_URLS = 100; // CreatePipelineRunRequest: @Size(max = 100)
 const HTTP_URL = /^https?:\/\//i;
 
-/** A line that will not run, and why — the server's rejects and the client's own, one shape. */
-export interface Reject {
-  url: string;
-  reason: string;
-}
-
 /** The REJECTED items out of either response shape (202 retry, 200 create, 400 create). */
-export function rejectsOf(response: CreatePipelineRunResponse | null): Reject[] {
-  return (response?.items ?? [])
-    .filter((i: ItemResult) => i.status === 'REJECTED')
-    .map((i: ItemResult) => ({ url: i.url ?? '', reason: i.reason ?? 'rejected' }));
+export function rejectsOf(response: CreatePipelineRunResponse | null): ItemResult[] {
+  return (response?.items ?? []).filter((i) => i.status === 'REJECTED');
 }
 
 /**
@@ -69,7 +62,7 @@ export function parseUrls(raw: string): { valid: string[]; invalid: string[]; du
 
 @Component({
   selector: 'vk-ingest',
-  imports: [ReactiveFormsModule, RouterLink, Problem, PhasePicker, Lane, Fault, StatusBadge],
+  imports: [ReactiveFormsModule, RouterLink, Problem, PhasePicker, Lane, Fault, StatusBadge, Rejects],
   templateUrl: './ingest.html',
   styleUrl: './ingest.scss',
 })
@@ -154,13 +147,6 @@ export class Ingest {
   protected readonly watchedItems = this.watch.items;
   protected readonly lane = this.watch.lane;
   protected readonly recentRuns = computed(() => valueOf(this.recent)?.items ?? []);
-  /**
-   * A failed list is not an empty one. `recentRuns()` falls back to `[]` while the resource is
-   * loading *or* errored, so the empty state announced "Nothing ingested yet" over a request that
-   * never answered — reassuring, and false. The panel above names the fault; this stops the panel
-   * below contradicting it.
-   */
-  protected readonly recentLoaded = computed(() => this.recent.hasValue());
 
   protected readonly statusVar = statusVar;
   protected readonly blank = blank;
@@ -172,12 +158,8 @@ export class Ingest {
   }
 
   /** Title first, then the URL with its boilerplate off — never the raw URL, which clips its id. */
-  protected label(run: RunSummary | RunItem): string {
-    return blank(run.videoTitle) ? shortUrl(this.sourceUrl(run)) : run.videoTitle!;
-  }
-
-  private sourceUrl(run: RunSummary | RunItem): string {
-    return (run as RunSummary).videoUrl ?? (run as RunItem).url ?? '';
+  protected label(title: string | undefined, url: string | undefined): string {
+    return blank(title) ? shortUrl(url) : title!;
   }
 
   protected readonly accepted = computed(() => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? []);
@@ -189,11 +171,11 @@ export class Ingest {
    * reasons (blank, not http, duplicate in request) are unreachable from here — so without the
    * client's own list this table never rendered at all, and the discarded lines vanished silently.
    */
-  private readonly notSent = signal<Reject[]>([]);
+  private readonly notSent = signal<ItemResult[]>([]);
   protected readonly rejected = computed(() => [...this.notSent(), ...rejectsOf(this.result())]);
 
   /** What the retry declined, out of a 202 that still says ACCEPTED on the envelope. */
-  protected readonly retryRejects = signal<Reject[]>([]);
+  protected readonly retryRejects = signal<ItemResult[]>([]);
   /** Only a FAILED run may be retried — the server answers 409 for anything else. */
   protected readonly canRetry = computed(() => !this.retrying() && this.watched()?.status === 'FAILED');
 
@@ -238,8 +220,9 @@ export class Ingest {
 
     // Captured before the request: the operator can keep typing while it is in flight, and these
     // are the lines *this* submission left behind.
-    const notSent: Reject[] = this.parsed().invalid.map((url) => ({
+    const notSent: ItemResult[] = this.parsed().invalid.map((url) => ({
       url,
+      status: ItemResultStatusEnum.Rejected,
       reason: 'not http(s) — not sent',
     }));
 
@@ -261,7 +244,7 @@ export class Ingest {
   }
 
   /** Shared by the 200 and the all-rejected 400: both carry the same body. */
-  private accept(response: CreatePipelineRunResponse, notSent: Reject[]): void {
+  private accept(response: CreatePipelineRunResponse, notSent: ItemResult[]): void {
     // Kept even when `runId` is null — that is the all-rejected 400, whose entire content is the
     // per-URL reasons in `items`. The watch panel keys off `runId`, not this, so an empty id simply
     // leaves the column on its recent-runs branch.

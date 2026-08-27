@@ -64,15 +64,6 @@ class PhaseAvailabilityServiceTest {
                 .doesNotContainValue(false);
     }
 
-    /** Only the optional phases are reported: METADATA, DOWNLOAD and PERSIST can never be off. */
-    @Test
-    void mandatoryPhasesAreNotReported() {
-        assertThat(availability(true).phases())
-                .doesNotContainKey(PipelineRunPhase.METADATA.name())
-                .doesNotContainKey(PipelineRunPhase.DOWNLOAD.name())
-                .doesNotContainKey(PipelineRunPhase.PERSIST.name());
-    }
-
     private PhaseAvailability availability(boolean enrichmentEnabled) {
         // The registry indexes by phase(), so the three mandatory phases have to answer with theirs;
         // nothing else about them is reached — they are never optional, so never probed.

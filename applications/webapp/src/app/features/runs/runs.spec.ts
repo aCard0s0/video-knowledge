@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasFault, marker, retrySaid, shortUrl } from './runs';
+import { hasFault, marker, retrySaid } from './runs';
 import { RunSummary } from '../../api/generated';
 
 /** The API spells absent as "", never null — every string field on a summary comes back set. */
@@ -53,21 +53,6 @@ describe('hasFault', () => {
     expect(hasFault(run({ status: 'IN_PROGRESS', errorCode: 'UPSTREAM_TOOL_FAILURE', error: 'transient' }))).toBe(
       false,
     );
-  });
-});
-
-describe('shortUrl', () => {
-  it('drops the 32 characters of boilerplate that made every row look alike', () => {
-    expect(shortUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('youtube.com/watch?v=dQw4w9WgXcQ');
-  });
-
-  it('strips www. only as a prefix, never mid-host', () => {
-    expect(shortUrl('https://wwwtube.example/watch?v=x')).toBe('wwwtube.example/watch?v=x');
-  });
-
-  it('hands back anything URL cannot parse — a half-typed paste is the row you need to read', () => {
-    expect(shortUrl('not a url at all')).toBe('not a url at all');
-    expect(shortUrl('')).toBe('');
   });
 });
 
