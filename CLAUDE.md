@@ -330,7 +330,9 @@ does not mean the work was queued** — the same body carries `REJECTED` items w
 
 **`failedPhase` is not always a phase.** It is `CREATED` for an item reaped while still queued and
 `DONE` on a clean finish, so `LANE_PHASES.indexOf` answers `-1` — call `isLanePhase()` before
-treating it as a position. And **audit `size` is clamped to 500** server-side
+treating it as a position. **Run-level `phase` carries the same two markers**: a run is `CREATED`
+from `RunLifecycleService.create` until METADATA starts and `prepareRetry` writes it back, so it is
+what a run reports right after a retry — the runs board renders that as `queued`, never as a step. And **audit `size` is clamped to 500** server-side
 (`PipelineAuditQueryService.MAX_PAGE_SIZE`) on an **ascending** feed, so page 0 is the oldest
 window and the tail is what the screen needs. The last *page* is not the last *window*: it holds
 `total mod 500` events, so on a 501-event run it holds one, and on a 100-URL run (~2200 events)
