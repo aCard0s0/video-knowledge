@@ -38,11 +38,11 @@ export function auditTail(
       if (last === 0) return of(first);
 
       const from = Math.max(0, last - (AUDIT_MAX_PAGES - 1));
-      const pages: Observable<AuditPage>[] = [];
-      for (let page = from; page <= last; page++) {
-        // Page 0 is already in hand — that request is what said how many pages there are.
-        pages.push(page === 0 ? of(first) : pipelines.auditRun(runId, page, AUDIT_PAGE));
-      }
+      // Page 0, when it is in the window, is already in hand: that request is what said how many
+      // pages there are.
+      const pages = Array.from({ length: last - from + 1 }, (_, i) =>
+        from + i === 0 ? of(first) : pipelines.auditRun(runId, from + i, AUDIT_PAGE),
+      );
       return forkJoin(pages).pipe(
         map((responses) => ({ ...first, items: responses.flatMap((r) => r.items ?? []), total })),
       );

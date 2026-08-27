@@ -240,7 +240,7 @@ public class PipelineService {
      */
     public CreatePipelineRunResponse enqueueRetryItem(UUID runId, UUID itemId, Set<PipelineRunPhase> requestedSkips) {
         PipelineRun run = runLifecycle.getPipelineRun(runId);
-        Set<PipelineRunPhase> skipPhases = requestedSkips != null ? requestedSkips : orEmpty(run.getSkipPhases());
+        Set<PipelineRunPhase> skipPhases = requestedSkips != null ? requestedSkips : run.getSkipPhases();
 
         PipelineRunItem item = pipelineRunItemRepository.findByIdAndPipelineRun_Id(itemId, runId)
                 .orElseThrow(() -> new RunItemNotFoundException(runId, itemId));
@@ -278,11 +278,7 @@ public class PipelineService {
      * no extra query.
      */
     private Set<PipelineRunPhase> resolveSkips(UUID runId, Set<PipelineRunPhase> requestedSkips) {
-        return requestedSkips != null ? requestedSkips : orEmpty(runLifecycle.getPipelineRun(runId).getSkipPhases());
-    }
-
-    private static Set<PipelineRunPhase> orEmpty(Set<PipelineRunPhase> phases) {
-        return phases != null ? phases : Set.of();
+        return requestedSkips != null ? requestedSkips : runLifecycle.getPipelineRun(runId).getSkipPhases();
     }
 
     private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {

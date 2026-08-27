@@ -25,7 +25,7 @@ public class RunLifecycleService {
                 .status(RunStatus.PENDING)
                 .phase(PipelineRunPhase.CREATED)
                 .videoUrl(videoUrl)
-                .skipPhases(skipPhases != null ? skipPhases : Set.of())
+                .skipPhases(skipPhases)
                 .build();
         return pipelineRunRepository.save(run);
     }
@@ -57,7 +57,7 @@ public class RunLifecycleService {
         run.setError(null);
         run.setErrorCode(null);
         run.setPhase(PipelineRunPhase.CREATED);
-        run.setSkipPhases(skipPhases != null ? skipPhases : Set.of());
+        run.setSkipPhases(skipPhases);
         return pipelineRunRepository.save(run);
     }
 

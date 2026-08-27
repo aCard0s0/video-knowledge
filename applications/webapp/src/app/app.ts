@@ -45,13 +45,11 @@ export class App {
     if (this.ready.hasValue()) return this.ready.value() ?? null;
     const err = this.ready.error();
     const body = err instanceof HttpErrorResponse && err.status !== 0 ? err.error : null;
-    // `checks` is what makes it a report: a 503 from a filter or a proxy carries a ProblemDetail or
-    // an HTML page, and neither has anything to show, so both read unreachable.
-    const report = typeof body === 'object' && body !== null && 'checks' in body;
-    return report ? (body as ReadinessResult) : null;
+    return typeof body === 'object' ? (body as ReadinessResult | null) : null;
   });
 
-  protected readonly unreachable = computed(() => !!this.ready.error() && !this.readiness());
+  /** Nothing to report and an error to explain: a 503 ProblemDetail or a proxy's HTML lands here. */
+  protected readonly unreachable = computed(() => !!this.ready.error() && !this.checks().length);
 
   protected readonly checks = computed(() =>
     Object.entries(this.readiness()?.checks ?? {}).map(([name, value]) => ({

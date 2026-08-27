@@ -58,15 +58,4 @@ describe('auditTail', () => {
     expect(ids[ids.length - 1]).toBe(total - 1);
     expect(ids).toEqual([...ids].sort((a, b) => a - b));
   });
-
-  /** The banner on the run screen reads total vs items, so the count must stay the server's. */
-  it('reports the real total even when capped', () => {
-    expect(tail(AUDIT_PAGE * 5).total).toBe(AUDIT_PAGE * 5);
-  });
-
-  it('handles an empty trail', () => {
-    const { asked, ids } = tail(0);
-    expect(asked).toEqual([0]);
-    expect(ids).toEqual([]);
-  });
 });

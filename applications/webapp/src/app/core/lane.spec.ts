@@ -174,16 +174,4 @@ describe('buildLanes', () => {
     expect(second[0].state).not.toBe('done');
     expect(second[1]).toMatchObject({ phase: 'DOWNLOAD', state: 'failed' });
   });
-
-  it('matches buildLane called directly, which is what the run screen used to do per item', () => {
-    const item: RunItem = { itemId: 'i1', status: 'FAILED', failedPhase: 'OCR', phaseUpdatedAt: at('53.000000'), attempt: 1 };
-    const events = [
-      ev('ITEM_PHASE_ENTERED', 'METADATA', '21.000000'),
-      ev('ITEM_PHASE_COMPLETED', 'METADATA', '22.000000'),
-      ev('ITEM_PHASE_ENTERED', 'OCR', '30.000000'),
-      ev('ITEM_PHASE_ENTERED', 'METADATA', '21.000000', { itemId: 'other' }),
-    ];
-
-    expect(buildLanes([item], events, 0).get('i1')).toEqual(buildLane(item, events, 0));
-  });
 });

@@ -2,8 +2,8 @@ package com.tradinglabs.vidingest.pipeline.domain;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
-import lombok.extern.slf4j.Slf4j;
 
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -21,7 +21,6 @@ import java.util.stream.Collectors;
  * and never queried by member. NULL and {@code ''} both mean nothing was skipped, which is what
  * every row written before the column existed meant.
  */
-@Slf4j
 @Converter(autoApply = false)
 public class PhaseSetConverter implements AttributeConverter<Set<PipelineRunPhase>, String> {
 
@@ -36,24 +35,15 @@ public class PhaseSetConverter implements AttributeConverter<Set<PipelineRunPhas
 
     @Override
     public Set<PipelineRunPhase> convertToEntityAttribute(String column) {
-        EnumSet<PipelineRunPhase> phases = EnumSet.noneOf(PipelineRunPhase.class);
         if (column == null || column.isBlank()) {
-            return phases;
+            return EnumSet.noneOf(PipelineRunPhase.class);
         }
-        for (String name : column.split(",")) {
-            String trimmed = name.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            try {
-                phases.add(PipelineRunPhase.valueOf(trimmed));
-            } catch (IllegalArgumentException e) {
-                // A row written by a newer version naming a phase this one does not have. Loud, but
-                // not fatal: failing the read would make every screen that shows the run 500 after
-                // a downgrade, and the run still has to be readable.
-                log.warn("Unknown phase '{}' in skip_phases='{}' — ignoring", trimmed, column);
-            }
-        }
-        return phases;
+        // An unknown name throws, and is meant to: there is one jar, so a new phase constant ships
+        // with the code that writes it, and a value this enum does not have is a corrupt row.
+        return Arrays.stream(column.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .map(PipelineRunPhase::valueOf)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(PipelineRunPhase.class)));
     }
 }

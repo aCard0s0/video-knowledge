@@ -2,7 +2,6 @@ package com.tradinglabs.vidingest.pipeline.domain;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -40,12 +39,5 @@ class PhaseSetConverterTest {
     void writesNullForAnEmptySet() {
         assertThat(converter.convertToDatabaseColumn(Set.of())).isNull();
         assertThat(converter.convertToDatabaseColumn(null)).isNull();
-    }
-
-    /** A name from a newer version must not make the run unreadable after a downgrade. */
-    @Test
-    void ignoresAPhaseNameItDoesNotKnow() {
-        assertThat(converter.convertToEntityAttribute("OCR,TELEPORT,KNOWLEDGE"))
-                .isEqualTo(EnumSet.of(PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE));
     }
 }
