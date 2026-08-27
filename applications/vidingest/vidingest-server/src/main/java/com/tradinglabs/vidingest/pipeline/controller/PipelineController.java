@@ -8,6 +8,7 @@ import com.tradinglabs.vidingest.api.pipeline.RunDetails;
 import com.tradinglabs.vidingest.api.pipeline.RunItemAuditEvent;
 import com.tradinglabs.vidingest.api.pipeline.RunSummary;
 import com.tradinglabs.vidingest.api.pipeline.RetryRunRequest;
+import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.service.PipelineAuditQueryService;
 import com.tradinglabs.vidingest.pipeline.service.PipelineIntakeService;
 import com.tradinglabs.vidingest.pipeline.service.PipelineService;
@@ -27,6 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -75,9 +77,13 @@ public class PipelineController {
             operationId = "retryRun", summary = "Retry a failed run",
             description = "Resets the run state and retries all FAILED run items asynchronously using the same run id."
     )
-    public CreatePipelineRunResponse retry(@PathVariable UUID runId, @Valid @RequestBody RetryRunRequest request) {
-        log.info("REST retry run: {} (skipPhases={})", runId, request.skipPhases());
-        return pipelineService.enqueueRetryBatch(runId, SkipPhasesParser.parse(request.skipPhases()));
+    public CreatePipelineRunResponse retry(
+            @PathVariable UUID runId,
+            @Valid @RequestBody(required = false) RetryRunRequest request
+    ) {
+        Set<PipelineRunPhase> skipPhases = requestedSkips(request);
+        log.info("REST retry run: {} (skipPhases={})", runId, skipPhases != null ? skipPhases : "inherit");
+        return pipelineService.enqueueRetryBatch(runId, skipPhases);
     }
 
     @PostMapping("/{runId}/items/{itemId}/retry")
@@ -86,10 +92,26 @@ public class PipelineController {
     public CreatePipelineRunResponse retryItem(
             @PathVariable UUID runId,
             @PathVariable UUID itemId,
-            @Valid @RequestBody RetryRunRequest request
+            @Valid @RequestBody(required = false) RetryRunRequest request
     ) {
-        log.info("REST retry run item: runId={} itemId={} (skipPhases={})", runId, itemId, request.skipPhases());
-        return pipelineService.enqueueRetryItem(runId, itemId, SkipPhasesParser.parse(request.skipPhases()));
+        Set<PipelineRunPhase> skipPhases = requestedSkips(request);
+        log.info("REST retry run item: runId={} itemId={} (skipPhases={})",
+                runId, itemId, skipPhases != null ? skipPhases : "inherit");
+        return pipelineService.enqueueRetryItem(runId, itemId, skipPhases);
+    }
+
+    /**
+     * The opt-out list this request carried, or {@code null} when it carried none.
+     *
+     * <p>An absent list is not an empty one: absent means "retry the run as it was configured" and
+     * the service reads the run's stored set, while empty means "run every enabled phase". The
+     * distinction has to survive this method, so the parse only happens when there is something to
+     * parse.
+     */
+    private static Set<PipelineRunPhase> requestedSkips(RetryRunRequest request) {
+        return request == null || request.skipPhases() == null
+                ? null
+                : SkipPhasesParser.parse(request.skipPhases());
     }
 
     @GetMapping("/{runId}")

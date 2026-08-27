@@ -148,6 +148,18 @@ claimed. The run-level "only a FAILED run may be retried" gate is separate and a
 `RunLifecycleService.prepareRetry` validates and mutates in one call, so it cannot also be what
 defers the decision, and a retry that accepts nothing must leave the run `FAILED`.
 
+**A run's `skipPhases` is persisted, and on retry absent is not empty.** The set lives on
+`vidingest_pipeline_runs.skip_phases` (`PhaseSetConverter`, one comma-separated column) because
+nothing else records what a run was configured to do — it used to exist only in the in-memory
+`PipelinePhaseContext`, and both retry endpoints take their set from the request body. So a client
+that sent `{"skipPhases": []}` re-enabled every enrichment phase the run had deliberately skipped:
+the runs board did exactly that, and a run created without OCR came back calling paddleocr.
+`PipelineController.requestedSkips` returns `null` for an absent list and `PipelineService`
+resolves that to the run's own set; an empty list stays an explicit "run everything". `prepareRetry`
+writes the effective set back, so the next retry inherits the last attempt and the console's phase
+picker keeps describing the run in front of it. Reconstructing this client-side is impossible —
+a phase after the one that failed was never reached, which no lane can distinguish from skipped.
+
 The executor is virtual-thread-per-task and stays unbounded so shutdown waits only for
 in-flight work; concurrency is capped by a `Semaphore` inside `PipelineService`
 (`vidingest.ingestion.concurrency`, default 4).
@@ -276,15 +288,28 @@ API facts worth not rediscovering: a **FAILED run still reports `phase: "DONE"`*
 `item.failedPhase` — but see below); **`?live=true` on `/pipelines` is only honoured together with
 `ids`** — alone it silently returns every run, so the board queries `status=IN_PROGRESS` and
 `status=PENDING`; **`POST /pipelines` answers 400 with a `CreatePipelineRunResponse` body** (not a
-ProblemDetail) when every URL was rejected; and **a 202 on either retry endpoint does not mean the
-work was queued** — the same body carries `REJECTED` items with a reason ("already running",
-"was cancelled"), so the response is read, never discarded.
+ProblemDetail) when every URL was rejected; **`/health/readiness` answers 503 carrying the full
+`ReadinessResult`**, so the failing response *is* the report (`app.ts` reads the checks out of
+`HttpErrorResponse.error` and says "server unreachable" only on status 0 — treating any error as
+unreachable hid the one line naming the broken dependency); and **a 202 on either retry endpoint
+does not mean the work was queued** — the same body carries `REJECTED` items with a reason
+("already running", "was cancelled"), so the response is read, never discarded.
 
 **`failedPhase` is not always a phase.** It is `CREATED` for an item reaped while still queued and
 `DONE` on a clean finish, so `LANE_PHASES.indexOf` answers `-1` — call `isLanePhase()` before
 treating it as a position. And **audit `size` is clamped to 500** server-side
 (`PipelineAuditQueryService.MAX_PAGE_SIZE`) on an **ascending** feed, so page 0 is the oldest
-window: anything past the cap must fetch the last page or it drops the `ITEM_FAILED`.
+window and the tail is what the screen needs. The last *page* is not the last *window*: it holds
+`total mod 500` events, so on a 501-event run it holds one, and on a 100-URL run (~2200 events)
+taking page 4 alone left ninety items with no events at all — and `buildLane` draws an item with no
+`ITEM_PHASE_ENTERED` as ten hatched "skipped" boxes, so phases that ran reported themselves as
+turned off. `core/audit.ts` takes whole pages from the end (capped at four) and concatenates.
+
+**A page number outlives the list it came from.** Delete the only row on page 2 and the response is
+0 rows with a total of 25, so the screen renders its "nothing matches" empty state over 25 rows
+that do — and the pager, which lives inside the non-empty branch, is gone with them. Every paged
+screen calls `clampPage` ([core/paging.ts](applications/webapp/src/app/core/paging.ts)) for that,
+and it consults a resource only while `hasValue()` — a hiccup must not move the operator's page.
 
 Two Angular signal traps this app has already paid for: **`resource.value()` throws
 `ResourceValueError` in the error state**, so `@if (r.value())` must never sit before the

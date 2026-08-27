@@ -167,9 +167,16 @@ can return up to `vidingest.ocr.max-results-per-video` (10 000) rows — the UI 
 **`size` is silently clamped.** `PipelineAuditQueryService` caps every audit page at
 `MAX_PAGE_SIZE = 500` and defaults to 100, so the run screen's old `size=1000` was never
 honoured and its "showing 500 of N" banner blamed a limit the client did not set. The trail is
-also **ascending**, so page 0 is the *oldest* window: past the cap, the run screen fetches the
-**last** page instead, because losing the early phases of a long run costs a duration while
-losing the tail costs the `ITEM_FAILED` the screen exists to show.
+also **ascending**, so page 0 is the *oldest* window and the tail is what the screen needs — losing
+the early phases of a long run costs a duration, losing the tail costs the `ITEM_FAILED` the screen
+exists to show.
+
+  The last *page* is not the last *window*, though: it holds `total mod 500` events, so a 501-event
+  run returned **one**, and a 100-URL run (~2200 events) returned the 200 on page 4. Items with no
+  events in hand are not drawn as unknown — `buildLane` sees no `ITEM_PHASE_ENTERED` and renders ten
+  hatched "skipped" boxes, so ninety items that had run every phase reported every phase as turned
+  off. `core/audit.ts` (`auditTail`) now takes whole pages from the end, capped at four (2000
+  events), and the run screen's banner reports the shortfall past that.
 
 ### 11. Three more spec defects — two fixed
 
@@ -178,7 +185,11 @@ losing the tail costs the `ITEM_FAILED` the screen exists to show.
   `video-multimodal`, and codegen no longer needs `--skip-validate-spec`.
 - **`ReadinessResult` had no schema** because `HealthController.readiness()` returned
   `ResponseEntity<?>`; the client saw a bare `object`. Now `ResponseEntity<ReadinessResult>`, and
-  the generated client is typed.
+  the generated client is typed. The endpoint also answers **503 when any check fails**, and the
+  `ReadinessResult` rides that response — so the gutter reads the checks out of
+  `HttpErrorResponse.error` and reserves "server unreachable" for status 0. Reporting a 503 as
+  unreachable pointed the operator at a server that was up and had already named the fault
+  (`videoPath: not-writable: /data/videos`).
 - **`live=true` is only honoured together with `ids`.** `PipelineController.list` switches to
   `runLiveSummaryService.listLiveSummariesInOrder(ids)` only when both are present, and otherwise
   falls through to the plain paged list — so `?live=true` alone returns everything, COMPLETED runs

@@ -447,15 +447,12 @@ export class PipelinesService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public retryRun(runId: string, retryRunRequest: RetryRunRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<CreatePipelineRunResponse>;
-    public retryRun(runId: string, retryRunRequest: RetryRunRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<CreatePipelineRunResponse>>;
-    public retryRun(runId: string, retryRunRequest: RetryRunRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<CreatePipelineRunResponse>>;
-    public retryRun(runId: string, retryRunRequest: RetryRunRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public retryRun(runId: string, retryRunRequest?: RetryRunRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<CreatePipelineRunResponse>;
+    public retryRun(runId: string, retryRunRequest?: RetryRunRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<CreatePipelineRunResponse>>;
+    public retryRun(runId: string, retryRunRequest?: RetryRunRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<CreatePipelineRunResponse>>;
+    public retryRun(runId: string, retryRunRequest?: RetryRunRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (runId === null || runId === undefined) {
             throw new Error('Required parameter runId was null or undefined when calling retryRun.');
-        }
-        if (retryRunRequest === null || retryRunRequest === undefined) {
-            throw new Error('Required parameter retryRunRequest was null or undefined when calling retryRun.');
         }
 
         let localVarHeaders = this.defaultHeaders;
@@ -519,18 +516,15 @@ export class PipelinesService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public retryRunItem(runId: string, itemId: string, retryRunRequest: RetryRunRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<CreatePipelineRunResponse>;
-    public retryRunItem(runId: string, itemId: string, retryRunRequest: RetryRunRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<CreatePipelineRunResponse>>;
-    public retryRunItem(runId: string, itemId: string, retryRunRequest: RetryRunRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<CreatePipelineRunResponse>>;
-    public retryRunItem(runId: string, itemId: string, retryRunRequest: RetryRunRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public retryRunItem(runId: string, itemId: string, retryRunRequest?: RetryRunRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<CreatePipelineRunResponse>;
+    public retryRunItem(runId: string, itemId: string, retryRunRequest?: RetryRunRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<CreatePipelineRunResponse>>;
+    public retryRunItem(runId: string, itemId: string, retryRunRequest?: RetryRunRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<CreatePipelineRunResponse>>;
+    public retryRunItem(runId: string, itemId: string, retryRunRequest?: RetryRunRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (runId === null || runId === undefined) {
             throw new Error('Required parameter runId was null or undefined when calling retryRunItem.');
         }
         if (itemId === null || itemId === undefined) {
             throw new Error('Required parameter itemId was null or undefined when calling retryRunItem.');
-        }
-        if (retryRunRequest === null || retryRunRequest === undefined) {
-            throw new Error('Required parameter retryRunRequest was null or undefined when calling retryRunItem.');
         }
 
         let localVarHeaders = this.defaultHeaders;

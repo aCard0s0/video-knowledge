@@ -7,7 +7,7 @@
 -->
 <header class="gutter">
   <div class="deps mono">
-    @if (ready.error()) {
+    @if (unreachable()) {
       <span class="chip bad">server unreachable</span>
     } @else {
       @for (check of checks(); track check.name) {

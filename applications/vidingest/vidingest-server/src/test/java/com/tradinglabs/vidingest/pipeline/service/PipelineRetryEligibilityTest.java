@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -91,7 +92,7 @@ class PipelineRetryEligibilityTest {
         assertThatThrownBy(() -> service.enqueueRetryBatch(runId, Set.of()))
                 .isInstanceOf(RunRetryNotAllowedException.class);
 
-        verify(runLifecycle, never()).prepareRetry(any());
+        verify(runLifecycle, never()).prepareRetry(any(), any());
     }
 
     @Test
@@ -124,7 +125,7 @@ class PipelineRetryEligibilityTest {
         assertThat(response.items())
                 .extracting(CreatePipelineRunResponse.ItemResult::reason)
                 .containsExactly("run item was cancelled", "run item already completed");
-        verify(runLifecycle, never()).prepareRetry(any());
+        verify(runLifecycle, never()).prepareRetry(any(), any());
         verify(runItemLifecycleService, never()).prepareRetry(any());
     }
 
@@ -140,7 +141,7 @@ class PipelineRetryEligibilityTest {
         assertThat(response.items()).singleElement()
                 .extracting(CreatePipelineRunResponse.ItemResult::reason)
                 .isEqualTo("run item is already running");
-        verify(runLifecycle, never()).prepareRetry(any());
+        verify(runLifecycle, never()).prepareRetry(any(), any());
     }
 
     /**
@@ -159,7 +160,7 @@ class PipelineRetryEligibilityTest {
         assertThat(response.items()).singleElement()
                 .extracting(CreatePipelineRunResponse.ItemResult::status)
                 .isEqualTo(ItemStatus.ACCEPTED);
-        verify(runLifecycle).prepareRetry(runId);
+        verify(runLifecycle).prepareRetry(runId, Set.of());
     }
 
     @Test
@@ -173,9 +174,47 @@ class PipelineRetryEligibilityTest {
         assertThat(response.items())
                 .extracting(CreatePipelineRunResponse.ItemResult::status)
                 .containsExactly(ItemStatus.ACCEPTED, ItemStatus.REJECTED);
-        verify(runLifecycle).prepareRetry(runId);
+        verify(runLifecycle).prepareRetry(runId, Set.of());
         verify(runItemLifecycleService).prepareRetry(failed.getId());
         verify(runItemLifecycleService, never()).prepareRetry(done.getId());
+    }
+
+    /**
+     * Absent is not empty. The runs board has no phase picker, so its retry sends no list at all —
+     * and that has to mean "as the run was configured", not "run everything". Sending an empty list
+     * turned OCR and KNOWLEDGE back on for a run created without them.
+     */
+    @Test
+    void aRetryThatNamesNoPhasesInheritsTheRunsOwnSkipSet() {
+        Set<PipelineRunPhase> configured = EnumSet.of(PipelineRunPhase.OCR, PipelineRunPhase.KNOWLEDGE);
+        when(runLifecycle.getPipelineRun(runId)).thenReturn(PipelineRun.builder()
+                .id(runId)
+                .status(RunStatus.FAILED)
+                .skipPhases(configured)
+                .build());
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(item(RunStatus.FAILED)));
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, null);
+
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .isEqualTo(ItemStatus.ACCEPTED);
+        verify(runLifecycle).prepareRetry(runId, configured);
+    }
+
+    /** An explicit empty list is the operator asking for every enabled phase, and still wins. */
+    @Test
+    void anExplicitEmptyListOverridesTheRunsOwnSkipSet() {
+        when(runLifecycle.getPipelineRun(runId)).thenReturn(PipelineRun.builder()
+                .id(runId)
+                .status(RunStatus.FAILED)
+                .skipPhases(EnumSet.of(PipelineRunPhase.OCR))
+                .build());
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(item(RunStatus.FAILED)));
+
+        service.enqueueRetryBatch(runId, Set.of());
+
+        verify(runLifecycle).prepareRetry(runId, Set.of());
     }
 
     private PipelineRunItem item(RunStatus status) {

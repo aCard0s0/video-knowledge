@@ -25,5 +25,6 @@ export interface RunDetails {
     items?: Array<RunItem>;
     createdAt?: string;
     updatedAt?: string;
+    skipPhases?: Array<string>;
 }
 

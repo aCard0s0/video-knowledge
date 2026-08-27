@@ -105,7 +105,7 @@ class PipelineConcurrencyGateTest {
             items.add(item(url));
         }
 
-        when(runLifecycle.createPipelineRun(anyString())).thenReturn(run(runId));
+        when(runLifecycle.createPipelineRun(anyString(), any())).thenReturn(run(runId));
         when(runItemLifecycleService.createItems(any(), anyList())).thenReturn(items);
         when(pipelinePhaseRegistry.phases())
                 .thenReturn(List.of(new MetadataPhase(videoDownloadService, videoRepository)));

@@ -13,6 +13,7 @@ import {
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
 import { humanDuration, timecode } from '../../core/time';
 import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { clampPage } from '../../core/paging';
 import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -55,6 +56,11 @@ export class VideoDetail {
 
   constructor() {
     syncQueryParams({ pane: this.pane, page: this.page, type: this.knowledgeType });
+    // One page signal, three paged panes. A pane that is not visible has undefined params, so its
+    // resource is idle and holds no page — only the visible one's clamp is ever live.
+    clampPage(this.page, SEG_SIZE, this.segments);
+    clampPage(this.page, FRAME_SIZE, this.frames);
+    clampPage(this.page, FUSED_SIZE, this.fused);
   }
 
   protected readonly detail = rxResource({
@@ -180,6 +186,10 @@ export class VideoDetail {
           }`,
         );
         this.detail.reload();
+        // Wipe-then-repopulate can write fewer rows than last time, and page 3 of the old artifacts
+        // is nothing at all in the new ones — an empty pane offering to run the phase that just ran.
+        // Both writes land in this turn, so the pane loads once.
+        this.page.set(0);
         this.reloadPane();
       },
       error: (err: unknown) => {

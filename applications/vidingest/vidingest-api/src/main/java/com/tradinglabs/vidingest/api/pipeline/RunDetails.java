@@ -16,7 +16,12 @@ public record RunDetails(
         int videoCount,
         List<RunItem> items,
         String createdAt,
-        String updatedAt
+        String updatedAt,
+        // The optional phases this run is configured to skip, in pipeline order. Read it to seed a
+        // retry: the lane cannot answer this, because a phase after the one that failed was never
+        // reached and that is indistinguishable from skipped. A retry that omits skipPhases
+        // entirely inherits this set server-side.
+        List<String> skipPhases
 ) {
 
     public record RunItem(

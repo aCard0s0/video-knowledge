@@ -91,7 +91,19 @@ export function buildLanes(
   events: RunItemAuditEvent[],
   nowMs: number,
 ): Map<string | undefined, LaneSegment[]> {
-  return new Map(items.map((item) => [item.itemId, buildLane(item, events, nowMs)] as const));
+  // Grouped once rather than filtered per item. `buildLane` opens with a pass over everything it is
+  // handed, so calling it per item was O(items × events): 40 items × 500 events, rebuilt every
+  // second while anything is live, is 20,000 comparisons and 160 throwaway arrays a second for
+  // lanes that mostly did not change. One pass here leaves each call scanning its own slice.
+  const byItem = new Map<string | undefined, RunItemAuditEvent[]>();
+  for (const event of events) {
+    const mine = byItem.get(event.itemId);
+    if (mine) mine.push(event);
+    else byItem.set(event.itemId, [event]);
+  }
+  return new Map(
+    items.map((item) => [item.itemId, buildLane(item, byItem.get(item.itemId) ?? [], nowMs)] as const),
+  );
 }
 
 /** Total measured time across the drawn attempt. */

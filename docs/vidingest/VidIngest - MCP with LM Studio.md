@@ -167,7 +167,9 @@ Returns: Array of `{ chunkId, videoId, chunkIndex, snippet, videoTitle, channelN
 
 Parameters:
 - `pipelineId` (String, required): Failed pipeline run UUID (run id)
-- `skipPhases` (Set<String>, optional): Same semantics as `createPipelineRuns`
+- `skipPhases` (Set<String>, optional): Same phase names as `createPipelineRuns`, but **omitting it
+  is not the same as passing an empty set**. Omitted reuses the phase set the run was created with
+  (stored on the run row); an empty set is an explicit "run every enabled phase"
 
 Returns:
 

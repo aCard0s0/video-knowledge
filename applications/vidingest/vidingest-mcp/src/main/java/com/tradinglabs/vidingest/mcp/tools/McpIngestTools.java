@@ -153,7 +153,8 @@ public class McpIngestTools {
     }
 
     @McpTool(description = "Retry a failed pipeline run by UUID. "
-            + "Same skipPhases semantics as createPipelineRuns.")
+            + "Omit skipPhases to retry with the phases the run was created with; pass an empty set "
+            + "to run every enabled phase.")
     public CreatePipelineRunResponse retryPipelineRun(
             @McpToolParam(description = "Pipeline run UUID") String pipelineId,
             @McpToolParam(description = SKIP_PHASES_DOC, required = false) Set<String> skipPhases
