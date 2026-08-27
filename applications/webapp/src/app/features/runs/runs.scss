@@ -30,11 +30,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.live tbody tr:hover,
-.history tbody tr:hover {
-  background: var(--muted);
-}
-
 /* The reason a run stopped, in a full-width row under it rather than a ninth column. `error` is
    free text and the useful part is its tail, so it needs the width and the wrap that the grid's
    `nowrap` cells deny it. */
@@ -44,15 +39,9 @@
   padding-bottom: var(--space-sm);
 }
 
-/* It belongs to the row above: that row drops its rule so the two read as one record, and hovering
-   either lights both. */
+/* It belongs to the row above: that row drops its rule so the two read as one record. */
 tr:has(+ .fault-row) td {
   border-bottom: 0;
-}
-
-tr:has(+ .fault-row:hover),
-tr:hover + .fault-row {
-  background: var(--muted);
 }
 
 /* The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
@@ -63,4 +52,43 @@ tr:hover + .fault-row {
 .fault-row vk-fault {
   display: block;
   max-width: calc(100vw - 7rem);
+}
+
+/* Retry rides the right edge instead of the far end of a table five columns wider than a phone.
+   At 390px the grid is 792px, so the button the screen exists for sat 412px past the viewport and
+   cost a horizontal scroll per row. `background: inherit` rather than a token, so the row's hover
+   wash reaches it — a sticky cell painted `--card` would sit on top of it. Inert at any width where
+   the table already fits. */
+.history .stick {
+  position: sticky;
+  right: 0;
+  background: inherit;
+  /* A hairline, so the row scrolling underneath reads as covered rather than mangled — without it
+     a clipped `youtube.com/watch?…` ends behind the button as `youtube.cc` and looks like data.
+     Inset, because a sticky cell in a `border-collapse: collapse` table does not keep a border. */
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
+/* A sticky cell needs something opaque behind it, and `inherit` only reaches a row that has a
+   background of its own — so the rows carry the surface the panel used to provide, and hovering
+   either half of a run lights both. */
+.history tbody tr {
+  background: var(--card);
+}
+
+.history tbody tr:hover,
+.history tr:has(+ .fault-row:hover),
+.history tr:hover + .fault-row {
+  background: var(--muted);
+}
+
+/* Three items in a `space-between` head squeeze the bulk button to min-content on a phone, which
+   breaks "Retry 4 failed" over three lines. It keeps its words; the head wraps instead. */
+.history .panel-head {
+  flex-wrap: wrap;
+}
+
+.history .panel-head .btn-sm {
+  margin-left: auto;
+  white-space: nowrap;
 }

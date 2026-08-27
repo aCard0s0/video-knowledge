@@ -65,6 +65,13 @@
         </button>
       }
     </div>
+    <!-- Named by what it will actually do: the FAILED runs on this page, which past 25 rows is not
+         the number on the chip. -->
+    @if (failedHere().length > 1) {
+      <button class="btn-sm" type="button" [disabled]="retrying().size > 0" (click)="retryAll()">
+        {{ retrying().size > 1 ? 'Retrying ' + retrying().size + '…' : 'Retry ' + failedHere().length + ' failed' }}
+      </button>
+    }
   </div>
 
   @if (historyRuns().length === 0) {
@@ -84,7 +91,7 @@
             <th scope="col" class="num">Items</th>
             <th scope="col" class="num">Created</th>
             <th scope="col" class="num">Updated</th>
-            <th scope="col"><span class="sr-only">Actions</span></th>
+            <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -101,11 +108,11 @@
               <td class="num">{{ run.videoCount }}</td>
               <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
               <td class="num sm" [title]="absoluteTime(run.updatedAt)">{{ age(run.updatedAt) }}</td>
-              <td>
+              <td class="stick">
                 <span class="row-actions">
                   @if (run.status === 'FAILED') {
-                    <button class="btn-sm" type="button" [disabled]="retrying() !== null" (click)="retry(run)">
-                      {{ retrying() === run.id ? 'Retrying…' : 'Retry' }}
+                    <button class="btn-sm" type="button" [disabled]="retrying().size > 0" (click)="retry(run)">
+                      {{ retrying().has(run.id!) ? 'Retrying…' : 'Retry' }}
                     </button>
                   }
                 </span>

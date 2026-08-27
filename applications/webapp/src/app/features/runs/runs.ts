@@ -1,6 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { forkJoin, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 
 import { ItemResult, PipelinesService, RunSummary } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
@@ -31,6 +33,27 @@ const PAGE_SIZE = 25;
 export function marker(run: RunSummary): string {
   if (!isLive(run.status)) return '—';
   return isLanePhase(run.phase) ? run.phase : 'queued';
+}
+
+/**
+ * A URL with its boilerplate off.
+ *
+ * The row label truncates at 34ch with an ellipsis on the tail, and a YouTube watch URL spends its
+ * first 32 characters saying `https://www.youtube.com/watch?v=` — so what got clipped was the video
+ * id, the only part that distinguishes one row from the next, and fourteen rows read
+ * `https://www.youtube.com/watch?v=xxxx…`. Dropping the scheme and the `www.` leaves
+ * `youtube.com/watch?v=dQw4w9WgXcQ` at 31 characters, which fits whole.
+ *
+ * Anything `URL` cannot parse comes back untouched: a run's `videoUrl` is whatever the operator
+ * pasted, and a half-typed URL is exactly the row they need to read.
+ */
+export function shortUrl(value: string): string {
+  try {
+    const u = new URL(value);
+    return `${u.host.replace(/^www\./, '')}${u.pathname}${u.search}`;
+  } catch {
+    return value;
+  }
 }
 
 /**
@@ -118,11 +141,17 @@ export class Runs {
   protected label(run: RunSummary): string {
     if (!blank(run.videoTitle)) return run.videoTitle!;
     if ((run.videoCount ?? 0) > 1) return `${run.videoCount} URLs`;
-    return run.videoUrl ?? '—';
+    return blank(run.videoUrl) ? '—' : shortUrl(run.videoUrl!);
   }
 
   protected readonly failed = computed(() => valueOf(this.failedCount)?.total ?? 0);
-  protected readonly retrying = signal<string | null>(null);
+  /**
+   * What "retry all" would actually take: the FAILED runs on the page in front of the operator, not
+   * the `failed()` total behind the chip. The two differ past 25 rows, and a button that silently
+   * reached beyond the page would be retrying runs nobody had looked at.
+   */
+  protected readonly failedHere = computed(() => this.historyRuns().filter((r) => r.status === 'FAILED' && r.id));
+  protected readonly retrying = signal<ReadonlySet<string>>(new Set());
   protected readonly retryFailure = signal<ApiFailure | null>(null);
   protected readonly retryRejects = signal<ItemResult[]>([]);
 
@@ -145,23 +174,57 @@ export class Runs {
    * indistinguishable from a retry — the row simply stayed FAILED and the operator pressed again.
    */
   protected retry(run: RunSummary): void {
-    if (!run.id) return;
-    this.retrying.set(run.id);
+    if (run.id) this.send([run.id]);
+  }
+
+  /**
+   * Every FAILED run on this page, in one press.
+   *
+   * The FAILED chip carries the count because that number is why the screen gets opened — and then
+   * clearing it cost one press and one round-trip per row, fourteen of them, with every other Retry
+   * button disabled in between. The runs are independent POSTs, so they go out together and the
+   * server's own `vidingest.ingestion.concurrency` semaphore decides how many actually run at once.
+   */
+  protected retryAll(): void {
+    const ids = this.failedHere().map((r) => r.id!);
+    if (ids.length) this.send(ids);
+  }
+
+  /**
+   * One retry or fourteen, same path.
+   *
+   * Every request is caught individually: `forkJoin` abandons the whole batch on the first error,
+   * and one run that stopped being FAILED between the page load and the press must not swallow the
+   * thirteen that were fine. The two ways a retry can decline stay separate, as everywhere else in
+   * this console — an HTTP fault is a `ProblemDetail` and goes to `vk-problem` (first one wins,
+   * the `firstFailure` rule), while a 202 carrying REJECTED items is the server declining on
+   * purpose and goes to `vk-rejects` in warn.
+   *
+   * Retry stays disabled everywhere while a batch is in flight. There is one results panel, so a
+   * second batch launched over the first would silently replace what the first came back with.
+   */
+  private send(ids: string[]): void {
+    this.retrying.set(new Set(ids));
     this.retryFailure.set(null);
     this.retryRejects.set([]);
-    this.pipelines.retryRun(run.id).subscribe({
-      next: (response) => {
-        this.retrying.set(null);
-        this.retryRejects.set((response.items ?? []).filter((i) => i.status === 'REJECTED'));
-        this.running.reload();
-        this.pending.reload();
-        this.history.reload();
-        this.failedCount.reload();
-      },
-      error: (err: unknown) => {
-        this.retrying.set(null);
-        this.retryFailure.set(toApiFailure(err));
-      },
+    forkJoin(
+      ids.map((id) =>
+        this.pipelines.retryRun(id).pipe(
+          map((response) => ({
+            rejects: (response.items ?? []).filter((i) => i.status === 'REJECTED'),
+            failure: null as ApiFailure | null,
+          })),
+          catchError((err: unknown) => of({ rejects: [] as ItemResult[], failure: toApiFailure(err) })),
+        ),
+      ),
+    ).subscribe((results) => {
+      this.retrying.set(new Set());
+      this.retryRejects.set(results.flatMap((r) => r.rejects));
+      this.retryFailure.set(results.find((r) => r.failure)?.failure ?? null);
+      this.running.reload();
+      this.pending.reload();
+      this.history.reload();
+      this.failedCount.reload();
     });
   }
 }

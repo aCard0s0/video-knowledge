@@ -410,6 +410,19 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   are told apart only by the message tail, so it gets the width to wrap rather than a clip that
   lands the ellipsis on the discriminating half. The retry's own answer is read too — see
   finding 14.
+- **The count on the FAILED chip is one press to clear.** `Retry N failed` fires every FAILED run
+  *on the page* — not the chip's total, which past 25 rows would reach runs nobody had looked at.
+  The requests go out together and the server's `vidingest.ingestion.concurrency` semaphore decides
+  how many actually run; each is caught on its own, so one run that stopped being FAILED between
+  the page load and the press cannot abandon the rest.
+- **The row label is the URL with its boilerplate off.** `youtube.com/watch?v=dQw4w9WgXcQ`, not
+  `https://www.youtube.com/watch?v=…`: the label truncates at 34ch with the ellipsis on the tail,
+  and a watch URL spends its first 32 characters saying nothing, so what got clipped was the video
+  id. Anything `URL` cannot parse is shown as pasted.
+- **Retry rides the right edge.** The grid is 792px wide and a phone is 390px, so the button the
+  screen exists for sat 412px past the viewport and cost a horizontal scroll per row; the actions
+  column is `position: sticky; right: 0` with a hairline, so what scrolls under it reads as covered
+  rather than as mangled data. Inert at any width where the table already fits.
 - **The video screen shows its dossier.** Transcription provider/language/character count,
   artifact counts and the file path fill the column under the player, all from the `/detail`
   response the screen was already fetching.
