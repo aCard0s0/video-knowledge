@@ -676,10 +676,18 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   screen was the one still on `humanAge`. It also cost three lines of wrap per row at 390px, since
   `43h 29m ago` is the only value in the table with spaces to break on.
 - **The day is rendered where it changes, not on every row.** A clock with no date is ambiguous
-  across a midnight, and this feed spans days where the trail spans minutes. `dayLabel` heads the
-  first row of each day (`dayMarks`, unit-tested) — two rows on a three-day page instead of eight
-  characters on all fifty. The label doubles as the grouping key, so nothing else defines "same
-  day", and both are *local*, matching the clock beside them rather than the rail's UTC wall clock.
+  across a midnight, and this feed spans days where the trail spans minutes. Two rows on a
+  three-day page instead of eight characters on all fifty. `dayLabel` (`core/time.ts`) is the whole
+  mechanism: the row compares its own label with the previous row's
+  (`dayLabel(rows()[$index - 1]?.occurredAt)`, where a negative index reads `undefined` and so heads
+  row 0), because the label **doubles as the grouping key** — same day, same string — and nothing
+  else then defines "same day". It is *local*, matching the clock beside it rather than the rail's
+  UTC wall clock, which is the property `audit.spec.ts` pins across a UTC midnight. A `Map` of
+  marked event ids built in the component said the same thing in 60 more lines.
+- **The day heading spans the spine column.** One `colspan="8"` cell, no `<td class="spine">`: that
+  cell would carry no status and take the heading's padding, and a padded cell in the 3px spine
+  column widens it for every row in the table — measured 3px → 24px. It is also why the heading sits
+  flush with the panel edge rather than aligned to the When column.
 - **A failure gets a row here too.** The feed carried `errorCode` and `error` in a `min-width: 28ch`
   Detail column — the arrangement the runs board and the channel list were both moved out of, for
   the reason the trail's own comment gives: 325 of 359 events have nothing to say there and paid the
