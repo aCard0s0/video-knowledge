@@ -13,7 +13,12 @@
     <span class="mono muted note">polling every {{ liveRuns().length ? '2' : '15' }}s</span>
   </div>
 
-  @if (liveRuns().length === 0) {
+  <!--
+    `liveRuns()` is `[]` while both lists are loading *and* while either has errored, so "Nothing
+    running" used to be the screen's answer to a request that never came back — under a problem
+    panel already saying so. Same guard the three list screens carry.
+  -->
+  @if (running.hasValue() && pending.hasValue() && liveRuns().length === 0) {
     <p class="quiet mono muted">Nothing running. Submitted runs appear here within a couple of seconds.</p>
   } @else if (liveElsewhere().length === 0) {
     <!-- The history below is already listing every one of them; repeating the rows here put the
@@ -84,11 +89,11 @@
     }
   </div>
 
-  @if (historyRuns().length === 0) {
+  @if (history.hasValue() && historyRuns().length === 0) {
     <vk-empty message="No runs match this filter.">
       <a class="mono" routerLink="/ingest">Start an ingest →</a>
     </vk-empty>
-  } @else {
+  } @else if (historyRuns().length) {
     <div class="table-scroll">
       <table class="grid" translate="no">
         <thead>

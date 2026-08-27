@@ -97,7 +97,8 @@
 
       <p class="watch-meta mono sm" aria-live="polite">
         <vk-status [status]="run.status" />
-        <span class="muted">· {{ watchedItems().length }} item(s) · {{ age(run.createdAt) }}</span>
+        <span class="muted">· {{ watchedItems().length }} item(s) ·
+          <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
         @if (canRetry() || retrying()) {
           <!--
             Diagnosing a failure and fixing it happen on the same screen. Without this the operator

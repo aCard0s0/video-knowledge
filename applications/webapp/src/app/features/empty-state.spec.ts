@@ -5,19 +5,21 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { AuditService, VideosService, YoutubeService } from '../api/generated';
+import { AuditService, PipelinesService, VideosService, YoutubeService } from '../api/generated';
 import { Audit } from './audit/audit';
 import { Channels } from './channels/channels';
+import { Runs } from './runs/runs';
 import { Videos } from './videos/videos';
 
 /**
- * The three paged list screens share one shape: `rows()` is `valueOf(list)?.items ?? []`, and
- * `valueOf` hands back `undefined` while the resource is loading *and* while it has errored. So the
- * empty state used to render over a request that never answered — "No videos match this filter."
- * sitting under a problem panel saying the server was unreachable.
+ * Every paged screen shares one shape: `rows()` is `valueOf(list)?.items ?? []`, and `valueOf`
+ * hands back `undefined` while the resource is loading *and* while it has errored. So the empty
+ * state used to render over a request that never answered — "No videos match this filter." sitting
+ * under a problem panel saying the server was unreachable.
  *
- * Asserted across all three rather than on one of them, because the edit is identical in three
- * places and one screen passing says nothing about the other two.
+ * Asserted across all of them rather than on one, because the edit is identical everywhere and one
+ * screen passing says nothing about the next. The runs board was the one that shipped without it:
+ * a dead `/pipelines` answered with "No runs match this filter." over a "Start an ingest →" link.
  */
 const PAGE = { items: [], page: 0, size: 25, total: 0 };
 
@@ -25,6 +27,7 @@ const SCREENS: { name: string; component: Type<unknown>; service: unknown; metho
   { name: 'Videos', component: Videos, service: VideosService, method: 'listVideos', empty: 'No videos match' },
   { name: 'Audit', component: Audit, service: AuditService, method: 'listEvents', empty: 'No events match' },
   { name: 'Channels', component: Channels, service: YoutubeService, method: 'listChannels', empty: 'No channels tracked' },
+  { name: 'Runs', component: Runs, service: PipelinesService, method: 'listRuns', empty: 'No runs match' },
 ];
 
 function screen(s: (typeof SCREENS)[number], stream: () => unknown) {

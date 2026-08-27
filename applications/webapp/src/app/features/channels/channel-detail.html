@@ -56,7 +56,8 @@
       @if (watched(); as run) {
         <p class="watch-meta mono sm" aria-live="polite">
           <vk-status [status]="run.status" />
-          <span class="muted">· {{ watchedItems().length }} item(s) · {{ age(run.createdAt) }}</span>
+          <span class="muted">· {{ watchedItems().length }} item(s) ·
+            <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
         </p>
 
         <ul class="watch-items">
@@ -64,9 +65,16 @@
             <li>
               <div class="watch-item-head">
                 <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
-                <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+                <span class="url" [title]="item.url">{{ label(item.videoTitle, item.url) }}</span>
+                <vk-status [status]="item.status" />
               </div>
-              <vk-lane [segments]="lane(item)" />
+              <!--
+                The same three inputs the other two screens pass. `status` is what tells the lane an
+                item stopped before phase one — without it a FAILED item reaped while still queued
+                announced itself as complete — and an unwired `pick` leaves ten focusable buttons
+                per item that do nothing.
+              -->
+              <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="openPhase(item, $event)" />
               <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
             </li>
           }
@@ -101,7 +109,12 @@
       </div>
     </div>
 
-    @if (rows().length === 0) {
+    <!--
+      `videos.hasValue()` first: `rows()` is `[]` on a failed catalog load too, and without it a 500
+      from the videos query rendered "Every upload in this catalog is already ingested" under the
+      panel naming the 500.
+    -->
+    @if (videos.hasValue() && rows().length === 0) {
       <!--
         Which nothing this is comes from the channel, not from the filter. Reading it off
         `onlyNew()` alone made a channel whose sync had just failed with a yt-dlp 404 report
@@ -119,7 +132,7 @@
       } @else {
         <vk-empty message="Nothing on this page." />
       }
-    } @else {
+    } @else if (rows().length) {
       <div class="table-scroll">
         <table class="grid" translate="no">
           <thead>

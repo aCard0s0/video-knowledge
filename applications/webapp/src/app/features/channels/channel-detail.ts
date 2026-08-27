@@ -1,13 +1,15 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
 import {
   CreatePipelineRunResponse,
+  RunItem,
   YoutubeChannelVideoSummary,
   YoutubeService,
 } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
+import { shortUrl } from '../../core/url';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
@@ -39,6 +41,7 @@ export class ChannelDetail {
   private readonly youtube = inject(YoutubeService);
   protected readonly poller = inject(Poller);
   private readonly capabilities = inject(Capabilities);
+  private readonly router = inject(Router);
 
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
@@ -150,6 +153,19 @@ export class ChannelDetail {
 
   protected age(value: string | undefined): string {
     return humanAge(value, this.poller.now());
+  }
+
+  /** Same fallback the other two lane screens use: a title if there is one, else the URL with its
+   *  boilerplate off — `.truncate` clips the tail, which on a watch URL is the video id. */
+  protected label(title: string | undefined, url: string | undefined): string {
+    return blank(title) ? shortUrl(url) : title!;
+  }
+
+  /** A lane segment opens the run screen with the trail filtered to that phase. */
+  protected openPhase(item: RunItem, phase: string): void {
+    void this.router.navigate(['/runs', this.started()?.runId], {
+      queryParams: { item: item.itemId, phase },
+    });
   }
 
   protected isPicked(video: YoutubeChannelVideoSummary): boolean {

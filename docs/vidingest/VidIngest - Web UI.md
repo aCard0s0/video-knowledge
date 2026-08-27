@@ -319,6 +319,38 @@ near-empty tables. The rows have to be cut before they are counted, which only t
 `not exists` against `vidingest_videos` on the same `(source, sourceVideoId)` identity that marks
 the rows it leaves out.
 
+### 19. The same screen shape, drifting in four places
+
+Merging the ingest, channels, runs-board and empty-state branches put four screens built from the
+same helpers side by side for the first time, and three corrections turned out to have landed on
+some of them and not the rest. None of these is a new idea — each is an existing fix that stopped
+one screen short.
+
+**The empty state over a failed load** (finding 14) was applied to videos, audit and channels, with
+a spec asserting it across all three "because one screen passing says nothing about the other two".
+The runs board and the channel catalog have the identical shape and were missed: a dead
+`/pipelines` rendered "No runs match this filter." over a **Start an ingest →** link, and a dead
+videos query rendered "Every upload in this catalog is already ingested". Both now check
+`hasValue()` first, and `empty-state.spec.ts` covers the board.
+
+**`vk-lane` takes a `status`** for the one case no segment can express: the item is over and
+nothing on the track ran, so `failedPhase` is the `CREATED` marker and there is no segment to cap.
+Ingest and run detail passed it; the channel catalog did not, so a batch item reaped while still
+queued announced itself **complete** there and failed on the other two. Its lane was also unwired —
+ten focusable buttons per item that did nothing, the same defect ingest had already fixed. Both
+fixed, and `ui/lane.spec.ts` now pins the summary text with and without the input, since the
+component is where all three screens meet.
+
+**One picker, one answer.** Which phases a deployment runs reached the picker two ways at once — an
+input threaded in by ingest, and the `Capabilities` singleton read by channel detail — so run
+detail, which passed neither, silently offered all seven. The input is gone; the picker injects the
+singleton, which is also why the second endpoint answering this question (`GET /health/phases`)
+was retired in favour of `GET /pipelines/capabilities` (finding 17).
+
+Smaller: the watch panel's age now carries its absolute time in a `title`, as every other age on
+every screen already did, and the catalog's item label goes through `shortUrl` rather than
+`.truncate`, for the reason `core/url.ts` gives.
+
 ## Design direction
 
 Style and palette candidates came from `.claude/skills/ui-ux-pro-max/scripts/search.py`
