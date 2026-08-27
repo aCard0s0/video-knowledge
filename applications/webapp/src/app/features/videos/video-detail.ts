@@ -20,10 +20,11 @@ import {
   VideosService,
 } from '../../api/generated';
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
-import { humanDuration, timecode } from '../../core/time';
+import { absoluteTime, humanAge, humanDuration, timecode } from '../../core/time';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
 import { Capabilities } from '../../core/capabilities';
+import { Poller } from '../../core/poller';
 import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -54,6 +55,7 @@ export class VideoDetail {
   private readonly speakersApi = inject(SpeakersService);
   private readonly phases = inject(VideoPhasesService);
   private readonly capabilities = inject(Capabilities);
+  private readonly poller = inject(Poller);
 
   private readonly player = viewChild<ElementRef<HTMLVideoElement>>('player');
 
@@ -66,6 +68,7 @@ export class VideoDetail {
   protected readonly lastRun = signal<string | null>(null);
   private readonly actionFailure = signal<ApiFailure | null>(null);
   protected readonly renaming = signal<string | null>(null);
+  protected readonly renameResult = signal<string | null>(null);
 
   /** The chip pressed once and awaiting its confirming second press. */
   protected readonly armed = signal<string | null>(null);
@@ -140,6 +143,7 @@ export class VideoDetail {
   protected readonly valueOf = valueOf;
   protected readonly timecode = timecode;
   protected readonly humanDuration = humanDuration;
+  protected readonly absoluteTime = absoluteTime;
 
   /**
    * `/videos/{id}/knowledge` has no paging, and a long video can produce hundreds of units. Render
@@ -147,7 +151,26 @@ export class VideoDetail {
    * ponytail: a cap, not virtualization — add paging server-side if this becomes the main view.
    */
   protected readonly KNOWLEDGE_CAP = 200;
-  protected readonly knowledgeAll = computed(() => valueOf(this.knowledge) ?? []);
+
+  /**
+   * Sorted by where in the video the unit is, which is not the order the server sends.
+   *
+   * `KnowledgeUnitRepository.findByVideo_IdOrderByCreatedAtAsc` is *insert* order — one batch of
+   * ~40 segments writes its units in whatever order the model emitted them, all sharing a
+   * timestamp. Its javadoc calls that "timeline-ordered", which it is not. Rendered down a
+   * timecode gutter beside a player, the effect was a list whose rows walk backwards: 00:50,
+   * 01:15, 01:50, 00:00, 00:35.
+   *
+   * Sorted here rather than in the repository because the ordering is this screen's need — the
+   * MCP and CLI consumers read the same endpoint and did not ask for it — and `startSeconds` is
+   * already on every row. Units without one sort last: they belong to no moment, so there is no
+   * honest place for them among the ones that do.
+   */
+  protected readonly knowledgeAll = computed(() =>
+    [...(valueOf(this.knowledge) ?? [])].sort(
+      (a, b) => (a.startSeconds ?? Infinity) - (b.startSeconds ?? Infinity),
+    ),
+  );
   protected readonly knowledgeShown = computed(() => this.knowledgeAll().slice(0, this.KNOWLEDGE_CAP));
 
   protected readonly video = computed(() => valueOf(this.detail)?.video);
@@ -169,6 +192,16 @@ export class VideoDetail {
 
   protected frameUrl(frameId: string | undefined): string {
     return frameId ? `${API_V1}/frames/${frameId}/image` : '';
+  }
+
+  /**
+   * Relative age against the shared poll clock, the same one every other screen's ages read.
+   *
+   * `parseServerTime` treats a zoneless timestamp as a server bug rather than assuming UTC, which
+   * is the fallback that once hid an hour of skew for a release.
+   */
+  protected age(value: string | undefined): string {
+    return humanAge(value, this.poller.now());
   }
 
   protected show(pane: Pane): void {
@@ -289,14 +322,34 @@ export class VideoDetail {
     this.ticker = undefined;
   }
 
+  /**
+   * Renames one speaker and writes the server's answer into the row it came from.
+   *
+   * **Not `speakers.reload()`.** The rows bind `[value]="speaker.displayName || ''"` with no
+   * `(input)`, and `track speaker.id` keeps the DOM node across a refetch — so re-fetching the
+   * list re-evaluated that binding on *every* row and reset any name the operator had typed but
+   * not yet saved. Renaming the first of two speakers silently discarded the second's text.
+   * `PATCH /speakers/{id}` answers with the updated `SpeakerDto`, so the one row that changed can
+   * be written in place; nothing else is touched, and it is one request rather than two.
+   */
   protected rename(speaker: SpeakerDto, displayName: string): void {
     if (!speaker.id) return;
     this.renaming.set(speaker.id);
+    this.renameResult.set(null);
     this.actionFailure.set(null);
     this.speakersApi.renameSpeaker(speaker.id, { displayName }).subscribe({
-      next: () => {
+      next: (updated) => {
         this.renaming.set(null);
-        this.speakers.reload();
+        if (this.speakers.hasValue()) {
+          this.speakers.update((rows) => (rows ?? []).map((r) => (r.id === updated.id ? updated : r)));
+        }
+        // A row that silently goes back to looking exactly as it did is indistinguishable from a
+        // press that did nothing — the rule the runs board's retry line already follows.
+        this.renameResult.set(
+          updated.displayName
+            ? `Saved: ${updated.label} is now “${updated.displayName}”.`
+            : `Cleared the name for ${updated.label}.`,
+        );
       },
       error: (err: unknown) => {
         this.renaming.set(null);

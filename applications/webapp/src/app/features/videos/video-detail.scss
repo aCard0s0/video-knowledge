@@ -211,6 +211,17 @@
 
 .ocr {
   color: var(--st-warn);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.rename-result {
+  min-height: 1lh;
+  color: var(--st-done);
+  padding: 0 var(--space-md);
 }
 
 .body {
@@ -253,10 +264,21 @@
   background: transparent;
   overflow: hidden;
 
+  // The `width`/`height` attributes said 16:9, `height: auto` then let the real frame decide, and
+  // a portrait upload rendered 160×299 — the reserved box tripled on load, once per frame. The box
+  // is now exactly what the attributes promise, so a mixed page of portrait and landscape frames
+  // is a uniform, scannable column with no shift.
+  //
+  // `contain`, not `cover`: this pane exists to check a read against the frame it came from, and
+  // cropping hides the part of the screen the text was on. 4:3 rather than the video's own 16:9,
+  // because a 9:16 upload letterboxed into 16:9 is 51px wide — too small to recognise a moment in.
   img {
     display: block;
     width: 100%;
+    aspect-ratio: 4 / 3;
     height: auto;
+    object-fit: contain;
+    background: #000;
   }
 
   .tc {
@@ -282,13 +304,53 @@
     grid-template-columns: 1fr;
   }
 
+  // One column, so the panel cannot ride beside the list any more — but the *player* still has to.
+  // Every artifact row is a seek, and with the whole panel static the transcript became a ~6000px
+  // page whose taps moved a player a full screen above the viewport: audio started and nothing on
+  // screen said where it had gone.
+  //
+  // `display: contents` is what makes it work. A sticky element is bounded by its containing
+  // block, so `position: sticky` on the video inside the panel sticks only until the *panel*
+  // scrolls past — measured at -701px with the list still going. Dropping the panel's own box
+  // promotes its children to grid items of `.split`, which spans the artifacts too, and the video
+  // sticks against that instead.
+  //
+  // Deliberately no `order` on the children. Moving the rerun row and the dossier below the list
+  // reads better, but `order` moves only the paint: tab order stays in DOM order, so focus would
+  // leave the player, skip the whole list, land on a rerun chip painted underneath it, and come
+  // back up. A screen that looks reordered and tabs unreordered is worse than one extra scroll.
   .player-panel {
-    position: static;
+    display: contents;
+  }
+
+  .player {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-radius: 0;
+    // Sticky over a scrolling list, so it needs its own ground rather than the panel's.
+    background: #000;
+  }
+
+  // Out of the panel's box, so the gutter it used to inherit has to be restated.
+  .cursor,
+  .reruns,
+  .dossier {
+    padding-inline: var(--space-md);
   }
 
   .rows,
   .units,
   .frames-list {
     max-height: none;
+  }
+
+  // A sticky element must not cover the thing focus just moved to. The rows are `<button>`s, so
+  // tabbing scrolls them into view — under the pinned player, without this. `56.25vw` is the
+  // player's own height at `aspect-ratio: 16 / 9` across the one-column width, plus a gap.
+  .rows li > .row,
+  .units li > .row,
+  .frames-list li > .frame {
+    scroll-margin-top: calc(56.25vw + var(--space-md));
   }
 }

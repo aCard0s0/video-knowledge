@@ -610,6 +610,54 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   Cancel or Esc to back out — the shape the videos list already uses for delete. The empty-state
   CTAs inside the panes stay **one** press on purpose: an empty pane has nothing to wipe, and a
   confirm that guards nothing is the kind people learn to click through.
+- **Knowledge units are sorted client-side by `startSeconds`.** The server's
+  `findByVideo_IdOrderByCreatedAtAsc` is *insert* order — one batch writes its units in the order
+  the model emitted them, all sharing a timestamp — and its javadoc calling that "timeline-ordered"
+  is what made it look already solved. Rendered down a timecode gutter beside a player, the list
+  walked backwards: 00:50, 01:15, 01:50, 00:00, 00:35. Sorted on the client rather than in the
+  repository because the ordering is this screen's need and the MCP and CLI read the same endpoint;
+  units with no `startSeconds` sort last, since they belong to no moment.
+- **A rename writes the server's answer into its own row, and never refetches the list.** Rows bind
+  `[value]` with no `(input)` and `track speaker.id` keeps the DOM node, so the `speakers.reload()`
+  that used to follow a save re-evaluated that binding on *every* row — renaming the first of two
+  speakers silently discarded the name typed into the second. `PATCH /speakers/{id}` answers with
+  the updated `SpeakerDto`, so the one changed row is written in place. A `role="status"` line says
+  what was saved: a row that goes back to looking exactly as it did is indistinguishable from a
+  press that did nothing.
+- **The dossier carries the timestamps `/detail` was already returning.** `video.createdAt` as
+  `ingested`, and the transcription's `updatedAt` as `written` — the videos *list* showed an age the
+  one screen that could explain a video did not, so "is this transcript older than the model change"
+  had no answer. Both go through `humanAge`/`absoluteTime`, so a zoneless timestamp still reads as
+  the server bug it is.
+- **A video links back to its channel.** `GET /videos` already filters on `channelName` and the
+  videos screen already reads `?channel=`; only the link was missing, so the trip from a video to
+  the rest of its channel was Back and retype. Guarded on a blank name, which the corpus has plenty
+  of — those still render `no channel`, not an empty link.
+- **The fused row names its speakers instead of counting them.** `speakerLabels` was rendered as
+  `2 speaker(s)`; naming them is what DIARIZE is for, and it is the same natural key the speakers
+  pane and `multimodal_segments` both use. Its `ocrText` is clamped to three lines — paddleocr
+  returns every string on the frame, so one screen-share segment ran to fifteen lines of sidebar
+  chrome in the warn colour, louder than the transcript it annotates. The full read is per frame in
+  the OCR pane, which is where it is legible anyway.
+- **An OCR thumbnail reserves the box it actually gets.** `width="160" height="90"` with
+  `height: auto` let the real frame decide, so a 9:16 upload rendered 160×299 and the reserved box
+  tripled on load, once per frame. The box is now 4:3 with `object-fit: contain` — `contain` because
+  the pane exists to check a read against the frame it came from and cropping hides the part of the
+  screen the text was on, and 4:3 rather than 16:9 because a portrait frame letterboxed into 16:9 is
+  51px wide.
+- **`0` is a value, not an absence.** `line.confidence` and `fullTextChars` were guarded by
+  truthiness, so the OCR line read at 0% confidence — the one most worth flagging — rendered as if
+  it had no score, and an empty transcript looked like a missing field.
+- **Below 1100px the player pins to the top and the list scrolls under it.** One column meant the
+  panel could no longer ride beside the list, so the transcript became a ~6000px page whose taps
+  moved a player a full screen above the viewport: audio started and nothing on screen said where it
+  had gone. `position: sticky` on the video alone does not fix it — a sticky element is bounded by
+  its containing block, and the panel ends long before the list does (measured at -701px with the
+  list still going). `.player-panel` takes `display: contents` at that width, promoting its children
+  to grid items of `.split`, which spans the artifacts too. The rows carry a matching
+  `scroll-margin-top`, because a sticky element must not cover what focus just moved to.
+  **No `order` on those children**: `order` moves only the paint, so focus would leave the player,
+  skip the whole list and land on a chip painted underneath it.
 - **A synchronous rerun reports its elapsed time into a live region.** OCR over seventeen frames
   measured past ten minutes (individual frames 2s–120s, several timing out), and the only feedback
   for the whole of it was a 10px `OCR…` in a 20px chip: the `role="status"` line was empty, and

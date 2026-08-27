@@ -14,6 +14,7 @@ import {
   VideoPhasesService,
   VideosService,
 } from '../../api/generated';
+import { SpeakerDto } from '../../api/generated';
 import { OPTIONAL_PHASES } from '../../core/domain';
 
 const VIDEO_ID = '11111111-2222-3333-4444-555555555555';
@@ -33,6 +34,8 @@ type Options = {
   units?: unknown[];
   /** Query params the screen opens with, e.g. the knowledge type filter. */
   query?: Record<string, string>;
+  /** What `GET /videos/{id}/speakers` answers. */
+  speakers?: unknown[];
 };
 
 /**
@@ -44,8 +47,12 @@ type Options = {
 @Component({ selector: 'vk-test-host', imports: [RouterOutlet], template: '<router-outlet />' })
 class Host {}
 
-async function screen({ disabled = [], units = [], query = {} }: Options = {}) {
+async function screen({ disabled = [], units = [], query = {}, speakers = [] }: Options = {}) {
   const runVideoPhase = vi.fn(() => new Observable(() => {}));
+  const listVideoSpeakers = vi.fn(() => of(speakers));
+  const renameSpeaker = vi.fn((id: string, body: { displayName: string }) =>
+    of({ ...(speakers as SpeakerDto[]).find((s) => s.id === id), displayName: body.displayName }),
+  );
   const enabledPhases = OPTIONAL_PHASES.filter((p) => !disabled.includes(p));
 
   TestBed.configureTestingModule({
@@ -74,7 +81,7 @@ async function screen({ disabled = [], units = [], query = {} }: Options = {}) {
         },
       },
       { provide: KnowledgeService, useValue: { listVideoKnowledge: () => of(units) } },
-      { provide: SpeakersService, useValue: { listVideoSpeakers: () => of([]) } },
+      { provide: SpeakersService, useValue: { listVideoSpeakers, renameSpeaker } },
       { provide: VideoPhasesService, useValue: { runVideoPhase } },
     ],
   });
@@ -90,7 +97,7 @@ async function screen({ disabled = [], units = [], query = {} }: Options = {}) {
       b.textContent?.includes(phase),
     )!;
   const tick = () => TestBed.tick();
-  return { el, chip, tick, runVideoPhase };
+  return { el, chip, tick, runVideoPhase, listVideoSpeakers, renameSpeaker };
 }
 
 describe('video detail: the knowledge pane distinguishes a filter from a video', () => {
@@ -235,5 +242,100 @@ describe('video detail: the rerun status line is a live region', () => {
     // measured past ten minutes with nothing but a 10px ellipsis to say the request was still open.
     expect(el.querySelector('.run-result')!.textContent).toContain('OCR running');
     expect(el.querySelector('.run-result')!.textContent).toContain('elapsed');
+  });
+});
+
+describe('video detail: knowledge units read in timeline order', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  /**
+   * The server sends `createdAt ASC`, which is *insert* order: one batch writes its units in the
+   * order the model emitted them, all sharing a timestamp. Rendered down a timecode gutter beside a
+   * player, that list walks backwards — clicking straight down it seeks the player to 00:50, then
+   * 01:15, then 00:00.
+   */
+  it('sorts by where in the video the unit is, not by when it was written', async () => {
+    const { el } = await screen({
+      units: [
+        { id: 'a', type: 'CLAIM', title: 'third', content: '…', startSeconds: 110 },
+        { id: 'b', type: 'TOPIC', title: 'first', content: '…', startSeconds: 0 },
+        { id: 'c', type: 'ENTITY', title: 'second', content: '…', startSeconds: 35 },
+      ],
+    });
+
+    const titles = [...el.querySelectorAll('.units .line')].map((n) => n.textContent!.trim());
+    expect(titles).toEqual(['TOPIC first', 'ENTITY second', 'CLAIM third']);
+  });
+
+  it('puts a unit with no timecode last rather than at the front', async () => {
+    const { el } = await screen({
+      units: [
+        { id: 'a', type: 'SUMMARY', title: 'whole video', content: '…' },
+        { id: 'b', type: 'TOPIC', title: 'at the start', content: '…', startSeconds: 0 },
+      ],
+    });
+
+    const titles = [...el.querySelectorAll('.units .line')].map((n) => n.textContent!.trim());
+    expect(titles).toEqual(['TOPIC at the start', 'SUMMARY whole video']);
+  });
+});
+
+describe('video detail: renaming a speaker leaves the other rows alone', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  const TWO = [
+    { id: 's1', videoId: VIDEO_ID, label: 'SPEAKER_00', displayName: '', segmentCount: 18 },
+    { id: 's2', videoId: VIDEO_ID, label: 'SPEAKER_01', displayName: '', segmentCount: 31 },
+  ];
+
+  /**
+   * The regression this pins. Rows bind `[value]` with no `(input)` and `track speaker.id` keeps
+   * the DOM node, so a `speakers.reload()` after a save re-evaluated that binding on *every* row
+   * and reset whatever the operator had typed into the others. Two speakers is the smallest case
+   * that shows it, and two speakers is the common case.
+   */
+  it('does not reset a sibling row the operator is still typing into', async () => {
+    const { el, tick, listVideoSpeakers } = await screen({
+      query: { pane: 'speakers' },
+      speakers: TWO,
+    });
+
+    const inputs = [...el.querySelectorAll<HTMLInputElement>('table.grid tbody input')];
+    inputs[1].value = 'Guest, unsaved';
+    inputs[0].value = 'Host';
+    el.querySelectorAll<HTMLButtonElement>('table.grid tbody button')[0].click();
+    tick();
+
+    expect(inputs[1].value).toBe('Guest, unsaved');
+    // One request, not two: the PATCH answers with the updated row, so there is nothing to refetch.
+    expect(listVideoSpeakers).toHaveBeenCalledTimes(1);
+  });
+
+  it('says what it saved, in a region that was already in the tree', async () => {
+    const { el, tick } = await screen({ query: { pane: 'speakers' }, speakers: TWO });
+
+    const region = el.querySelector('.rename-result')!;
+    expect(region.getAttribute('role')).toBe('status');
+    expect(getComputedStyle(region).display).not.toBe('none');
+
+    el.querySelector<HTMLInputElement>('table.grid tbody input')!.value = 'Host';
+    el.querySelectorAll<HTMLButtonElement>('table.grid tbody button')[0].click();
+    tick();
+
+    expect(region.textContent).toContain('SPEAKER_00');
+    expect(region.textContent).toContain('Host');
+  });
+
+  it('reports a cleared name as cleared rather than as a save of nothing', async () => {
+    const { el, tick } = await screen({
+      query: { pane: 'speakers' },
+      speakers: [{ ...TWO[0], displayName: 'Host' }],
+    });
+
+    el.querySelector<HTMLInputElement>('table.grid tbody input')!.value = '';
+    el.querySelector<HTMLButtonElement>('table.grid tbody button')!.click();
+    tick();
+
+    expect(el.querySelector('.rename-result')!.textContent).toContain('Cleared');
   });
 });
