@@ -212,10 +212,18 @@ Schema is Liquibase-only (`ddl-auto=none`): SQL changesets under
 `db.changelog-master.yaml`. New migrations are a new numbered file plus an include —
 never edit an applied changeset.
 
+**The six changesets are grouped by scope, not by history** (`001-pipeline`, `002-transcription`,
+`003-frames-ocr`, `004-knowledge`, `005-search`, `006-youtube-channels`), so a table's current shape
+reads in one place instead of across a migration and three later `ALTER`s. That consolidation
+rewrote every changeset id and checksum, which was only possible because the database was recreated
+from a backup in the same change (Aug 2026) — it is **not** repeatable against a populated
+changelog. From here on, a schema change is a new numbered file, as it always was.
+
 **Two index rules the schema has already broken once.** A single-column index whose column is the
 leftmost prefix of an existing composite or unique index is dead weight — the planner just prefers
-the narrower one, which makes `pg_stat_user_indexes` read as if both were needed. Changeset 006
-dropped seven of those. And there is no GIN index on any `metadata` column: nothing queries JSONB
+the narrower one, which makes `pg_stat_user_indexes` read as if both were needed. Seven of those
+were dropped, and the consolidated changesets simply never create them — each omission carries its
+reason inline. And there is no GIN index on any `metadata` column: nothing queries JSONB
 by content (no `@>`, no `->>`), so all three were pure write cost, the `videos` one at 1656 kB
 against three rows. Add one back only alongside the query that needs it.
 
