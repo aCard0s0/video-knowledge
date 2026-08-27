@@ -21,6 +21,7 @@ export * from './page-response-transcription-segment-summary';
 export * from './page-response-video-summary';
 export * from './page-response-youtube-channel-summary';
 export * from './page-response-youtube-channel-video-summary';
+export * from './phase-availability';
 export * from './readiness-result';
 export * from './regenerate-context-result';
 export * from './regenerate-knowledge-result';

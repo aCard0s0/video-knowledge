@@ -67,6 +67,18 @@ export const OPTIONAL_PHASES = [
 ] as const;
 export type OptionalPhase = (typeof OPTIONAL_PHASES)[number];
 
+/**
+ * Optional phases that another optional phase has to have run first, mirrored from the server's
+ * `applies(ctx)` gates: `OcrPhase` also requires FRAME_SAMPLE, `DiarizePhase` also requires
+ * TRANSCRIBE. There is nothing to OCR if no frames were sampled, and nothing to diarize without a
+ * transcript, so the server skips the dependent phase silently — which made the picker offer OCR
+ * as "will run" next to a FRAME_SAMPLE the operator had just turned off.
+ */
+export const PHASE_REQUIRES: Partial<Record<OptionalPhase, OptionalPhase>> = {
+  OCR: 'FRAME_SAMPLE',
+  DIARIZE: 'TRANSCRIBE',
+};
+
 export const EVENT_TYPES = [
   'ITEM_CREATED',
   'ITEM_PHASE_ENTERED',

@@ -1,8 +1,13 @@
 // Form left, the run it starts right. Below 1200px the watch panel drops under the form, which is
 // also the order you read them in.
+//
+// The form used to take a fixed 720px and leave the run the remainder, which had it backwards: the
+// form is a textarea and seven chips, while the right column carries the lane, the errorCode and a
+// yt-dlp message that was wrapping to three lines beside 200px of empty form. The diagnosis gets
+// the larger share now, and the form gets what it needs.
 .split {
   display: grid;
-  grid-template-columns: minmax(0, 720px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: var(--space-md);
   align-items: start;
 }
@@ -17,6 +22,11 @@
 
 textarea {
   width: 100%;
+  // Grows with what is in it instead of always reserving eight rows. On a phone that reservation
+  // was ~290px of empty box between the operator and the run they had just started; `rows` stays
+  // as the fallback where field-sizing is not supported.
+  field-sizing: content;
+  max-height: 18lh;
 }
 
 .counts {
@@ -26,7 +36,14 @@ textarea {
 }
 
 .actions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
   margin-top: var(--space-lg);
+}
+
+.hint {
+  font-size: var(--fs-xs);
 }
 
 .rejects {
@@ -51,6 +68,13 @@ caption {
   top: var(--space-md);
 }
 
+// The panel takes focus after a submit; it is a scroll container, not a control, so it gets the
+// ring but never looks pressable.
+.watch:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .watch-meta {
   display: flex;
   flex-wrap: wrap;
@@ -68,25 +92,6 @@ caption {
 .retry {
   margin-left: auto;
   white-space: nowrap;
-}
-
-// What the retry declined. A 202 still answers with REJECTED items, so this is not an error panel —
-// it is the rest of the answer, and it sits with the run it is about.
-.retry-rejects {
-  list-style: none;
-  margin: 0;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border);
-
-  li {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-sm);
-  }
-
-  .reason {
-    color: var(--st-warn);
-  }
 }
 
 .watch-items,
@@ -123,13 +128,22 @@ caption {
   border-radius: 1px;
 }
 
+// Ellipsis from the column it sits in, not from `.truncate`'s fixed 34ch / 18ch cap: both of
+// these already sit in a track that constrains them, so the cap only ever cut the label shorter
+// than the space available — at 390px to 18 characters, which is `youtube.com/watch…` again.
 .url {
   min-width: 0;
   font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+// Two rows: identity, label, status and age across the top, and the fault — when there is one —
+// spanning under them rather than squeezing the label into nothing.
 .recent > li {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
@@ -140,8 +154,12 @@ caption {
   }
 }
 
-.recent .url {
-  flex: 1 1 auto;
+.recent-fault {
+  grid-column: 2 / -1;
+}
+
+.recent .age {
+  white-space: nowrap;
 }
 
 @media (max-width: 1199px) {
@@ -156,5 +174,30 @@ caption {
   .watch-items,
   .recent {
     max-height: none;
+  }
+}
+
+// Five columns have nowhere left to go at this width. Wrap instead, and give the label its own
+// full-width line — it is the one field that needs the room, and sharing a row with four other
+// things is what left it showing `youtube.com/watch…`.
+@media (max-width: 767px) {
+  .recent > li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .recent .url {
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .recent .age {
+    order: 4;
+  }
+
+  .recent-fault {
+    flex: 1 1 100%;
+    order: 5;
   }
 }

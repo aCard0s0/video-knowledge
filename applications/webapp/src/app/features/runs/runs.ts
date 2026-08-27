@@ -10,6 +10,7 @@ import { RUN_STATUSES, blank, isLanePhase, isLive, statusVar } from '../../core/
 import { humanAge, absoluteTime, parseServerTime } from '../../core/time';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
+import { shortUrl } from '../../core/url';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -45,27 +46,6 @@ export function marker(run: RunSummary): string {
  */
 export function retrySaid(queued: number, asked: number): string {
   return queued ? `Queued ${queued} of ${asked} runs.` : '';
-}
-
-/**
- * A URL with its boilerplate off.
- *
- * The row label truncates at 34ch with an ellipsis on the tail, and a YouTube watch URL spends its
- * first 32 characters saying `https://www.youtube.com/watch?v=` — so what got clipped was the video
- * id, the only part that distinguishes one row from the next, and fourteen rows read
- * `https://www.youtube.com/watch?v=xxxx…`. Dropping the scheme and the `www.` leaves
- * `youtube.com/watch?v=dQw4w9WgXcQ` at 31 characters, which fits whole.
- *
- * Anything `URL` cannot parse comes back untouched: a run's `videoUrl` is whatever the operator
- * pasted, and a half-typed URL is exactly the row they need to read.
- */
-export function shortUrl(value: string): string {
-  try {
-    const u = new URL(value);
-    return `${u.host.replace(/^www\./, '')}${u.pathname}${u.search}`;
-  } catch {
-    return value;
-  }
 }
 
 /**
