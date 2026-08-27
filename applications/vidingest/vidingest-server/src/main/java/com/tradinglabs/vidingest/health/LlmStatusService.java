@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Probes the model runtime behind the embeddings provider so the console rail can say whether it
@@ -77,7 +78,8 @@ public class LlmStatusService {
 
         List<LlmModel> installed;
         try {
-            installed = isOllama ? fetchOllamaModels(client, listPath) : fetchOpenAiModels(client);
+            installed = fetchModels(client, listPath, isOllama ? "models" : "data",
+                        isOllama ? LlmStatusService::ollamaModel : LlmStatusService::openAiModel);
         } catch (Exception e) {
             log.warn("LLM probe {} failed (provider={}): {}", listPath, provider, e.getMessage());
             return new LlmStatus(false, provider, baseUrl, embedModel, List.of(), List.of(),
@@ -88,7 +90,7 @@ public class LlmStatusService {
         List<LlmModel> running = List.of();
         if (isOllama) {
             try {
-                running = fetchOllamaModels(client, "/api/ps");
+                running = fetchModels(client, "/api/ps", "models", LlmStatusService::ollamaModel);
             } catch (Exception e) {
                 log.warn("LLM probe /api/ps failed: {}", e.getMessage());
             }
@@ -105,52 +107,40 @@ public class LlmStatusService {
     }
 
     /**
-     * {@code /api/tags} and {@code /api/ps} return the same {@code models[]} element shape, so one
-     * reader covers both. {@code expires_at} is present only on {@code /api/ps}.
+     * One reader for both listing shapes: Ollama answers {@code {"models":[…]}} on
+     * {@code /api/tags} and {@code /api/ps}, an OpenAI-compatible server answers
+     * {@code {"data":[{"id":…}]}} on {@code /models}. Only the array key and how one element maps
+     * differ, so the null-and-shape checks live here once.
      */
     @SuppressWarnings("unchecked")
-    private List<LlmModel> fetchOllamaModels(RestClient client, String uri) {
+    private List<LlmModel> fetchModels(RestClient client, String uri, String key,
+                                       Function<Map<?, ?>, LlmModel> mapper) {
         Map<String, Object> body = client.get()
                 .uri(uri)
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .body(Map.class);
         if (body == null) return List.of();
-        Object models = body.get("models");
-        if (!(models instanceof List<?> list)) return List.of();
+        if (!(body.get(key) instanceof List<?> list)) return List.of();
         List<LlmModel> out = new ArrayList<>(list.size());
         for (Object o : list) {
-            if (!(o instanceof Map<?, ?> m)) continue;
-            out.add(new LlmModel(
-                    str(m.get("name")),
-                    str(m.get("digest")),
-                    longOrNull(m.get("size")),
-                    str(m.get("expires_at"))
-            ));
+            if (o instanceof Map<?, ?> m) out.add(mapper.apply(m));
         }
         return out;
     }
 
+    /** {@code expires_at} is present only on {@code /api/ps}; the rest is shared with /api/tags. */
+    private static LlmModel ollamaModel(Map<?, ?> m) {
+        return new LlmModel(str(m.get("name")), str(m.get("digest")),
+                longOrNull(m.get("size")), str(m.get("expires_at")));
+    }
+
     /**
-     * OpenAI {@code GET /models} answers {@code {"data":[{"id":…}]}}. Only the id is portable —
-     * LM Studio adds its own fields, llama.cpp adds different ones, and neither is worth guessing.
+     * Only the id is portable — LM Studio adds its own fields, llama.cpp adds different ones, and
+     * neither is worth guessing.
      */
-    @SuppressWarnings("unchecked")
-    private List<LlmModel> fetchOpenAiModels(RestClient client) {
-        Map<String, Object> body = client.get()
-                .uri("/models")
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body(Map.class);
-        if (body == null) return List.of();
-        Object models = body.get("data");
-        if (!(models instanceof List<?> list)) return List.of();
-        List<LlmModel> out = new ArrayList<>(list.size());
-        for (Object o : list) {
-            if (!(o instanceof Map<?, ?> m)) continue;
-            out.add(new LlmModel(str(m.get("id")), null, null, null));
-        }
-        return out;
+    private static LlmModel openAiModel(Map<?, ?> m) {
+        return new LlmModel(str(m.get("id")), null, null, null);
     }
 
     private static String str(Object o) {

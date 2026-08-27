@@ -1,21 +1,14 @@
 package com.tradinglabs.vidingest.core.knowledge.client.ollama;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
 import com.tradinglabs.vidingest.config.KnowledgeExtractionConfig;
+import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeChatClientTestBase;
 import com.tradinglabs.vidingest.core.knowledge.dto.KnowledgeUnitDraft;
 import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionFailureException;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,15 +24,11 @@ import static org.assertj.core.api.Assertions.within;
  * a strict-JSON response into typed drafts, and surfaces transport / parse errors as
  * {@link KnowledgeExtractionFailureException}.
  */
-class OllamaKnowledgeChatClientTest {
+class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
 
-    private HttpServer server;
-
-    @AfterEach
-    void stop() {
-        if (server != null) {
-            server.stop(0);
-        }
+    @Override
+    protected String contextPath() {
+        return "/api/chat";
     }
 
     @Test
@@ -204,13 +193,7 @@ class OllamaKnowledgeChatClientTest {
     @Test
     void readTimeoutSaysSoAndNamesTheProperty() throws Exception {
         // Accept the request, send headers, then never send the body: the client blocks on read.
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/api/chat", exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, 512);   // promise 512 bytes, deliver none
-        });
-        server.start();
+        startStallingServer();
 
         KnowledgeExtractionConfig cfg = config();
         cfg.setReadTimeout(Duration.ofMillis(600));
@@ -223,61 +206,4 @@ class OllamaKnowledgeChatClientTest {
                 .hasMessageContaining("vidingest.knowledge.read-timeout");
     }
 
-    private static RestClient shortReadRestClient(String baseUrl) {
-        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
-        rf.setConnectTimeout(2000);
-        rf.setReadTimeout(600);
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
-    }
-
-    // ----- HTTP test scaffolding -----
-
-    private void startServer(int status, String body) throws IOException {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/api/chat", exchange -> handle(exchange, status, body, null));
-        server.start();
-    }
-
-    private void startServerWithCapture(int status, String body, AtomicReference<String> capture) throws IOException {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/api/chat", exchange -> handle(exchange, status, body, capture));
-        server.start();
-    }
-
-    private static void handle(HttpExchange exchange, int status, String body, AtomicReference<String> capture) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            exchange.sendResponseHeaders(405, -1);
-            exchange.close();
-            return;
-        }
-        byte[] reqBytes = exchange.getRequestBody().readAllBytes();
-        if (capture != null) {
-            capture.set(new String(reqBytes, StandardCharsets.UTF_8));
-        }
-        byte[] respBytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(status, respBytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(respBytes);
-        }
-    }
-
-    private String baseUrl() {
-        return "http://localhost:" + server.getAddress().getPort();
-    }
-
-    private static KnowledgeExtractionConfig config() {
-        KnowledgeExtractionConfig cfg = new KnowledgeExtractionConfig();
-        cfg.setChatModel("qwen2.5:14b-instruct");
-        cfg.setTemperature(0.2);
-        cfg.setMaxOutputTokens(4096);
-        return cfg;
-    }
-
-    private static RestClient restClient(String baseUrl) {
-        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
-        rf.setConnectTimeout(Math.toIntExact(Duration.ofSeconds(2).toMillis()));
-        rf.setReadTimeout(Math.toIntExact(Duration.ofSeconds(5).toMillis()));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
-    }
 }

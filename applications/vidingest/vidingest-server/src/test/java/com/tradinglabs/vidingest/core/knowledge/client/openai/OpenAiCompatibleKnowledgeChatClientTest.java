@@ -1,21 +1,15 @@
 package com.tradinglabs.vidingest.core.knowledge.client.openai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
 import com.tradinglabs.vidingest.config.KnowledgeExtractionConfig;
+import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeChatClientTestBase;
 import com.tradinglabs.vidingest.core.knowledge.dto.KnowledgeUnitDraft;
 import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionFailureException;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
 
-import java.io.IOException;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -36,15 +30,13 @@ import static org.assertj.core.api.Assertions.within;
  * alternate-root-key case is enough to prove the fallbacks are actually wired in on this path
  * rather than tested only on the other one.
  */
-class OpenAiCompatibleKnowledgeChatClientTest {
+class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
 
-    private HttpServer server;
+    private static final String EMPTY_UNITS = "{\"choices\": [{\"message\": {\"content\": \"{\\\"units\\\": []}\"}}]}";
 
-    @AfterEach
-    void stop() {
-        if (server != null) {
-            server.stop(0);
-        }
+    @Override
+    protected String contextPath() {
+        return "/chat/completions";
     }
 
     @Test
@@ -109,9 +101,7 @@ class OpenAiCompatibleKnowledgeChatClientTest {
     @Test
     void requestUsesOpenAiFieldNamesAndCarriesTheSchema() throws Exception {
         AtomicReference<String> captured = new AtomicReference<>();
-        startServerWithCapture(200, """
-                {"choices": [{"message": {"content": "{\\"units\\": []}"}}]}
-                """, captured);
+        startServerWithCapture(200, EMPTY_UNITS, captured);
 
         KnowledgeExtractionConfig cfg = config();
         cfg.setMaxOutputTokens(2048);
@@ -134,9 +124,9 @@ class OpenAiCompatibleKnowledgeChatClientTest {
     void apiKeyIsSentAsBearerAndOmittedWhenBlank() throws Exception {
         AtomicReference<String> auth = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/chat/completions", exchange -> {
+        server.createContext(contextPath(), exchange -> {
             auth.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            handle(exchange, 200, "{\"choices\": [{\"message\": {\"content\": \"{\\\"units\\\": []}\"}}]}", null);
+            handle(exchange, 200, EMPTY_UNITS, null);
         });
         server.start();
 
@@ -185,13 +175,7 @@ class OpenAiCompatibleKnowledgeChatClientTest {
      */
     @Test
     void readTimeoutSaysSoAndNamesTheProperty() throws Exception {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/chat/completions", exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, 512);   // promise 512 bytes, deliver none
-        });
-        server.start();
+        startStallingServer();
 
         KnowledgeExtractionConfig cfg = config();
         cfg.setReadTimeout(Duration.ofMillis(600));
@@ -212,63 +196,5 @@ class OpenAiCompatibleKnowledgeChatClientTest {
 
         assertThat(client.extract("sys", "   ")).isEmpty();
         assertThat(client.extract("sys", null)).isEmpty();
-    }
-
-    // ----- HTTP test scaffolding -----
-
-    private void startServer(int status, String body) throws IOException {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/chat/completions", exchange -> handle(exchange, status, body, null));
-        server.start();
-    }
-
-    private void startServerWithCapture(int status, String body, AtomicReference<String> capture) throws IOException {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/chat/completions", exchange -> handle(exchange, status, body, capture));
-        server.start();
-    }
-
-    private static void handle(HttpExchange exchange, int status, String body, AtomicReference<String> capture) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            exchange.sendResponseHeaders(405, -1);
-            exchange.close();
-            return;
-        }
-        byte[] reqBytes = exchange.getRequestBody().readAllBytes();
-        if (capture != null) {
-            capture.set(new String(reqBytes, StandardCharsets.UTF_8));
-        }
-        byte[] respBytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(status, respBytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(respBytes);
-        }
-    }
-
-    private String baseUrl() {
-        return "http://localhost:" + server.getAddress().getPort();
-    }
-
-    private static KnowledgeExtractionConfig config() {
-        KnowledgeExtractionConfig cfg = new KnowledgeExtractionConfig();
-        cfg.setChatModel("qwen2.5:14b-instruct");
-        cfg.setTemperature(0.2);
-        cfg.setMaxOutputTokens(4096);
-        return cfg;
-    }
-
-    private static RestClient restClient(String baseUrl) {
-        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
-        rf.setConnectTimeout(Math.toIntExact(Duration.ofSeconds(2).toMillis()));
-        rf.setReadTimeout(Math.toIntExact(Duration.ofSeconds(5).toMillis()));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
-    }
-
-    private static RestClient shortReadRestClient(String baseUrl) {
-        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
-        rf.setConnectTimeout(2000);
-        rf.setReadTimeout(600);
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
     }
 }

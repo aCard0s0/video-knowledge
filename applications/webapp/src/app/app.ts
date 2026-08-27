@@ -224,12 +224,10 @@ export class App {
         : l?.provider === 'ollama'
           ? `${l.runningModels?.length ?? 0} loaded`
           : `${l?.installedModels?.length ?? 0} available`;
-      const via = l?.provider ? `${state} · ${l.provider}` : state;
-      deps.push({
-        name: 'llm',
-        ok: !!l?.reachable,
-        detail: l?.embedModel ? `${via} · embed ${l.embedModel}` : via,
-      });
+      const detail = [state, l?.provider, l?.embedModel && `embed ${l.embedModel}`]
+        .filter(Boolean)
+        .join(' · ');
+      deps.push({ name: 'llm', ok: !!l?.reachable, detail });
     }
     return deps;
   });

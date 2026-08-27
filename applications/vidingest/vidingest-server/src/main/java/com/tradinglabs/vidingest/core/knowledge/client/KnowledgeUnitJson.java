@@ -102,7 +102,7 @@ public final class KnowledgeUnitJson {
             JsonNode unitsNode = locateUnitsArray(tree);
             if (unitsNode == null || !unitsNode.isArray()) {
                 log.warn("Knowledge LLM emitted JSON without a recognisable units array; root keys={}, snippet={}",
-                        keysOf(tree), snippet(content));
+                        keysOf(tree), truncate(content, 200));
                 return List.of();
             }
 
@@ -116,7 +116,7 @@ public final class KnowledgeUnitJson {
         } catch (Exception e) {
             // Soft failure: log + drop the batch rather than fail the whole video.
             log.warn("Knowledge LLM inner content was not parseable JSON; dropping batch. snippet={}",
-                    snippet(content));
+                    truncate(content, 200));
             return List.of();
         }
     }
@@ -204,9 +204,6 @@ public final class KnowledgeUnitJson {
                     || c instanceof java.net.http.HttpTimeoutException) {
                 return true;
             }
-            if (c.getCause() == c) {
-                break;
-            }
         }
         return false;
     }
@@ -215,10 +212,11 @@ public final class KnowledgeUnitJson {
         return (System.nanoTime() - startNs) / 1_000_000;
     }
 
-    public static String bodySnippet(String body) {
-        if (body == null) return "";
-        String trimmed = body.trim();
-        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500) + "...";
+    /** Trimmed and capped at {@code max}, for putting a response body in a failure message. */
+    public static String truncate(String s, int max) {
+        if (s == null) return "";
+        String trimmed = s.trim();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max) + "...";
     }
 
     // ---- value helpers ----
@@ -257,11 +255,5 @@ public final class KnowledgeUnitJson {
             first = false;
         }
         return sb.append(']').toString();
-    }
-
-    private static String snippet(String s) {
-        if (s == null) return "";
-        String trimmed = s.trim();
-        return trimmed.length() <= 200 ? trimmed : trimmed.substring(0, 200) + "...";
     }
 }
