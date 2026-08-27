@@ -1,6 +1,9 @@
 # Frontend bootstrap prompt
 
-- **Last reviewed**: 2026-08-26
+- **Last reviewed**: 2026-08-27
+- **Status**: **historical**. The console was built from this and has moved well past it — see
+  [VidIngest - Web UI](vidingest/VidIngest%20-%20Web%20UI.md) for what it actually is now. Kept as
+  provenance for how it was generated; nothing reads it.
 - **Applies to**: creating the Angular console at `./applications/webapp`
 - **Companion**: [frontend-skills.md](frontend-skills.md) — the skill order this prompt enforces
 
