@@ -102,12 +102,9 @@ export class VideoDetail {
    * record inside `reloadPane` holding the same five constants, rebuilt on every call.
    */
   protected readonly panes: PaneTab[] = [
-    // prettier-ignore
     { key: 'transcript', label: 'Transcript', count: () => this.counts()?.transcriptionSegments ?? 0, resource: this.segments },
     { key: 'frames', label: 'OCR frames', count: () => this.counts()?.ocrFrames ?? 0, resource: this.frames },
-    // prettier-ignore
     { key: 'fused', label: 'Fused timeline', count: () => this.counts()?.multimodalSegments ?? 0, resource: this.fused },
-    // prettier-ignore
     { key: 'knowledge', label: 'Knowledge', count: () => this.counts()?.knowledgeUnits ?? 0, resource: this.knowledge },
     { key: 'speakers', label: 'Speakers', count: () => this.counts()?.speakers ?? 0, resource: this.speakers },
   ];
@@ -137,7 +134,7 @@ export class VideoDetail {
   protected readonly txtUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.txt`);
   protected readonly jsonUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.json`);
 
-  protected readonly failure = computed(() => firstFailure(this.actionFailure, this.detail));
+  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.detail));
 
   /** The panes get a panel of their own: which artifact list failed is a different question. */
   protected readonly paneFailure = computed(() =>

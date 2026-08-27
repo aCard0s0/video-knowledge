@@ -41,8 +41,8 @@ export class Ingest {
    * "last five runs" column and say nothing at all about why.
    */
   private readonly submitFailure = signal<ApiFailure | null>(null);
-  protected readonly failure = computed(() =>
-    firstFailure(this.submitFailure, this.recent, this.watch.run, this.watch.audit),
+  protected readonly failure = computed(
+    () => this.submitFailure() ?? firstFailure(this.recent, this.watch.run, this.watch.audit),
   );
   protected readonly result = signal<CreatePipelineRunResponse | null>(null);
 

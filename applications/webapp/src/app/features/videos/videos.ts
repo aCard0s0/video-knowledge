@@ -57,7 +57,7 @@ export class Videos {
 
   protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
-  protected readonly failure = computed(() => firstFailure(this.actionFailure, this.list));
+  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.list));
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;

@@ -75,8 +75,8 @@ export class Runs {
   );
   protected readonly historyRuns = computed(() => valueOf(this.history)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.history)?.total ?? 0);
-  protected readonly failure = computed(() =>
-    firstFailure(this.retryFailure, this.history, this.running, this.pending),
+  protected readonly failure = computed(
+    () => this.retryFailure() ?? firstFailure(this.history, this.running, this.pending),
   );
 
   protected readonly statusVar = statusVar;

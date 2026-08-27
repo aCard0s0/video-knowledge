@@ -27,10 +27,7 @@ export function watchRun(runId: () => string | undefined) {
   const pipelines = inject(PipelinesService);
   const poller = inject(Poller);
 
-  const params = () => {
-    const id = runId();
-    return id ? { id } : undefined;
-  };
+  const params = () => { const id = runId(); return id ? { id } : undefined; };
 
   const run = rxResource({ params, stream: ({ params }) => pipelines.getRun(params.id) });
   const audit = rxResource({ params, stream: ({ params }) => auditTail(pipelines, params.id) });
@@ -56,8 +53,7 @@ export function watchRun(runId: () => string | undefined) {
    * read was, on a 40-item run, 80 passes over ~640 events a second. The clock is a dependency only
    * while something is actually live — a finished run's lanes never need rebuilding.
    */
-  const clock = computed(() => (live() ? poller.now() : 0));
-  const lanes = computed(() => buildLanes(items(), events(), clock()));
+  const lanes = computed(() => buildLanes(items(), events(), live() ? poller.now() : 0));
 
   return {
     run,
@@ -69,9 +65,6 @@ export function watchRun(runId: () => string | undefined) {
     auditTruncated,
     live,
     lane: (item: RunItem): LaneSegment[] => lanes().get(item.itemId) ?? [],
-    reload: (): void => {
-      run.reload();
-      audit.reload();
-    },
+    reload: (): void => { run.reload(); audit.reload(); },
   };
 }

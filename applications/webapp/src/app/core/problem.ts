@@ -74,11 +74,8 @@ export function toApiFailure(err: unknown): ApiFailure {
   };
 }
 
-/** Either a resource that may have errored, or a signal holding an already-translated failure. */
-type FailureSource = { error: () => unknown } | (() => ApiFailure | null);
-
 /**
- * The first failure worth showing, in the order given.
+ * The first load failure worth showing, in the order given.
  *
  * `toApiFailure` was always the one translator, but *which* failure wins was decided once per
  * screen: seven hand-written computeds ORing resource errors together, under three different names,
@@ -86,21 +83,16 @@ type FailureSource = { error: () => unknown } | (() => ApiFailure | null);
  * other screen showed the opposite. Same operator, same question, a different answer per screen,
  * and a new screen inherited whichever rule its copy came from.
  *
- * The order here is the rule, and it is the same everywhere: **the action the operator just took
- * comes first**, then the loads behind it. A mutation failure is only ever set while it is the
- * newest thing that happened — every handler clears it before sending — so it cannot bury a load
+ * The rule is now the same everywhere and the shape says it: a mutation failure is already an
+ * `ApiFailure`, so it goes in front of this call with `??` — `actionFailure() ?? firstFailure(list)`
+ * — and the action the operator just took wins by construction. It is only ever set while it is the
+ * newest thing that happened (every handler clears it before sending), so it cannot bury a load
  * error that outlives it.
  */
-export function firstFailure(...sources: FailureSource[]): ApiFailure | null {
-  for (const source of sources) {
-    // A signal is callable; a ResourceRef is not.
-    if (typeof source === 'function') {
-      const failure = source();
-      if (failure) return failure;
-    } else {
-      const err = source.error();
-      if (err) return toApiFailure(err);
-    }
+export function firstFailure(...resources: { error: () => unknown }[]): ApiFailure | null {
+  for (const resource of resources) {
+    const err = resource.error();
+    if (err) return toApiFailure(err);
   }
   return null;
 }

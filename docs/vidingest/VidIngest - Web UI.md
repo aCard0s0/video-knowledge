@@ -82,9 +82,9 @@ HTTP errors carry no code. `errorCode` (`PipelineErrorCode`: `DUPLICATE_VIDEO`,
 on runs, run items and audit events. Two error renderers, never merged into one "something went
 wrong".
 
-Which failure a screen *shows* is one rule, not seven: `firstFailure` (`core/problem.ts`) takes its
-sources in precedence order and every screen passes the action the operator just took ahead of the
-loads behind it. Run detail is the exception on purpose — it gives the retry its own adjacent
+Which failure a screen *shows* is one rule, not seven: `firstFailure` (`core/problem.ts`) takes the
+screen's resources in precedence order, and the action the operator just took goes in front of it as
+`actionFailure() ?? firstFailure(…)` — already an `ApiFailure`, so it needs no translation. Run detail is the exception on purpose — it gives the retry its own adjacent
 panel, and video detail keeps a second panel for the artifact panes.
 
 ### 3. A FAILED run reports `phase: "DONE"`

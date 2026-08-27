@@ -62,8 +62,8 @@ export class ChannelDetail {
   protected readonly pickedCount = computed(() => this.picked().size);
   protected readonly overLimit = computed(() => this.pickedCount() > MAX_PER_RUN);
 
-  protected readonly failure = computed(() =>
-    firstFailure(this.actionFailure, this.channel, this.videos),
+  protected readonly failure = computed(
+    () => this.actionFailure() ?? firstFailure(this.channel, this.videos),
   );
 
   protected readonly statusVar = statusVar;

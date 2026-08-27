@@ -308,8 +308,8 @@ turned off. `core/audit.ts` takes whole pages from the end (capped at four) and 
 **Two screens draw lanes**, run detail and ingest, and both take the run, its audit tail and the
 built lanes from `core/watch-run.ts` — declared inline they cost the same correction twice (the tail
 paging above, and the lane build moving out of the template's read path). **Which** failure a screen
-shows is `firstFailure` in `core/problem.ts`: sources in precedence order, the action the operator
-just took ahead of the loads behind it. Both are called from an injection context, like
+shows is `firstFailure` in `core/problem.ts`: load failures in precedence order, with the action the
+operator just took in front of the call as `actionFailure() ?? firstFailure(…)`. Both are called from an injection context, like
 `syncQueryParams` and `clampPage`.
 
 **A page number outlives the list it came from.** Delete the only row on page 2 and the response is
