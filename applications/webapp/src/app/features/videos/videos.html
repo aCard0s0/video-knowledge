@@ -1,5 +1,5 @@
 <h1 class="mono">videos</h1>
-<p class="sub">Everything the pipeline has persisted. Deleting a video removes its transcript, frames and knowledge with it.</p>
+<p class="sub prose">Everything the pipeline has persisted. Deleting a video removes its transcript, frames and knowledge with it.</p>
 
 <vk-problem [failure]="failure()" />
 <!-- Present even when empty, so it is a region a screen reader can announce into rather than one
@@ -72,7 +72,7 @@
     </vk-empty>
   } @else if (rows().length) {
     <div class="table-scroll">
-      <table class="grid" translate="no">
+      <table class="grid grid-pinned" translate="no">
         <thead>
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>

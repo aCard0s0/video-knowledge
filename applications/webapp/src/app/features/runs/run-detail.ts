@@ -54,6 +54,13 @@ export class RunDetail {
   protected readonly retrying = signal(false);
   protected readonly retryFailure = signal<ApiFailure | null>(null);
   protected readonly retryRejects = signal<ItemResult[]>([]);
+  /**
+   * What the retry did, for the `role="status"` line — the same voice the runs board's `retrySaid`
+   * gives its own retry. A queued retry moves the run back to PENDING and the button out of the
+   * head, which on its own is indistinguishable from a press that did nothing. Empty when nothing
+   * was queued: the rejects panel and the problem panel are already saying why.
+   */
+  protected readonly said = signal('');
   /** '' rather than null: syncQueryParams keeps defaults out of the URL by comparing to ''. */
   protected readonly phaseFilter = signal('');
 
@@ -249,17 +256,22 @@ export class RunDetail {
     this.retrying.set(true);
     this.retryFailure.set(null);
     this.retryRejects.set([]);
+    this.said.set('');
     request.subscribe({
       next: (response) => {
         this.retrying.set(false);
         // 202 does not mean the work was queued. `enqueueRetryBatch` answers with REJECTED items
         // and a reason when it could take nothing — already running, already cancelled — and
         // discarding that body made a retry that did nothing at all look like it had worked.
-        this.retryRejects.set((response.items ?? []).filter((i) => i.status === 'REJECTED'));
+        const items = response.items ?? [];
+        const queued = items.filter((i) => i.status === 'ACCEPTED').length;
+        this.retryRejects.set(items.filter((i) => i.status === 'REJECTED'));
+        this.said.set(queued ? `Queued ${queued} item(s).` : '');
         this.watch.reload();
       },
       error: (err: unknown) => {
         this.retrying.set(false);
+        this.said.set('');
         this.retryFailure.set(toApiFailure(err));
       },
     });

@@ -176,3 +176,21 @@ export function isLive(status: string | null | undefined): boolean {
 export function blank(value: string | null | undefined): boolean {
   return value === null || value === undefined || value.trim() === '';
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A whole uuid, which is what every `{id}` path segment and `?runId` actually accepts.
+ *
+ * Anything else is a 400 carrying a raw Java conversion message, and the ids this console *shows*
+ * are `id.slice(0, 8)` — exactly what an operator copies off a row. The audit screen has held this
+ * back from its query since it grew a run-id filter; the two screens that carry `?run=` in the URL
+ * did not, so a hand-edited or half-copied link put a bare eight characters straight into
+ * `GET /pipelines/{id}` and answered with the conversion error instead of the runs board.
+ *
+ * `syncQueryParams` takes allow-lists, which is the right shape for an enum and no shape at all for
+ * a uuid, so the guard lives with the value rather than with the query string.
+ */
+export function isUuid(value: string | null | undefined): boolean {
+  return !!value && UUID.test(value.trim());
+}

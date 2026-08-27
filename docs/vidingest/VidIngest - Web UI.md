@@ -369,6 +369,78 @@ Smaller: the watch panel's age now carries its absolute time in a `title`, as ev
 every screen already did, and the catalog's item label goes through `shortUrl` rather than
 `.truncate`, for the reason `core/url.ts` gives.
 
+### 20. A standards pass over all eight screens
+
+Reading the eight screens against each other — the same exercise finding 19 ran over four — turned
+up nine more corrections that had stopped one or two screens short. As before, none is a new idea.
+
+**The pinned actions column existed twice and was missing once.** `videos.scss` and `runs.scss` each
+carried their own `.stick`, `tbody tr { background }` and focus-ring lift: the same four rules under
+two roofs, which is exactly how `.chips` drifted before it was moved. They are now `.stick` and
+`.grid-pinned` in `styles.scss`. The channels list, whose action cell is the *widest* of the three —
+Sync now **and** Remove — had no pin at all, so on a phone both buttons sat off the right edge. It
+takes the shared pair. What stays in `runs.scss` is the one rule only that screen needs: a run and
+its fault row are one record, so hovering either half lights both.
+
+**The video screen never refreshed.** The videos list was corrected for exactly this — "a row left
+TRANSCRIBING stayed TRANSCRIBING for as long as the screen was open" — and opening that row made it
+worse, not better: status, artifact counts and the whole dossier come from `/detail`, and every one
+of them sat frozen while the rail underneath ticked "updated 2.0s ago". `Poller` was injected there
+only to move the ages. It now polls on the same `moving() ? POLL_LIVE : POLL_IDLE` cadence the two
+list screens use, reloading `/detail` and the visible pane, and skips a tick while a per-phase rerun
+is in flight — that request answers with the counts itself, and a poll landing mid-wipe would show
+the artifacts half-deleted.
+
+**Two more query params reached a parse unguarded.** `?pane=BOGUS` on `/videos/{id}` matched no
+`@switch` case and rendered an artifact column that was simply blank, no tab lit and nothing saying
+why; `?type=BOGUS` goes into `listVideoKnowledge` and comes back a 400 carrying a raw Java enum
+name. Both are allow-listed now, the rule `/audit`'s four selects already followed.
+
+**`?run=` is a uuid, and neither screen said so.** Ingest and channel detail both carry the watched
+run in the URL, and both fed it straight to `GET /pipelines/{id}` — which takes a whole uuid and
+answers a raw conversion error for anything else. The id those screens *print* is `id.slice(0, 8)`,
+so a half-copied link is the likely way to get one wrong; `/audit` had already held its own run-id
+filter back for this reason, with a private regex. The regex is now `isUuid` in `core/domain.ts`,
+and `syncQueryParams` takes a predicate as well as a list so the guard sits at the boundary the
+untrusted value crosses. Deliberately **not** on the signal: what the server hands those screens is
+always a whole id, and a screen that second-guessed its own response would be guarding the wrong
+side — which is what the first attempt did, and five ingest specs said so.
+
+**Channels was the last screen with a native `confirm()`.** Every other destructive action in the
+console — deleting a video, re-running a phase — is arm-then-confirm in the page, for reasons the
+videos list already documents: a dialog blocks the thread, takes focus out of the document and hands
+it back to `<body>`. Removing a channel now arms its own button, which changes label rather than
+being swapped out by an `@if`, and the consequence the dialog was carrying ("its discovered catalog
+goes too; videos already ingested from it are kept") moves into the `role="status"` line where a
+screen reader reaches it and where it is also on screen.
+
+**Two screens fired actions with nothing announcing them.** Channels had no live region at all,
+despite three mutations: add, sync and remove. A sync that discovers nothing new changes no cell on
+the row, and a removed row simply leaves the table — both indistinguishable from a press that did
+nothing. Run detail had the same gap on retry, where a queued retry takes the run back to PENDING
+and the Retry button out of the head. Both take the `.said` line the videos list and the runs board
+already share.
+
+**Three list screens had no loading state.** Only videos said so; runs, channels and audit rendered
+a blank panel body until the first response landed, and their comments justified it with "a
+Loading… line here would sit there forever on an error" — which is true of an unguarded line and not
+of the one videos actually ships. `isLoading() && !hasValue()` is false in the error state (so the
+problem panel stays the whole answer) and false during a poll (so `reload()`'s held page is not
+replaced by "Loading…" every two seconds). All four now carry it.
+
+**Two header lines.** `/videos`' subtitle was missing `.prose`, so the one sentence on the screen ran
+the full width of a 1440px grid while its three siblings capped at 72ch; `/runs` had no subtitle at
+all, and it is the screen whose retry semantics most needed one sentence of explanation.
+
+Left alone deliberately: **ingest renders its own rejects table** rather than `vk-rejects`, which the
+same screen imports for its retry rejects and which channel detail uses for the identical
+create-reject case. Both renderings are honest — the table has a caption and puts the URL through
+`shortUrl`, the `<dl>` deliberately does not truncate — so this is a taste call, not a broken
+standard. And **run detail stacks two `vk-problem`s** instead of the `actionFailure() ?? firstFailure(…)`
+precedence every other screen follows; its own comment argues the case (a run that will not load and
+a retry that was refused are two things to fix, and it has the room), so it stands.
+
+
 ## Design direction
 
 Style and palette candidates came from `.claude/skills/ui-ux-pro-max/scripts/search.py`
@@ -694,7 +766,8 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   `td.spine`/`th.sp` carry `min-width` as well as `width`, and the same latent bug still sits on
   `channels.html`'s url anchor.
 - **The videos list gives up two columns and pins Delete**, the corrections the runs board already
-  carried for the identical table shape. CHANNEL is the filter's own value repeated down the page —
+  carried for the identical table shape. (The pin itself now lives in `styles.scss` as
+  `.stick` / `.grid-pinned` — see finding 20.) CHANNEL is the filter's own value repeated down the page —
   and the widest cell on the screen, a channel name having no length limit — and SOURCE is an
   extractor plus an id that video detail shows in full; both go below 767px, both come back above
   it. Two things the port taught that the runs board had not had to state: restating
@@ -749,11 +822,13 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   `runs.scss` into `styles.scss` when the second screen grew them.
 - **A query param is whatever someone pasted.** `?status=BOGUS` went straight into the signal, out to
   `GET /videos`, and came back as `No enum constant …VideoStatus.BOGUS` — under a control that showed
-  `ALL`, because nothing matched. `syncQueryParams` takes an optional per-key allow-list; an unlisted
-  value is ignored, so the signal keeps its declared default and the write effect drops the key from
-  the URL, the same self-healing `clampPage` gives a page past the end. Passed on all three screens
-  whose filters reach a server-side enum parse — `/videos` and `/runs` (`status`, plus `sortBy`,
-  which the server *silently* falls back on) and `/audit` (`eventType`, `status`).
+  `ALL`, because nothing matched. `syncQueryParams` takes an optional per-key guard — a list, or a
+  predicate for a shape no list can spell; a rejected value is ignored, so the signal keeps its
+  declared default and the write effect drops the key from the URL, the same self-healing
+  `clampPage` gives a page past the end. Passed on every screen whose params reach a server-side
+  parse — `/videos` and `/runs` (`status`, plus `sortBy`, which the server *silently* falls back
+  on), `/audit` (`eventType`, `status`, `phase`, `errorCode`), `/videos/{id}` (`pane`, `type`) and
+  the two `?run=` screens (`isUuid`). See finding 20 for the last three.
 - **The × on a search box has to re-query.** `<input type="search">` fires `input` and `search` when
   its native clear button is pressed and defers `change` to blur, so a `(change)`-only handler left
   the box empty while the filtered rows and `?channel=` stayed — the control contradicting its own

@@ -41,6 +41,11 @@
   <vk-problem [failure]="retryFailure()" />
 
   <vk-rejects [items]="retryRejects()" />
+  <!-- Always in the DOM, so a screen reader has a live region to announce into rather than one that
+       appears with its own text already in it. A queued retry takes the run back to PENDING and the
+       Retry button out of the head, which on its own looks exactly like a press that did nothing.
+       The same line the runs board carries for the same action. -->
+  <p class="said mono muted" role="status">{{ said() }}</p>
 
   @if (retryable()) {
     <details class="panel opts">

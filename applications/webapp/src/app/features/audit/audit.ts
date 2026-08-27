@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
 import { AuditService } from '../../api/generated';
-import { ALL_PHASES, ERROR_CODES, EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
+import { ALL_PHASES, ERROR_CODES, EVENT_TYPES, RUN_STATUSES, blank, isUuid, statusVar } from '../../core/domain';
 import { absoluteTime, clockTime, dayLabel } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
 import { firstFailure, valueOf } from '../../core/problem';
@@ -51,7 +51,7 @@ export class Audit {
    */
   protected readonly runIdInvalid = computed(() => {
     const value = this.runId().trim();
-    return !!value && !UUID.test(value);
+    return !!value && !isUuid(value);
   });
 
   protected readonly list = rxResource({
@@ -143,9 +143,6 @@ export class Audit {
 
 const FILTER_KEYS = ['runId', 'eventType', 'status', 'phase', 'errorCode', 'from', 'to'] as const;
 type FilterKey = (typeof FILTER_KEYS)[number];
-
-/** Whole uuid, which is what `?runId` accepts — see `runIdInvalid`. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `<input type="datetime-local">` yields local wall clock; `fromDate`/`toDate` are

@@ -387,6 +387,48 @@ table.grid th.sp {
   justify-content: flex-end;
 }
 
+// The row's actions, pinned to the right edge of a table wider than the viewport.
+//
+// Three list screens carry a write action in their last column, and at 390px every one of those
+// tables is wider than the screen: the videos grid measured 882px, the runs history 792px, so the
+// only button on the row sat hundreds of pixels past the viewport and cost a sideways drag per row.
+// Lived in `videos.scss` and `runs.scss` as two identical copies — the way the status chips drifted
+// the first time — while the channel list, which carries *two* buttons, had no pin at all.
+//
+// `background: inherit` rather than a token, so the row's hover wash reaches it: a cell painted
+// `--card` would sit on top of it. That means the rows have to carry a surface of their own, which
+// is what `.grid-pinned` below is for. Inert at any width where the table already fits.
+.stick {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: inherit;
+  // Inset, because a sticky cell in a `border-collapse: collapse` table keeps no border of its own
+  // — and without the hairline a title clipped underneath reads as data, not as covered.
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
+// The surface `.stick` inherits. Restating the hover is not redundant: the global wash is
+// `table.grid tbody tr:hover`, which this ties on specificity, and declaring only the rest state
+// silently took the hover off every row.
+.grid-pinned tbody tr {
+  background: var(--card);
+}
+
+.grid-pinned tbody tr:hover {
+  background: var(--muted);
+}
+
+// A sticky cell must not cover the focused element, and at 390px it did: the videos title cell runs
+// to 319px while the pinned column starts at 300, so 15px of the ring on a short title was painted
+// behind Delete. Lifting the focused link over it costs the ring crossing the hairline for those
+// few pixels, which is the direction to fail in — the cell's own `overflow: hidden` still stops the
+// ring at the column edge, so it cannot reach the button.
+.grid-pinned td a:focus-visible {
+  position: relative;
+  z-index: 2;
+}
+
 // What the last action said, for the screens that fire one.
 //
 // Present even when empty, so it is a region a screen reader can announce into rather than one that

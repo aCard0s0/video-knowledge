@@ -13,7 +13,7 @@ import {
   RunItem,
 } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { blank, statusVar } from '../../core/domain';
+import { blank, isUuid, statusVar } from '../../core/domain';
 import { watchRun } from '../../core/watch-run';
 import { absoluteTime, humanAge } from '../../core/time';
 import { shortUrl } from '../../core/url';
@@ -192,7 +192,7 @@ export class Ingest {
   });
 
   constructor() {
-    syncQueryParams({ run: this.runId });
+    syncQueryParams({ run: this.runId }, { run: isUuid });
     this.poller.every(
       () => (this.watch.live() ? POLL_LIVE : POLL_IDLE),
       () => {
