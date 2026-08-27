@@ -60,14 +60,18 @@ export class Audit {
   });
 
   constructor() {
-    syncQueryParams({
-      runId: this.runId,
-      eventType: this.eventType,
-      status: this.status,
-      from: this.from,
-      to: this.to,
-      page: this.page,
-    });
+    // Both selects reach a server-side enum parse, and `''` is the "any" option each starts on.
+    syncQueryParams(
+      {
+        runId: this.runId,
+        eventType: this.eventType,
+        status: this.status,
+        from: this.from,
+        to: this.to,
+        page: this.page,
+      },
+      { eventType: ['', ...this.eventTypes], status: ['', ...this.statuses] },
+    );
     // A shared link carries its page: ?page=9&eventType=ITEM_FAILED on a feed with three failures.
     clampPage(this.page, PAGE_SIZE, this.list);
     this.poller.every(

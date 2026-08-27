@@ -130,8 +130,14 @@ button {
   }
 }
 
+/*
+  `min-height` because 4px of padding around 13px type is a 22px control, and every small button in
+  the console is one: Delete measured 53×22, the pager's Previous/Next 43×22. 24px is the floor, and
+  2px is free — the table row is 32px.
+*/
 .btn-sm {
   padding: 4px 8px;
+  min-height: 24px;
   font-size: var(--fs-sm);
 }
 
@@ -178,8 +184,16 @@ label {
   border-radius: var(--radius-panel);
 }
 
+/*
+  Wraps rather than pushing its last child off the screen. A `space-between` row whose first child
+  cannot shrink — a filter group holding a fixed-width input — puts the item on the right *past* the
+  edge: the videos head's "64 total" measured a right edge of 406px in a 390px viewport, which is a
+  horizontal scrollbar on the document itself, not on the table that has one by design. The runs
+  board had already fixed this on its own head.
+*/
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
@@ -256,9 +270,16 @@ table.grid {
   }
 
   // 3px status spine on the left edge: scanning 50 rows for 4 failures is one eye-sweep.
+  //
+  // `min-width` as well as `width`, because `width` on a table cell is only a suggestion: an
+  // auto-layout table wider than its container squeezes the columns it can, and an empty 3px one
+  // goes first. The videos grid overflowed by 131px and measured this column at **0px** — the
+  // spine silently absent on the one screen with fifty rows to sweep, while runs and channels
+  // (whose tables fit) rendered it fine. A column carrying state is not a column to shrink.
   td.spine {
     padding: 0;
     width: 3px;
+    min-width: 3px;
     background: var(--spine, transparent);
   }
 }
@@ -270,12 +291,34 @@ table.grid {
   white-space: nowrap;
 }
 
+/*
+  The link that *is* a table cell's content.
+
+  Two things an inline `<a>` cannot do, and both bit: `max-width` does not apply to a non-replaced
+  inline box, so `.truncate` on one is inert — the anchor renders its full width and its
+  `text-overflow: ellipsis` can never fire, which is what pushed the videos grid 131px past its
+  panel — and `min-height` does not apply either, leaving a 15px target under the 24px floor.
+  `display: block` fixes both at once, and hands short content (a run id, a channel name) the whole
+  cell to be clicked in rather than its own few characters.
+
+  Pair it with `.truncate` where the text can be long; use it alone where it cannot.
+*/
+.cell-link {
+  display: block;
+  min-height: 24px;
+  line-height: 24px;
+}
+
 @media (max-width: 767px) {
   table.grid td,
   table.grid th {
     white-space: normal;
   }
 
+  // Note the rule above outranks this one for a `<td>` (0,1,2 against 0,1,0), so a *cell* that
+  // opted into truncation wraps at this cap rather than clipping at it. Deliberate: ingest's
+  // rejected URLs and the channel catalog's titles stay readable on a phone. An element that needs
+  // the clip carries `.truncate` itself, where nothing outranks it.
   .truncate {
     max-width: 18ch;
   }
@@ -342,6 +385,55 @@ table.grid th.sp {
   display: flex;
   gap: var(--space-sm);
   justify-content: flex-end;
+}
+
+// What the last action said, for the screens that fire one.
+//
+// Present even when empty, so it is a region a screen reader can announce into rather than one that
+// appears with its text already in place — a row leaving a table looks exactly like a press that
+// did nothing. Takes its margin only when it has something to say.
+.said {
+  margin: 0;
+  font-size: var(--fs-sm);
+
+  &:not(:empty) {
+    margin-bottom: var(--space-md);
+  }
+}
+
+// --- a status filter as one row of chips -----------------------------------
+// One click per status rather than two through a `<select>`, and the one that matters carries its
+// count. Lived in `runs.scss` until the videos list needed the identical row; shared here rather
+// than copied, which is how the four list screens drifted apart the first time.
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  // 3px of padding around 11px type is a 20px control; the console's floor is 24px.
+  min-height: 24px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  background: transparent;
+
+  &.on {
+    color: var(--fg);
+    border-color: var(--fg-muted);
+    background: var(--muted);
+  }
+}
+
+.chip .count {
+  color: var(--st-failed);
+  font-variant-numeric: tabular-nums;
 }
 
 .sr-only {

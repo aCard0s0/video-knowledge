@@ -9,7 +9,22 @@ import { ActivatedRoute, Router } from '@angular/router';
  * screen. Values are read once on entry and written with replaceUrl, so paging does not stack up
  * history entries.
  */
-export function syncQueryParams(state: Record<string, WritableSignal<string | number | boolean>>): void {
+export function syncQueryParams(
+  state: Record<string, WritableSignal<string | number | boolean>>,
+  /**
+   * Per-key allow-lists for values that reach a query the server validates.
+   *
+   * A query param is whatever someone pasted. `?status=BOGUS` went straight into the signal, out to
+   * `GET /videos`, and came back as `No enum constant …VideoStatus.BOGUS` in the failure panel —
+   * while the `<select>` beside it, having no matching `<option>`, calmly displayed `ALL`. The
+   * control contradicted the URL that produced the error, and the same shape sat on `/runs` and
+   * `/audit` (`?status=` on both is a Java enum name one `valueOf` away from a 400).
+   *
+   * An unlisted value is ignored, so the signal keeps its declared default and the write effect
+   * below drops the key from the URL — the same self-healing `clampPage` gives a page past the end.
+   */
+  allowed?: Record<string, readonly string[]>,
+): void {
   const router = inject(Router);
   const route = inject(ActivatedRoute);
 
@@ -29,6 +44,7 @@ export function syncQueryParams(state: Record<string, WritableSignal<string | nu
   for (const [key, signal] of Object.entries(state)) {
     const raw = initial.get(key);
     if (raw === null) continue;
+    if (allowed?.[key] && !allowed[key].includes(raw)) continue;
     const current = signal();
     if (typeof current === 'number') {
       const parsed = Number(raw);

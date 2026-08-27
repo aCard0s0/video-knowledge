@@ -10,7 +10,9 @@
   <div class="panel-head filters">
     <div class="filter">
       <label for="runId">Run id</label>
-      <input id="runId" type="search" class="mono" autocomplete="off" spellcheck="false" placeholder="710a9419…" translate="no" [value]="runId()" (change)="set('runId', $any($event.target).value)" />
+      <!-- `(search)` too: the native clear button fires `input`/`search` and defers `change` to
+           blur, so the × emptied the box while the filtered feed and `?runId=` stayed. -->
+      <input id="runId" type="search" class="mono" autocomplete="off" spellcheck="false" placeholder="710a9419…" translate="no" [value]="runId()" (change)="set('runId', $any($event.target).value)" (search)="set('runId', $any($event.target).value)" />
     </div>
 
     <div class="filter">

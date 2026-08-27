@@ -2,33 +2,8 @@
   font-size: var(--fs-xs);
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  font-size: var(--fs-xs);
-  letter-spacing: 0.06em;
-  color: var(--fg-muted);
-  background: transparent;
-
-  &.on {
-    color: var(--fg);
-    border-color: var(--fg-muted);
-    background: var(--muted);
-  }
-}
-
-.chip .count {
-  color: var(--st-failed);
-  font-variant-numeric: tabular-nums;
-}
+/* `.chips` / `.chip` / `.chip .count` moved to `styles.scss` when the videos list grew the same
+   status row — one home rather than two copies drifting. */
 
 /* Retry rides the right edge instead of the far end of a table five columns wider than a phone.
    At 390px the grid is 792px, so the button the screen exists for sat 412px past the viewport and
@@ -97,16 +72,8 @@
   }
 }
 
-/* Present even when empty, so it is a live region to announce into rather than one that appears
-   with its text already in place. */
-.retry-said {
-  margin: 0;
-  font-size: var(--fs-sm);
-
-  &:not(:empty) {
-    margin-bottom: var(--space-md);
-  }
-}
+/* The live-region line is `.said` in `styles.scss` — this screen and the videos list had the same
+   four declarations under two names. */
 
 /* What a 390px viewport gives up. Four of these five are the ones a phone can least afford: PHASE
    is `—` for every terminal run, CHANNEL is empty on anything not from a channel sync, VIDEOS is a

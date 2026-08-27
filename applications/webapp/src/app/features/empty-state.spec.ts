@@ -23,8 +23,13 @@ import { Videos } from './videos/videos';
  */
 const PAGE = { items: [], page: 0, size: 25, total: 0 };
 
+/**
+ * The message each screen shows for an empty response with **nothing filtered**. Videos separates
+ * the two emptinesses (see the last test in this file); the others do not, so for them this is the
+ * only message there is.
+ */
 const SCREENS: { name: string; component: Type<unknown>; service: unknown; method: string; empty: string }[] = [
-  { name: 'Videos', component: Videos, service: VideosService, method: 'listVideos', empty: 'No videos match' },
+  { name: 'Videos', component: Videos, service: VideosService, method: 'listVideos', empty: 'No videos ingested yet' },
   { name: 'Audit', component: Audit, service: AuditService, method: 'listEvents', empty: 'No events match' },
   { name: 'Channels', component: Channels, service: YoutubeService, method: 'listChannels', empty: 'No channels tracked' },
   { name: 'Runs', component: Runs, service: PipelinesService, method: 'listRuns', empty: 'No runs match' },
@@ -56,4 +61,25 @@ describe('list screens: the empty state is not a failed load', () => {
       expect(el.querySelector('vk-problem')!.textContent).toContain('Server unreachable');
     });
   }
+
+  /**
+   * Which emptiness it is decides the way out. The channel filter is a search box, so a mistyped
+   * fragment is the likeliest way to empty this screen — and the answer to that is to clear it, not
+   * the "Ingest a URL →" link that was offered unconditionally. Same shape as the channel catalog
+   * reporting "Every upload is already ingested" over a sync that had 404ed.
+   */
+  it('Videos offers to clear the filter that emptied it, not an ingest link', () => {
+    const el = screen(SCREENS[0], () => of(PAGE));
+    expect(el.querySelector('vk-empty')!.textContent).toContain('No videos ingested yet');
+
+    const input = el.querySelector<HTMLInputElement>('#channel')!;
+    input.value = 'comp';
+    input.dispatchEvent(new Event('change'));
+    TestBed.tick();
+
+    const empty = el.querySelector('vk-empty')!;
+    expect(empty.textContent).toContain('No videos match');
+    expect(empty.querySelector('button')!.textContent).toContain('Clear filters');
+    expect(empty.querySelector('a')).toBeNull();
+  });
 });
