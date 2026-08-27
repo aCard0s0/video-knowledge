@@ -30,12 +30,15 @@ public class PipelineAuditController {
     @Operation(
             operationId = "listEvents",
             summary = "List audit events across runs",
-            description = "Query pipeline item audit events with optional filters. Results are sorted by occurredAt DESC."
+            description = "Query pipeline item audit events with optional filters. Results are sorted by occurredAt DESC. "
+                    + "An unrecognised eventType, status, phase or errorCode matches nothing rather than failing the request."
     )
     public PageResponse<RunItemAuditEvent> listEvents(
             @RequestParam(name = "runId", required = false) UUID runId,
             @RequestParam(name = "eventType", required = false) String eventType,
             @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "phase", required = false) String phase,
+            @RequestParam(name = "errorCode", required = false) String errorCode,
             @RequestParam(name = "fromDate", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime fromDate,
             @RequestParam(name = "toDate", required = false)
@@ -43,7 +46,7 @@ public class PipelineAuditController {
             @RequestParam(name = "page", required = false) Integer page,
             @RequestParam(name = "size", required = false) Integer size
     ) {
-        AuditFilters filters = new AuditFilters(runId, eventType, status, fromDate, toDate);
+        AuditFilters filters = new AuditFilters(runId, eventType, status, phase, errorCode, fromDate, toDate);
         return pipelineAuditQueryService.listEvents(filters, page, size);
     }
 }

@@ -50,7 +50,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `GET /pipelines/capabilities` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
 | **Video detail** | `/detail`, `/file`, `/transcription/segments`, `/ocr/frames`, `/frames/{frameId}/image`, `/multimodal-timeline/page`, `/knowledge`, `/speakers`, `PATCH /speakers/{speakerId}`, `POST /phases/{phase}/run`, `/context/regenerate`, `/knowledge/regenerate` |
-| **Audit feed** | `GET /audit/events?runId&eventType&status&fromDate&toDate&page&size` |
+| **Audit feed** | `GET /audit/events?runId&eventType&status&phase&errorCode&fromDate&toDate&page&size` |
 
 ## API discovery findings
 
@@ -171,6 +171,10 @@ TS unions and drifts if the server adds a constant:
 - `YoutubeChannelStatus`: NEW, SYNCING, READY, ERROR, DISABLED
 - `TranscriptionStatus`: TRANSCRIBING, COMPLETED, FAILED
 - `PipelineErrorCode`, `PipelineRunItemEventType`: see above
+
+`PipelineErrorCode` was mirrored late (`ERROR_CODES`): the codes were only ever *rendered*, by a
+`vk-fault` that takes whatever the server sent, so nothing needed the list until the audit feed
+offered them as a filter.
 
 Skippable and rerunnable phases are the same seven (`PipelineRunPhase.isOptional()`), confirmed
 live: `Unsupported phase: METADATA. Allowed: TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE,
@@ -706,6 +710,32 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
 - **`""` is absent in the Phase column too.** The trail renders `{{ event.phase || '—' }}` with a
   comment naming `ITEM_RETRY_REQUESTED`; the feed rendered it bare, so seven rows had an empty cell
   where the rule (finding 6) says a dash goes.
+- **The run-id filter takes what the screen shows, or says so.** `?runId` is a `UUID` parameter and
+  the Run column prints `runId.slice(0, 8)`, so the eight characters an operator copies off a row
+  answered `400 Failed to convert … to java.util.UUID` with the table replaced by the panel
+  reporting it — and the placeholder `710a9419…` *demonstrated* the rejected form. The placeholder is
+  a whole uuid now, the id itself is on every Run link's `title`, and a value that is not a uuid
+  holds the request back behind a hint instead of spending a round trip to be told no.
+  `aria-describedby` is unconditional: pointing at an element that is not in the DOM yet is what
+  leaves the hint unannounced when it appears.
+- **Phase and error code are filters, server-side.** `eventType=ITEM_FAILED` answers "what broke"
+  and left the next question — which of these 26 are `TRANSCRIPTION_FAILURE` — to the operator's
+  eyes. `?phase` and `?errorCode` mirror the existing enum-filter shape exactly, including that an
+  unrecognised value matches **nothing** rather than 400ing: the parameter is a `String` so a stale
+  link cannot fail the request, which is the same reason `?sortBy` falls back rather than throwing
+  (finding 14). The phase list offers `CREATED` and `DONE` — never lane *steps*, but `ITEM_CREATED`
+  and `ITEM_COMPLETED` carry them, so filtering to one is a real question on this screen and only
+  this one. `PipelineAuditFilterIntegrationTest` pins both contracts against a real database,
+  because the service's unit test mocks the repository and so never sees inside the `Specification`.
+- **The count is announced, not just rendered.** Changing a filter refetches 50 rows and moves a
+  number in the pager, which says nothing to a screen reader; six other screens already carry a
+  `role="status"` line and this one did not. It is `sr-only` because the pager already says it on
+  screen, and always in the DOM so there is a region to announce into.
+- **A phone gives up From and Attempt — and keeps Status.** The trail drops Status at this width too,
+  but here the only other thing carrying it is the 3px spine, and colour alone is not a state in this
+  app: `vk-status` renders the token *as* the label for that reason, and nothing else names
+  `IN_PROGRESS` on an `ITEM_PHASE_ENTERED` row. Reaching Run past it costs a short sideways drag,
+  which the fault no longer does now it has its own full-width row.
 
 ### The phase lane
 

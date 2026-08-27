@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
 import { AuditService } from '../../api/generated';
-import { EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
+import { ALL_PHASES, ERROR_CODES, EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
 import { absoluteTime, clockTime, dayLabel } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
 import { firstFailure, valueOf } from '../../core/problem';
@@ -29,20 +29,38 @@ export class Audit {
 
   protected readonly eventTypes = EVENT_TYPES;
   protected readonly statuses = RUN_STATUSES;
+  protected readonly phases = ALL_PHASES;
+  protected readonly errorCodes = ERROR_CODES;
 
   protected readonly runId = signal('');
   protected readonly eventType = signal('');
   protected readonly status = signal('');
+  protected readonly phase = signal('');
+  protected readonly errorCode = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
 
+  /**
+   * The run id the operator typed is only sent when it is a whole uuid.
+   *
+   * `runId` is a `UUID` parameter, so anything else is a 400 with a raw Java conversion message —
+   * and the id this screen *shows* is `runId.slice(0, 8)`, which is exactly what an operator copies
+   * off a row. Holding the request back turns that into a hint beside the field.
+   */
+  protected readonly runIdInvalid = computed(() => {
+    const value = this.runId().trim();
+    return !!value && !UUID.test(value);
+  });
+
   protected readonly list = rxResource({
     params: () => ({
-      runId: this.runId().trim(),
+      runId: this.runIdInvalid() ? '' : this.runId().trim(),
       eventType: this.eventType(),
       status: this.status(),
+      phase: this.phase(),
+      errorCode: this.errorCode(),
       from: isoOrEmpty(this.from()),
       to: isoOrEmpty(this.to()),
       page: this.page(),
@@ -52,6 +70,8 @@ export class Audit {
         params.runId || undefined,
         params.eventType || undefined,
         params.status || undefined,
+        params.phase || undefined,
+        params.errorCode || undefined,
         params.from || undefined,
         params.to || undefined,
         params.page,
@@ -64,6 +84,8 @@ export class Audit {
       runId: this.runId,
       eventType: this.eventType,
       status: this.status,
+      phase: this.phase,
+      errorCode: this.errorCode,
       from: this.from,
       to: this.to,
       page: this.page,
@@ -86,24 +108,33 @@ export class Audit {
   protected readonly dayLabel = dayLabel;
   protected readonly blank = blank;
 
-  protected set(which: 'runId' | 'eventType' | 'status' | 'from' | 'to', value: string): void {
+  /** Announced, not just rendered: the pager's count is the only thing a filter visibly changes. */
+  protected readonly said = computed(() => {
+    if (!this.list.hasValue()) return '';
+    const total = this.total();
+    if (total === 0) return 'No events match these filters.';
+    const first = this.page() * PAGE_SIZE + 1;
+    return `${total} events match. Showing ${first}–${Math.min(total, first + PAGE_SIZE - 1)}.`;
+  });
+
+  protected set(which: FilterKey, value: string): void {
     this[which].set(value);
     this.page.set(0);
   }
 
   protected clear(): void {
-    this.runId.set('');
-    this.eventType.set('');
-    this.status.set('');
-    this.from.set('');
-    this.to.set('');
+    for (const key of FILTER_KEYS) this[key].set('');
     this.page.set(0);
   }
 
-  protected readonly filtered = computed(
-    () => !!(this.runId() || this.eventType() || this.status() || this.from() || this.to()),
-  );
+  protected readonly filtered = computed(() => FILTER_KEYS.some((key) => !!this[key]()));
 }
+
+const FILTER_KEYS = ['runId', 'eventType', 'status', 'phase', 'errorCode', 'from', 'to'] as const;
+type FilterKey = (typeof FILTER_KEYS)[number];
+
+/** Whole uuid, which is what `?runId` accepts — see `runIdInvalid`. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `<input type="datetime-local">` yields local wall clock; `fromDate`/`toDate` are

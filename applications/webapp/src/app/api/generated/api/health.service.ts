@@ -19,7 +19,6 @@ import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 // @ts-ignore
 import { OllamaStatus } from '../model/ollama-status';
 // @ts-ignore
-// @ts-ignore
 import { ReadinessResult } from '../model/readiness-result';
 
 // @ts-ignore
@@ -90,15 +89,6 @@ export class HealthService extends BaseService {
             }
         );
     }
-
-    /**
-     * Optional phase availability
-     * Which optional phases this deployment will execute, ignoring any run\&#39;s own skipPhases. A phase reported false is disabled server-side and cannot be turned on per run.
-     * @endpoint get /api/v1/health/phases
-     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-     * @param reportProgress flag to report request and response progress.
-     * @param options additional options
-     */
 
     /**
      * Readiness probe
