@@ -13,14 +13,12 @@ import java.util.List;
  *
  * @param enabledPhases   the optional phases this server will run when a request does not skip
  *                        them, in pipeline order. Names match {@code PipelineRunPhase}.
- * @param maxUrlsPerRun   the batch ceiling both create endpoints validate against.
  * @param channelSyncLimit how many uploads a channel sync fetches ({@code --playlist-end}). The
  *                        catalog is a window onto the newest N, not the channel's size, and
  *                        "200 in catalog" read as a count until the console could say otherwise.
  */
 public record PipelineCapabilities(
         List<String> enabledPhases,
-        int maxUrlsPerRun,
         int channelSyncLimit
 ) {
 }

@@ -11,7 +11,6 @@
 
 export interface PipelineCapabilities { 
     enabledPhases?: Array<string>;
-    maxUrlsPerRun?: number;
     channelSyncLimit?: number;
 }
 

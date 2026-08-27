@@ -113,15 +113,14 @@ export class ChannelDetail {
    */
   protected readonly showPublished = computed(() => this.rows().some((v) => !!v.publishedAt));
 
-  /** With the filter on every row reads "new", so the column repeats the checkbox above it. */
-  protected readonly showState = computed(() => !this.onlyNew());
-
-  /** The catalog is `--playlist-end` deep, so a full one is a window and not the channel's size. */
-  protected readonly catalogCapped = computed(() => {
+  /**
+   * The sync limit, but only once the catalog has actually hit it — a full catalog is a window
+   * `--playlist-end` deep, not the channel's size.
+   */
+  protected readonly catalogCap = computed(() => {
     const limit = this.capabilities.channelSyncLimit();
-    return !!limit && (valueOf(this.channel)?.videoCount ?? 0) >= limit;
+    return limit && (valueOf(this.channel)?.videoCount ?? 0) >= limit ? limit : undefined;
   });
-  protected readonly syncLimit = this.capabilities.channelSyncLimit;
   protected readonly pickedCount = computed(() => this.picked().size);
   protected readonly overLimit = computed(() => this.pickedCount() > MAX_PER_RUN);
 

@@ -24,20 +24,17 @@ export class Capabilities {
     stream: () => this.pipelines.getPipelineCapabilities(),
   });
 
-  /**
-   * False until the answer lands, and false if the request failed. Callers treat "unknown" as
-   * "enabled": marking a phase unavailable on a failed fetch would be a worse lie than the one
-   * this fixes.
-   */
-  readonly known = computed(() => this.resource.hasValue());
-
   private readonly enabled = computed(
     () => new Set(this.resource.hasValue() ? (this.resource.value().enabledPhases ?? []) : []),
   );
 
-  /** True only when the server has positively said this phase is off. */
+  /**
+   * True only when the server has positively said this phase is off — never while the answer is
+   * in flight or the request failed. Marking a phase unavailable on a failed fetch would be a
+   * worse lie than the one this fixes.
+   */
   disabledOnServer(phase: OptionalPhase): boolean {
-    return this.known() && !this.enabled().has(phase);
+    return this.resource.hasValue() && !this.enabled().has(phase);
   }
 
   /** How many uploads a channel sync fetches — the catalog is a window, not the channel size. */

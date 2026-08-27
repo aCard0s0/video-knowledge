@@ -39,7 +39,7 @@ public class PipelineCapabilitiesController {
 
     @GetMapping(value = VidIngestApiPaths.PIPELINE_CAPABILITIES, produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(operationId = "getPipelineCapabilities", summary = "Which optional phases this server will run",
-            description = "Reports the optional phases enabled by configuration, plus the batch and channel-sync limits.")
+            description = "Reports the optional phases enabled by configuration, plus the channel-sync limit.")
     public PipelineCapabilities get() {
         List<String> enabled = registry.phases().stream()
                 .filter(phase -> phase.phase().isOptional())
@@ -48,6 +48,6 @@ public class PipelineCapabilitiesController {
                 .map(PipelineRunPhase::name)
                 .toList();
 
-        return new PipelineCapabilities(enabled, 100, youtubeSyncProperties.getPlaylistLimit());
+        return new PipelineCapabilities(enabled, youtubeSyncProperties.getPlaylistLimit());
     }
 }

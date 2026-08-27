@@ -280,7 +280,7 @@ export class PipelinesService extends BaseService {
 
     /**
      * Which optional phases this server will run
-     * Reports the optional phases enabled by configuration, plus the batch and channel-sync limits.
+     * Reports the optional phases enabled by configuration, plus the channel-sync limit.
      * @endpoint get /api/v1/pipelines/capabilities
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.

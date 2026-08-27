@@ -11,9 +11,9 @@
       <p class="sub mono sm">
         <vk-status [status]="ch.status" />
         · {{ ch.videoCount ?? 0 }} in catalog
-        @if (catalogCapped()) {
+        @if (catalogCap(); as limit) {
           <!-- A full catalog is `--playlist-end` deep, so the number is a window, not a count. -->
-          <span class="muted">(newest {{ syncLimit() }} only)</span>
+          <span class="muted">(newest {{ limit }} only)</span>
         }
         · synced
         <span [title]="absoluteTime(ch.lastSyncSuccessAt)">{{ ch.lastSyncSuccessAt ? age(ch.lastSyncSuccessAt) : 'never' }}</span>
@@ -129,7 +129,8 @@
               @if (showPublished()) {
                 <th scope="col" class="num">Published</th>
               }
-              @if (showState()) {
+              <!-- With the filter on every row reads "new", so the column repeats the checkbox. -->
+              @if (!onlyNew()) {
                 <th scope="col">State</th>
               }
               <th scope="col"><span class="sr-only">Link</span></th>
@@ -157,7 +158,7 @@
                 @if (showPublished()) {
                   <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
                 }
-                @if (showState()) {
+                @if (!onlyNew()) {
                   <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>
                 }
                 <td><a class="mono sm" [href]="video.watchUrl" target="_blank" rel="noopener">watch ↗</a></td>

@@ -139,7 +139,6 @@ export class PhasePicker {
   }
 
   protected toggle(phase: OptionalPhase): void {
-    if (this.unavailable(phase)) return;
     const next = new Set(this.skipped());
     if (next.has(phase)) next.delete(phase);
     else next.add(phase);

@@ -190,26 +190,20 @@ label {
 /*
   A table wider than its panel scrolls, and says so.
 
-  Below 767px the channel list's own actions sit past the right edge with nothing to suggest it —
-  the fade is the only cue that Sync and Remove exist. `background-attachment: local` paints the
-  white covers with the content and the shadows against the box, so both ends appear only while
-  there is more that way.
+  Below 767px the channel list's own actions sit past the right edge with nothing to suggest it.
+  Right edge only: a table never loads already scrolled, so the left end has nothing to announce.
+  The shadow is `scroll`-attached and sits against the box; the cover is `local` and rides the
+  content, so it reaches the shadow and hides it exactly when there is no more to the right.
 */
 .table-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
   background:
-    linear-gradient(to right, var(--card) 30%, transparent) left center,
     linear-gradient(to left, var(--card) 30%, transparent) right center,
-    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--fg) 22%, transparent), transparent) left center,
     radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--fg) 22%, transparent), transparent) right center;
   background-repeat: no-repeat;
-  background-size:
-    40px 100%,
-    40px 100%,
-    14px 100%,
-    14px 100%;
-  background-attachment: local, local, scroll, scroll;
+  background-size: 40px 100%, 14px 100%;
+  background-attachment: local, scroll;
 }
 
 table.grid {
@@ -435,18 +429,17 @@ table.grid tr:has(+ .fault-row) td {
 // The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
 // tail off the right edge. Wrap it to the viewport instead: 7rem clears the collapsed 56px rail
 // plus the panel's padding on both sides, which is all the chrome there is below 900px.
-.fault-row vk-fault,
-.fault-row .err {
+.fault-row vk-fault {
   display: block;
   max-width: calc(100vw - 7rem);
 }
 
 /*
-  A message with no cap of its own takes the viewport width as a *width*, and a table cell that
-  wide pushes the grid past its panel — which is how adding a second row action put Sync and
-  Remove off the right edge of a 1440px screen. 92ch is the cap `vk-fault` already applies to its
-  own text, so both fault rows wrap at the same measure.
+  `vk-fault` caps its own text at 92ch; a bare message does not, and takes the viewport width as a
+  *width* — a table cell that wide pushes the grid past its panel, which is how adding a second row
+  action put Sync and Remove off the right edge of a 1440px screen. Same measure, both fault rows.
 */
 .fault-row .err {
+  display: block;
   max-width: min(92ch, calc(100vw - 7rem));
 }

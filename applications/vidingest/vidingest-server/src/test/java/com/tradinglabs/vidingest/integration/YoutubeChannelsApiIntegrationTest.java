@@ -201,7 +201,6 @@ class YoutubeChannelsApiIntegrationTest extends BaseVidingestIntegrationTest {
         assertThat(enabled).contains("TRANSCRIBE", "FUSE");
         assertThat(enabled).doesNotContain("DIARIZE", "FRAME_SAMPLE", "OCR", "KNOWLEDGE", "CONTEXT");
         assertThat(caps.get("channelSyncLimit").asInt()).isPositive();
-        assertThat(caps.get("maxUrlsPerRun").asInt()).isEqualTo(100);
     }
 
     private static YoutubeChannelDiscoveryResult.YoutubeVideoCandidate candidate(String id) {
