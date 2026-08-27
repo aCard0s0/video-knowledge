@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { crumb } from './app';
+import { crumb, resolveTheme } from './app';
 
 describe('crumb', () => {
   it('names the section on a list screen and has no leaf', () => {
@@ -24,5 +24,22 @@ describe('crumb', () => {
 
   it('has nothing to show before the redirect off /', () => {
     expect(crumb('/')).toEqual({ section: '', leaf: '' });
+  });
+});
+
+describe('resolveTheme', () => {
+  it('follows the OS until the operator chooses', () => {
+    expect(resolveTheme(null, true)).toBe('dark');
+    expect(resolveTheme(null, false)).toBe('light');
+  });
+
+  it('lets a stored choice win over the OS in both directions', () => {
+    expect(resolveTheme('light', true)).toBe('light');
+    expect(resolveTheme('dark', false)).toBe('dark');
+  });
+
+  it('treats anything else in storage as no choice at all', () => {
+    expect(resolveTheme('system', true)).toBe('dark');
+    expect(resolveTheme('', false)).toBe('light');
   });
 });

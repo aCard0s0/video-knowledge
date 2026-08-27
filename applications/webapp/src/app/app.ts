@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { rxResource, toSignal } from '@angular/core/rxjs-interop';
@@ -25,7 +25,67 @@ export function crumb(url: string): { section: string; leaf: string } {
   return { section, leaf: id.length > 12 ? id.slice(0, 8) : decodeURIComponent(id) };
 }
 
+export type Theme = 'light' | 'dark';
+
+/**
+ * Two states, not three. "System" as a stored value would need a live `matchMedia` listener and a
+ * tri-state control to earn its keep; following the OS *until the operator chooses* costs one
+ * branch and is what the token file already does for the pre-boot paint.
+ */
+export function resolveTheme(stored: string | null, prefersDark: boolean): Theme {
+  if (stored === 'light' || stored === 'dark') return stored;
+  return prefersDark ? 'dark' : 'light';
+}
+
+/**
+ * One entry per section, because the rail draws each of them the same way and the active one also
+ * carries the current id. Five hand-written copies of that markup was five places to forget.
+ * Icons are Lucide paths; `d` is a list so a two-part glyph needs no special case.
+ */
+export const SECTIONS = [
+  {
+    path: 'ingest',
+    label: 'Ingest',
+    d: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'],
+  },
+  {
+    path: 'channels',
+    label: 'Channels',
+    d: ['M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16M5 19h.01'],
+  },
+  { path: 'runs', label: 'Runs', d: ['M22 12h-4l-3 9L9 3l-3 9H2'] },
+  {
+    path: 'videos',
+    label: 'Videos',
+    d: [
+      'M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
+      'm16 10.5 6-3.5v10l-6-3.5',
+    ],
+  },
+  { path: 'audit', label: 'Audit', d: ['M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'] },
+] as const;
+
+/**
+ * The server serializes naive `LocalDateTime` and the container runs UTC, so every timestamp on
+ * every screen is UTC. The rail says so once, ticking, instead of each screen implying it.
+ */
+const UTC_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'UTC',
+  hour12: false,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+const UTC_DATE = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'UTC',
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
 const NAV_KEY = 'vk.nav-collapsed';
+const THEME_KEY = 'vk.theme';
 
 @Component({
   selector: 'app-root',
@@ -52,8 +112,28 @@ export class App {
   /** Rail state survives a reload; below 900px the CSS collapses it regardless. */
   protected readonly collapsed = signal(localStorage.getItem(NAV_KEY) === '1');
 
+  protected readonly theme = signal<Theme>(
+    resolveTheme(
+      localStorage.getItem(THEME_KEY),
+      matchMedia('(prefers-color-scheme: dark)').matches,
+    ),
+  );
+
   /** Dependency checks change on the scale of restarts, not seconds. */
   constructor() {
+    // The attribute is what the tokens key off; the meta keeps the browser's own chrome in step
+    // with --bg. Both are set on the document, so this is the one place allowed to touch it.
+    effect(() => {
+      const theme = this.theme();
+      document.documentElement.dataset['theme'] = theme;
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', theme === 'dark' ? '#020617' : '#f8fafc');
+    });
+
+    const clock = setInterval(() => this.instant.set(new Date()), 1000);
+    inject(DestroyRef).onDestroy(() => clearInterval(clock));
+
     this.poller.every(
       () => 30_000,
       () => {
@@ -61,6 +141,11 @@ export class App {
         this.ollama.reload();
       },
     );
+  }
+
+  protected toggleTheme(): void {
+    this.theme.update((t) => (t === 'dark' ? 'light' : 'dark'));
+    localStorage.setItem(THEME_KEY, this.theme());
   }
 
   protected toggleNav(): void {
@@ -129,7 +214,23 @@ export class App {
   protected readonly okDeps = computed(() => this.deps().filter((d) => d.ok));
   protected readonly badDeps = computed(() => this.deps().filter((d) => !d.ok));
 
-  protected readonly tickLabel = computed(
-    () => `${humanDuration(this.poller.now() - this.poller.lastTick())} ago`,
+  protected readonly sections = SECTIONS;
+
+  /**
+   * Its own interval, not `poller.now()`: that clock stops while polling is paused, which is right
+   * for a live lane segment and wrong for a wall clock. A stopped clock that still looks like a
+   * clock is the one thing this must not be.
+   */
+  private readonly instant = signal(new Date());
+
+  protected readonly utcTime = computed(() => UTC_TIME.format(this.instant()));
+  protected readonly utcDate = computed(() => UTC_DATE.format(this.instant()));
+
+  /** `01`, `02`, … beside each section: the rail reads as the menu it is. */
+  protected readonly ordinal = (i: number) => String(i + 1).padStart(2, '0');
+
+  /** Just the duration: the rail spells out "updated … ago" only when it is wide enough to. */
+  protected readonly tickAge = computed(() =>
+    humanDuration(this.poller.now() - this.poller.lastTick()),
   );
 }

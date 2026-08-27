@@ -191,7 +191,7 @@ exists to show.
 - **`ReadinessResult` had no schema** because `HealthController.readiness()` returned
   `ResponseEntity<?>`; the client saw a bare `object`. Now `ResponseEntity<ReadinessResult>`, and
   the generated client is typed. The endpoint also answers **503 when any check fails**, and the
-  `ReadinessResult` rides that response — so the gutter reads the checks out of
+  `ReadinessResult` rides that response — so the rail foot reads the checks out of
   `HttpErrorResponse.error` and reserves "server unreachable" for status 0. Reporting a 503 as
   unreachable pointed the operator at a server that was up and had already named the fault
   (`videoPath: not-writable: /data/videos`).
@@ -247,7 +247,7 @@ live in `../../applications/webapp/src/styles/_tokens.scss` once the app exists:
 | `.btn-secondary` `#0F172A` text on `#0F172A` border | Foreground text, `--color-border` outline | Near-black on near-black |
 | `.input { border: #E2E8F0; font-size: 16px }` | `--color-border`, 13px | Light-mode leftover; 16px breaks density |
 | `.modal { background: white }` | `--color-card` | White modal in an OLED dark app |
-| "Light mode: text contrast 4.5:1" | Dark only | Same file marks light mode not-recommended |
+| "Light mode: text contrast 4.5:1" | Both themes, separately measured | Dark is still the design the console was drawn for; light was added later and is a second ramp, not a hue flip (see below) |
 | Pattern: Hero → metrics → How it works → Start trial CTA | Shell + dense tables | Landing-page pattern; this is an ops console with no funnel |
 | Buttons `12px 24px`, cards `24px`, radius `8–12px` | 8–12px padding, radius 6px, 12–14px type | Contradicts data-dense |
 | `--color-destructive` `#DC2626` as text | `#F87171` for text; `#DC2626` for fills only | Measured 4.18:1 on bg / 3.85:1 on card — fails 4.5:1 |
@@ -257,19 +257,52 @@ checklist, `prefers-reduced-motion`, visible focus, and the spacing scale.
 
 ### Status ramp (derived, not in MASTER.md)
 
-One green cannot mean both *running* and *completed*. Contrast measured against `#020617`:
+One green cannot mean both *running* and *completed*. Measured against each theme's `--bg`:
 
-| State | Hex | Contrast |
-|---|---|---|
-| PENDING | `#94A3B8` | 7.9:1 |
-| IN_PROGRESS | `#38BDF8` | 9.4:1 |
-| COMPLETED | `#4ADE80` | 11.6:1 |
-| FAILED | `#F87171` | 7.3:1 |
-| CANCELLED | `#64748B` | — (paired with a label, never colour alone) |
-| Warn (stale lease, sync error) | `#F59E0B` | 9.4:1 |
+| State | Dark | on `#020617` | Light | on `#F8FAFC` |
+|---|---|---|---|---|
+| PENDING | `#94A3B8` | 7.9:1 | `#475569` | 7.2:1 |
+| IN_PROGRESS | `#38BDF8` | 9.4:1 | `#0369A1` | 5.7:1 |
+| COMPLETED | `#4ADE80` | 11.6:1 | `#047857` | 5.2:1 |
+| FAILED | `#F87171` | 7.3:1 | `#B91C1C` | 6.2:1 |
+| CANCELLED | `#64748B` | — (paired with a label, never colour alone) | `#64748B` | 4.6:1 |
+| Warn (stale lease, sync error) | `#F59E0B` | 9.4:1 | `#A16207` | 4.7:1 |
 
-`--color-border` `#334155` is 1.95:1 — fine for table rules, never the sole indicator of state
-or focus. Focus uses `--color-ring` `#FFFFFF` (19.3:1).
+`--border` is 1.95:1 dark / 1.42:1 light — fine for table rules, never the sole indicator of
+state or focus. Focus is `--ring`: `#FFFFFF` (19.3:1) dark, `#0F172A` (17.1:1) light, because a
+white ring is invisible on a white card.
+
+### The light theme
+
+Added after the console shipped, and it is a **second measured ramp, not an inversion**: the green
+that reads at 11.6:1 on near-black is 1.6:1 on near-white, so every status colour is a different
+hex. COMPLETED is emerald (`#047857`) rather than the CTA green, because in light both land in the
+same 4.8–5.0:1 band and one green cannot mean "finished" and "press this".
+
+Honest weaknesses, all still over 4.5:1: COMPLETED 5.2:1, warn 4.7:1 and CANCELLED 4.6:1 have far
+less headroom than their dark counterparts (11.6, 9.4, and a label). Dark remains the theme the
+density was tuned for.
+
+How a theme is chosen, in the order it happens:
+
+1. `_tokens.scss` applies the light palette under `@media (prefers-color-scheme: light)` guarded by
+   `:root:not([data-theme='dark'])`. The OS preference therefore works with **no JavaScript at all**
+   and cannot flash.
+2. An inline script in `index.html` copies a stored choice onto `<html data-theme>` **before first
+   paint** — without it, a stored choice that disagrees with the OS paints the wrong theme for as
+   long as the bundle takes to load.
+3. `App` resolves the same value (`resolveTheme`, unit-tested), writes it back to the attribute and
+   keeps `<meta name="theme-color">` in step with `--bg`.
+
+Two states, not three: "system" as a stored value needs a live `matchMedia` listener and a
+tri-state control to earn its keep, and following the OS *until the operator chooses* is what
+step 1 already does. The toggle sits in the rail foot beside Collapse — both are chrome
+preferences that outlive the session, and neither is status, which is what the strip is for.
+
+**No raw hex in a component.** A colour written into a component cannot follow the theme. Washes
+go over the token — `color-mix(in srgb, var(--st-failed-fill) 18%, transparent)` — which is how the
+phase lane, the fault panels and the phase picker theme themselves for free. The one exception is
+`#000` behind the `<video>` element, which is letterbox, not chrome.
 
 ## Dev data on the local box (2026-08-26)
 
@@ -362,19 +395,40 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
 - **The video screen shows its dossier.** Transcription provider/language/character count,
   artifact counts and the file path fill the column under the player, all from the `/detail`
   response the screen was already fetching.
+- **Theme is the operator's, and dark is still the default the console was drawn for.** The rail
+  foot toggles light/dark beside Collapse; with no stored choice the tokens follow the OS with no
+  JavaScript. See "The light theme" below for the measured ramp and the three-step resolution.
 - **The shell is one nav shape at every width.** The rail carries an inline SVG per section and
   collapses to `--nav-w-collapsed` (56px, icons only, state in `localStorage`); below 900px it is
   that rail, because the old wrapping row of labels read as leftovers. The labels drop out on a
   **container query** over the rail's own width, so the toggle and the breakpoint reach them by
   one route, and they stay in the DOM as screen-reader text — that is what names an icon-only link.
-- **The status strip says what is broken, where you are, and how stale this is.** The `/health/ready`
-  checks and `/health/ollama` merge into one list: the count reads `1 down` the moment anything is
-  (never `3 ok` while `videoPath` is not writable), the failing checks are named beside it down to
-  560px, and a native `popover` — light dismiss and Esc for free — lists every check with the value
-  the server gave it. Those values used to live in a `title` no touch device and no keyboard could
-  reach. `crumb()` derives `runs / 710a9419` from the URL on detail screens only — a list screen's
-  rail and `h1` already answer "where" — so no screen has to publish a title to the shell. The poll
-  age keeps its pause control at every width (icon-only under 560px).
+- **One column of chrome, not two.** There is no top strip: the rail carries the name, the
+  sections, where you are inside the active one, and — in its foot — the dependency checks, the
+  poll age and the pause switch. It is sticky and full height, so none of that scrolls away, and
+  the content area gets the 28px back. What survives the collapse to 56px is every number and
+  every control; only the words go.
+- **The rail reads as the menu it is.** Three tiers of brand (mark, `pipeline // ops` descriptor,
+  `vidingest_` wordmark with a caret), then ordinals — `01`…`05` — beside each section's icon and
+  label, the active one taking an accent wash, an accent bar and an accent ordinal. The label
+  stays `--fg`: the palette reserves accent *text* for the primary CTA. Ordinals are positional
+  (`$index`), never stored per section, so reordering cannot desync them.
+- **The foot ends with a UTC clock.** Every timestamp the server sends is naive UTC (finding 5),
+  so the console says which clock it is showing, once, instead of each screen implying it. It runs
+  on its own interval rather than `poller.now()`, which stops while polling is paused — right for
+  a live lane segment, wrong for a wall clock. The theme switch shares its row: both are ambient,
+  neither is status.
+- **The foot says what is broken and how stale this is.** The `/health/ready` checks and
+  `/health/ollama` merge into one list: the count reads `1 down` the moment anything is (never
+  `3 ok` while `videoPath` is not writable), the failing checks are named beside it while the rail
+  is wide, and a native `popover` — light dismiss and Esc for free — lists every check with the
+  value the server gave it. Those values used to live in a `title` no touch device and no keyboard
+  could reach. The popover lives *inside* the rail so it can read `--nav-now` and open flush
+  against whatever width the rail has; the top layer ignores DOM position and `overflow: hidden`
+  alike.
+- **The id rides its own section.** `crumb()` derives it from the URL and it renders indented under
+  the active nav item, so a run id sits under Runs rather than in a breadcrumb repeating the word
+  the active item already shows. No screen has to publish a title to the shell.
 - **Adding a channel syncs it.** A new channel used to sit `NEW` with an empty catalog until the
   operator noticed the Sync button or the half-hour scheduler ran, which made Add look inert.
 

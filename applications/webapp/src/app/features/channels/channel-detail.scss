@@ -59,7 +59,7 @@ th.pick {
 }
 
 tbody tr.on {
-  background: rgba(22, 163, 74, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 input[type='checkbox'] {

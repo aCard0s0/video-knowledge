@@ -4,18 +4,67 @@
 // corrections recorded in docs/vidingest/VidIngest - Web UI.md. Where the two disagree, this
 // file wins: MASTER.md is a regenerable landing-page template with light-mode leftovers.
 //
-// Contrast ratios in comments are measured against --bg (#020617).
+// **Two themes.** Dark is the design the console was drawn for and every ratio in the dark block
+// is measured against its --bg (#020617). Light is a second, separately measured ramp — not a
+// hue flip: the same green that reads at 11.6:1 on near-black is 1.6:1 on near-white, so every
+// status colour is a different hex, chosen to clear 4.5:1 against both #f8fafc and #ffffff.
+//
+// The OS preference is the default and needs no JavaScript. A stored choice arrives as
+// `data-theme` on <html> — written before first paint by the inline script in index.html, and by
+// the toggle in the rail foot after that — and wins over the media query in both directions.
+//
+// Anything a component needs that is not a plain surface/text/status colour belongs here too:
+// a raw hex in a component is a colour that cannot follow the theme, and washes over a token
+// (`color-mix(in srgb, var(--st-failed-fill) 18%, transparent)`) follow it for free.
+
+@mixin light-palette {
+  color-scheme: light;
+
+  // --- surface -------------------------------------------------------------
+  --bg: #f8fafc;
+  --card: #ffffff; // one step up from --bg; elevation is a surface step, not a shadow
+  --muted: #f1f5f9; // row hover, inert fills
+  --muted-hover: #e2e8f0; // control hover
+  --border: #cbd5e1; // 1.42:1 — table rules only, never the sole state indicator
+  --border-hover: #94a3b8; // 2.45:1 — control hover
+
+  // --- text ----------------------------------------------------------------
+  --fg: #0f172a; // 17.1:1
+  --fg-muted: #475569; // 7.2:1
+  --placeholder: #64748b; // 4.6:1
+  --ring: #0f172a; // 17.1:1 focus — white would vanish here
+
+  // --- action --------------------------------------------------------------
+  --accent: #15803d; // 4.8:1 — primary CTA only; white on it is 5.0:1
+  --accent-fg: #ffffff;
+  --accent-hover: #166534;
+
+  // --- status ramp ---------------------------------------------------------
+  --st-pending: #475569; // 7.2:1
+  --st-running: #0369a1; // 5.7:1
+  --st-done: #047857; // 5.2:1 — emerald, so COMPLETED never reads as the CTA green
+  --st-failed: #b91c1c; // 6.2:1 — FAILED text
+  --st-failed-fill: #dc2626; // 4.8:1 — fills, caps and borders only, never text
+  --st-cancelled: #64748b; // 4.6:1
+  --st-warn: #a16207; // 4.7:1
+  --st-skipped: #cbd5e1; // hatched void in the lane
+}
 
 :root {
+  color-scheme: dark;
+
   // --- surface -------------------------------------------------------------
   --bg: #020617;
   --card: #0e1223; // one step up from --bg; elevation is a surface step, not a shadow
   --muted: #1a1e2f; // row hover, inert fills
+  --muted-hover: #232838; // control hover
   --border: #334155; // 1.95:1 — table rules only, never the sole state indicator
+  --border-hover: #46536b; // control hover
 
   // --- text ----------------------------------------------------------------
   --fg: #f8fafc; // 19.3:1
   --fg-muted: #94a3b8; // 7.9:1
+  --placeholder: #64748b; // 4.2:1
   --ring: #ffffff; // 19.3:1 focus
 
   // --- action --------------------------------------------------------------
@@ -45,7 +94,6 @@
   --radius: 4px; // controls
   --radius-panel: 6px;
   --row-h: 32px;
-  --gutter-h: 28px;
   --nav-w: 200px;
   --nav-w-collapsed: 56px;
 
@@ -60,6 +108,16 @@
 
   --t-fast: 150ms;
   --t-med: 250ms;
+}
 
-  color-scheme: dark;
+// No stored choice: follow the OS. `:not([data-theme='dark'])` is what lets an explicit dark
+// choice survive a light-mode OS.
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    @include light-palette;
+  }
+}
+
+:root[data-theme='light'] {
+  @include light-palette;
 }

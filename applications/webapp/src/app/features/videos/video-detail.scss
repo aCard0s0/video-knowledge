@@ -33,7 +33,7 @@
 
 .player-panel {
   position: sticky;
-  top: calc(var(--gutter-h) + var(--space-md));
+  top: var(--space-md);
   padding: var(--space-md);
 }
 
@@ -165,7 +165,7 @@
 
   &.playing {
     border-left-color: var(--st-running);
-    background: rgba(56, 189, 248, 0.08);
+    background: color-mix(in srgb, var(--st-running) 8%, transparent);
   }
 }
 

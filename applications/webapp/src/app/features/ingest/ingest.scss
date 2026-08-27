@@ -48,7 +48,7 @@ caption {
 
 .watch {
   position: sticky;
-  top: calc(var(--gutter-h) + var(--space-md));
+  top: var(--space-md);
 }
 
 .watch-meta {

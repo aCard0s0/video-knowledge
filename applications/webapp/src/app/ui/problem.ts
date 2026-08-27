@@ -36,7 +36,7 @@ import { ApiFailure } from '../core/problem';
       border: 1px solid var(--st-failed-fill);
       border-left-width: 3px;
       border-radius: var(--radius-panel);
-      background: rgba(220, 38, 38, 0.08);
+      background: color-mix(in srgb, var(--st-failed-fill) 8%, transparent);
       padding: var(--space-md);
       margin-bottom: var(--space-md);
     }

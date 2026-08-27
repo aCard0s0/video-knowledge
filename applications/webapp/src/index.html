@@ -5,9 +5,21 @@
     <title>VidIngest</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Kept in step with --bg by the theme effect in app.ts; this is the dark value. -->
     <meta name="theme-color" content="#020617" />
     <link rel="icon" href="favicon.ico" sizes="any" />
+    <!--
+      Before first paint, not after bootstrap: without a stored choice the tokens follow
+      prefers-color-scheme on their own, but a stored choice that disagrees with the OS would
+      otherwise paint the wrong theme for as long as the bundle takes to load.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem('vk.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <app-root></app-root>
