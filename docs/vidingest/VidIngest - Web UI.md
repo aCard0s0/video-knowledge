@@ -100,6 +100,14 @@ which is how three FAILED items once rendered as ten blank boxes announcing "com
 that treats `failedPhase` as a position asks `isLanePhase()` first; the console renders that case
 as "never started", not as a place.
 
+**`CREATED` is the same trap one field over.** A run is created with `phase = CREATED` and
+`RunLifecycleService.prepareRetry` writes it back, so it is what a run reports for the seconds
+between the operator pressing Retry and METADATA starting — exactly the window the runs board's
+live panel exists to show. The board renders that as `queued`, which is where the run actually is
+(behind the ingestion semaphore), and asks `isLanePhase()` rather than printing the marker. The
+board's history table shows `—` instead: a terminal run's phase is never a place, and the reason it
+stopped is rendered under it by `vk-fault`, not squeezed into the phase column.
+
 ### 4. The audit trail is the only source of per-phase durations
 
 `ITEM_PHASE_ENTERED` / `ITEM_PHASE_COMPLETED` pairs (ascending, paged) reconstruct how long each
@@ -225,7 +233,11 @@ rejects out of either shape.
 - `?status` on `GET /pipelines` accepts `RunStatus` ∪ `ALL`; an unknown value 400s with the raw
   Java enum message, so the UI offers a fixed set of chips.
 - `202` on exactly three operations: run retry, item retry, channel→pipelines. `POST /pipelines`
-  returns `200`. All are treated as fire-then-poll regardless.
+  returns `200`. All are treated as fire-then-poll regardless — but **a 202 is not a queue
+  receipt**. `PipelineService.enqueueRetryBatch` answers with a per-item verdict, and every item
+  can come back `REJECTED` with a reason ("item is already running", "was cancelled"), in which
+  case nothing was queued at all. Both screens that fire a retry render those through `vk-rejects`,
+  in warn rather than the failure ramp: nothing broke, the server declined.
 - `GET /pipelines?live=true` is the cheap poll for the live zone of the runs board.
 
 ## Design direction
@@ -349,7 +361,8 @@ applications/webapp/
                                   audit.ts (tail paging, + spec) · paging.ts (clampPage, + spec)
                                   watch-run.ts (run + audit + lanes, shared by 2 screens)
                                   poller.ts · url-state.ts · api-base.ts
-  src/app/ui/                     lane · problem · fault · empty · pager · phase-picker · status-badge
+  src/app/ui/                     lane · problem · fault · rejects · empty · pager · phase-picker
+                                  status-badge
   src/app/features/               ingest · channels (+detail) · runs (+detail) · videos (+detail) · audit
   src/styles/_tokens.scss         the corrected palette (this file's tokens win over MASTER.md)
 ```
@@ -389,9 +402,14 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   now appear beside the form as live lanes, polled at the same cadence as the runs board, so
   paste → start → diagnose happens on one screen. With nothing started, the column lists the last
   five runs instead of standing empty.
-- **Runs triage is one click.** Status is a row of chips rather than a select, the FAILED chip
-  carries its count (one extra one-row query — that number is why the screen gets opened), and
-  FAILED rows carry a Retry button so triage does not require a navigation first.
+- **Runs triage is one click, and the board says why.** Status is a row of chips rather than a
+  select, the FAILED chip carries its count (one extra one-row query — that number is why the
+  screen gets opened), and FAILED rows carry a Retry button so triage does not require a
+  navigation first. `error` is on every `RunSummary`, so the reason renders in a full-width row
+  under its run rather than one navigation away: fourteen rows all reading `UPSTREAM_TOOL_FAILURE`
+  are told apart only by the message tail, so it gets the width to wrap rather than a clip that
+  lands the ellipsis on the discriminating half. The retry's own answer is read too — see
+  finding 14.
 - **The video screen shows its dossier.** Transcription provider/language/character count,
   artifact counts and the file path fill the column under the player, all from the `/detail`
   response the screen was already fetching.

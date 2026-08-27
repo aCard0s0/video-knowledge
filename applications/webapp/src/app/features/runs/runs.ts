@@ -2,9 +2,9 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { PipelinesService, RunSummary } from '../../api/generated';
+import { ItemResult, PipelinesService, RunSummary } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { RUN_STATUSES, blank, isLive, statusVar } from '../../core/domain';
+import { RUN_STATUSES, blank, isLanePhase, isLive, statusVar } from '../../core/domain';
 import { humanAge, absoluteTime, parseServerTime } from '../../core/time';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
@@ -13,12 +13,39 @@ import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
 import { Problem } from '../../ui/problem';
+import { Rejects } from '../../ui/rejects';
+import { Fault } from '../../ui/fault';
 
 const PAGE_SIZE = 25;
 
+/**
+ * Where the run is, for a run that can still move. A FAILED run reports `phase: "DONE"`, so this
+ * asks `isLive` first; the fault row underneath carries the reason once the run cannot move.
+ *
+ * `CREATED` is not a step either — it is the marker a run wears from `RunLifecycleService.create`
+ * until METADATA starts, and `prepareRetry` writes it back, so it is exactly what a run shows for
+ * the seconds after the operator presses Retry on this screen. `isLanePhase` is the same guard the
+ * run screen uses on `failedPhase`; the honest word for a run holding that marker is that it is
+ * queued behind the ingestion semaphore, which is where it actually is.
+ */
+export function marker(run: RunSummary): string {
+  if (!isLive(run.status)) return '—';
+  return isLanePhase(run.phase) ? run.phase : 'queued';
+}
+
+/**
+ * A terminal run with something to say — the fault row renders under it.
+ *
+ * Either half is enough: a run can carry a message with no code, and `""` is how the API spells
+ * absent for both.
+ */
+export function hasFault(run: RunSummary): boolean {
+  return !isLive(run.status) && (!blank(run.errorCode) || !blank(run.error));
+}
+
 @Component({
   selector: 'vk-runs',
-  imports: [RouterLink, StatusBadge, Pager, Empty, Problem],
+  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, Rejects, Fault],
   templateUrl: './runs.html',
   styleUrl: './runs.scss',
 })
@@ -81,19 +108,11 @@ export class Runs {
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
+  protected readonly marker = marker;
+  protected readonly hasFault = hasFault;
 
   protected age(value: string | undefined): string {
     return humanAge(value, this.poller.now());
-  }
-
-  /**
-   * A FAILED run still reports `phase: "DONE"`, so this column shows the phase only while the run
-   * can still move, and the error code once it cannot. Never a phase name that means nothing.
-   */
-  protected marker(run: RunSummary): { text: string; failed: boolean } {
-    if (isLive(run.status)) return { text: run.phase ?? '—', failed: false };
-    if (!blank(run.errorCode)) return { text: run.errorCode!, failed: true };
-    return { text: '—', failed: false };
   }
 
   protected label(run: RunSummary): string {
@@ -105,6 +124,7 @@ export class Runs {
   protected readonly failed = computed(() => valueOf(this.failedCount)?.total ?? 0);
   protected readonly retrying = signal<string | null>(null);
   protected readonly retryFailure = signal<ApiFailure | null>(null);
+  protected readonly retryRejects = signal<ItemResult[]>([]);
 
   protected setStatus(value: string): void {
     this.status.set(value);
@@ -118,14 +138,21 @@ export class Runs {
    * business naming phases — and an *empty* `skipPhases` is not silence, it is "run every enabled
    * phase". Sending one re-enabled OCR and KNOWLEDGE for a run created without them. Omitted, the
    * server retries the run with the set stored on the run row.
+   *
+   * **A 202 does not mean the work was queued.** `PipelineService.enqueueRetryBatch` answers with a
+   * per-item verdict: an item that is already running, was cancelled, or has no URL left to fetch
+   * comes back REJECTED with a reason, and every item can be. Discarding that body made a refusal
+   * indistinguishable from a retry — the row simply stayed FAILED and the operator pressed again.
    */
   protected retry(run: RunSummary): void {
     if (!run.id) return;
     this.retrying.set(run.id);
     this.retryFailure.set(null);
+    this.retryRejects.set([]);
     this.pipelines.retryRun(run.id).subscribe({
-      next: () => {
+      next: (response) => {
         this.retrying.set(null);
+        this.retryRejects.set((response.items ?? []).filter((i) => i.status === 'REJECTED'));
         this.running.reload();
         this.pending.reload();
         this.history.reload();

@@ -1,6 +1,7 @@
 <h1 class="mono">runs</h1>
 
 <vk-problem [failure]="failure()" />
+<vk-rejects [items]="retryRejects()" />
 
 <section class="panel live">
   <div class="panel-head">
@@ -29,7 +30,7 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
-              <td class="mono sm">{{ marker(run).text }}</td>
+              <td class="mono sm">{{ marker(run) }}</td>
               <td>
                 <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
                 <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
@@ -77,7 +78,7 @@
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
             <th scope="col">Status</th>
-            <th scope="col">Phase / code</th>
+            <th scope="col">Phase</th>
             <th scope="col">Run</th>
             <th scope="col">Channel</th>
             <th scope="col" class="num">Items</th>
@@ -91,7 +92,7 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
-              <td class="mono sm" [class.failed]="marker(run).failed">{{ marker(run).text }}</td>
+              <td class="mono sm">{{ marker(run) }}</td>
               <td>
                 <a class="mono" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
                 <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
@@ -110,6 +111,21 @@
                 </span>
               </td>
             </tr>
+            <!-- The reason, in its own full-width row rather than a ninth column: `error` is free
+                 text from the phase that died and the useful part is its tail, so it gets the width
+                 to be read rather than a clip that makes eleven UPSTREAM_TOOL_FAILUREs identical. -->
+            @if (hasFault(run)) {
+              <tr class="fault-row">
+                <td class="spine" [style.--spine]="statusVar(run.status)"></td>
+                <td colspan="8">
+                  <vk-fault
+                    [errorCode]="run.errorCode"
+                    [error]="run.error"
+                    [cancelled]="run.status === 'CANCELLED'"
+                  />
+                </td>
+              </tr>
+            }
           }
         </tbody>
       </table>
