@@ -125,7 +125,10 @@ export class Runs {
   });
 
   constructor() {
-    syncQueryParams({ status: this.status, page: this.page, sortBy: this.sortBy });
+    syncQueryParams(
+      { status: this.status, page: this.page, sortBy: this.sortBy },
+      { status: 'ALL', sortBy: 'createdAt' },
+    );
     // Retrying the FAILED runs on a page empties it out from under the FAILED filter.
     clampPage(this.page, PAGE_SIZE, this.history);
     this.poller.every(
