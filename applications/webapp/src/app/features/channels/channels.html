@@ -10,13 +10,28 @@
   <div class="fields">
     <div class="field">
       <label for="url">Channel URL</label>
-      <input id="url" type="url" formControlName="url" placeholder="https://www.youtube.com/@channel…" autocomplete="off" />
+      <input
+        #urlField
+        id="url"
+        type="url"
+        name="url"
+        formControlName="url"
+        placeholder="https://www.youtube.com/@channel…"
+        autocomplete="off"
+        spellcheck="false"
+        [attr.aria-invalid]="urlInvalid() || null"
+        [attr.aria-describedby]="urlInvalid() ? 'url-error' : null"
+      />
+      <!-- Beside the field it belongs to, not in the panel at the top of the screen. -->
+      @if (urlInvalid()) {
+        <p id="url-error" class="field-error mono sm failed" role="alert">Enter the channel URL to add it.</p>
+      }
     </div>
     <div class="field">
       <label for="displayName">Name (optional)</label>
-      <input id="displayName" type="text" formControlName="displayName" maxlength="255" autocomplete="off" />
+      <input id="displayName" type="text" name="displayName" formControlName="displayName" maxlength="255" autocomplete="off" />
     </div>
-    <button class="btn-primary" type="submit" [disabled]="form.invalid || busy() === 'add'">
+    <button class="btn-primary" type="submit" [disabled]="busy() === 'add'">
       {{ busy() === 'add' ? 'Adding…' : 'Add & sync' }}
     </button>
   </div>

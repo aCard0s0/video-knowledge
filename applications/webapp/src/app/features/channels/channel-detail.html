@@ -39,15 +39,10 @@
     so what you learn to read here is what you read when something breaks. The rejects sit beside
     it because a 202 is not an acceptance: the body names every video that was turned away.
   -->
-  @if (started()) {
+  @if (watching()) {
     <section class="panel watch">
       <div class="panel-head">
-        <span class="eyebrow">
-          started · {{ accepted().length }} accepted
-          @if (rejected().length) {
-            · {{ rejected().length }} rejected
-          }
-        </span>
+        <span class="eyebrow">{{ headline() }}</span>
         @if (watched(); as run) {
           <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
         }
@@ -153,13 +148,17 @@
             @for (video of rows(); track video.id) {
               <tr [class.on]="isPicked(video)">
                 <td class="pick">
-                  <input
-                    [id]="'pick-' + video.id"
-                    type="checkbox"
-                    [checked]="isPicked(video)"
-                    [disabled]="video.ingested"
-                    (change)="toggle(video)"
-                  />
+                  <!-- The label fills the cell, so its padding is part of the target rather than
+                       a dead zone between the box and the title that also labels it. -->
+                  <label class="pick-hit" [attr.for]="'pick-' + video.id">
+                    <input
+                      [id]="'pick-' + video.id"
+                      type="checkbox"
+                      [checked]="isPicked(video)"
+                      [disabled]="video.ingested"
+                      (change)="toggle(video)"
+                    />
+                  </label>
                 </td>
                 <!--
                   The title is the checkbox's label, so the whole cell is the target. A 13px box
@@ -188,7 +187,8 @@
   <section class="panel ingest">
     <div class="panel-head">
       <span class="eyebrow">ingest selection</span>
-      <span class="mono sm" [class.warn]="overLimit()">
+      <!-- Ticking a box changes this and nothing else; without a live region it is silent. -->
+      <span class="mono sm" role="status" [class.warn]="overLimit()">
         {{ pickedCount() }} selected
         @if (overLimit()) {
           · over the {{ maxPerRun }}-video limit for one run
