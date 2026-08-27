@@ -205,6 +205,29 @@ svg.icon {
   }
 }
 
+// The console names itself the way it names its screens: lowercase mono, so `vidingest` reads as
+// the command, not as a masthead. The mark is the pipeline in one glyph — a frame of video going
+// in, three lines of transcript coming out.
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px var(--space-sm) var(--space-md);
+  color: var(--fg);
+  font: 600 var(--fs-md) / 1 var(--font-mono);
+
+  .mark {
+    width: 18px;
+    height: 18px;
+  }
+
+  // The nav icons are stroke-only; the play triangle is the one solid shape in the rail.
+  .fill {
+    fill: currentcolor;
+    stroke: none;
+  }
+}
+
 nav {
   container-type: inline-size;
   position: sticky;
@@ -279,12 +302,14 @@ nav {
 // One rule for "the rail is too narrow for words", whether the operator collapsed it or the
 // viewport did.
 @container (max-width: 120px) {
+  .brand,
   nav a,
   .nav-toggle {
     justify-content: center;
     gap: 0;
   }
 
+  .brand span,
   nav a span,
   .nav-toggle span {
     @include visually-hidden;
