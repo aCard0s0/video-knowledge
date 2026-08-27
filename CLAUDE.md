@@ -212,6 +212,16 @@ Schema is Liquibase-only (`ddl-auto=none`): SQL changesets under
 `db.changelog-master.yaml`. New migrations are a new numbered file plus an include —
 never edit an applied changeset.
 
+The database is **`pgvector/pgvector:pg17`**, the same tag `BaseVidingestIntegrationTest`
+gives Testcontainers — keep those two equal, or a pg/pgvector behaviour difference can pass
+tests and fail in compose. `vector` is the only extension the schema creates and there are
+no hypertables, no `time_bucket` and no full-text search anywhere, so the
+`timescale/timescaledb-ha:pg17` image this replaced (Aug 2026) was preloading `timescaledb`
+and `pg_textsearch` for nothing. Don't go back to it for "time-series" reasons: pipeline runs
+are queried by id and status, not by time range. Stay on pg17 unless you also move the volume
+mount — postgres 18 relocated PGDATA to `/var/lib/postgresql/<major>/docker`, which makes the
+volume major-version-specific.
+
 Feature packages under `core/` follow `client → service → domain/repo → mapper → dto`
 (MapStruct mappers, Lombok everywhere). External dependencies, all HTTP or process calls:
 yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), whisper (:9000),
