@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -57,6 +58,15 @@ public class YoutubeChannelsController {
     @Operation(operationId = "getChannel", summary = "Get a YouTube channel by id")
     public YoutubeChannelSummary get(@PathVariable UUID channelId) {
         return youtubeChannels.getChannel(channelId);
+    }
+
+    @DeleteMapping("/{channelId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(operationId = "deleteChannel", summary = "Stop tracking a YouTube channel",
+            description = "Removes the channel and its discovered catalog. Videos already ingested from it are kept.")
+    public void delete(@PathVariable UUID channelId) {
+        log.info("REST delete YouTube channel: channelId={}", channelId);
+        youtubeChannels.deleteChannel(channelId);
     }
 
     @PostMapping("/{channelId}/sync")

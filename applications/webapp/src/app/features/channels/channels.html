@@ -65,6 +65,9 @@
                   <button class="btn-sm" type="button" [disabled]="busy() === channel.id" (click)="sync(channel)">
                     {{ busy() === channel.id ? 'Syncing…' : 'Sync now' }}
                   </button>
+                  <button class="btn-sm btn-danger" type="button" [disabled]="busy() === channel.id" (click)="remove(channel)">
+                    Remove
+                  </button>
                 </span>
               </td>
             </tr>

@@ -334,3 +334,61 @@ table.grid th.sp {
   white-space: nowrap;
   border: 0;
 }
+
+// --- the run a screen just started, watched in place -----------------------
+// Two screens draw it now — ingest and channel detail — and both had it declared locally. What
+// stays with each screen is where the panel sits (ingest makes it a sticky right-hand column);
+// what a lane and a reject look like is the same on both, and is here.
+
+.watch-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.watch-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.watch-items > li {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.watch-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  min-width: 0;
+}
+
+.spine-dot {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 14px;
+  border-radius: 1px;
+}
+
+.url {
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 1199px) {
+  .watch-items {
+    max-height: none;
+  }
+}

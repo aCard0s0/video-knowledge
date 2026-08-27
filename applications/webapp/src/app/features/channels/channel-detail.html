@@ -27,11 +27,54 @@
 
   <vk-problem [failure]="failure()" />
 
-  @if (started(); as run) {
-    <p class="panel started mono sm" aria-live="polite">
-      Run started for {{ run.items?.length ?? 0 }} video(s).
-      <a [routerLink]="['/runs', run.runId]">Watch run {{ run.runId?.slice(0, 8) }} →</a>
-    </p>
+  <!--
+    The run this screen just started, advancing in place — same lane component as the run screen,
+    so what you learn to read here is what you read when something breaks. The rejects sit beside
+    it because a 202 is not an acceptance: the body names every video that was turned away.
+  -->
+  @if (started()) {
+    <section class="panel watch">
+      <div class="panel-head">
+        <span class="eyebrow">
+          started · {{ accepted().length }} accepted
+          @if (rejected().length) {
+            · {{ rejected().length }} rejected
+          }
+        </span>
+        @if (watched(); as run) {
+          <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
+        }
+      </div>
+
+      @if (watched(); as run) {
+        <p class="watch-meta mono sm" aria-live="polite">
+          <vk-status [status]="run.status" />
+          <span class="muted">· {{ watchedItems().length }} item(s) · {{ age(run.createdAt) }}</span>
+        </p>
+
+        <ul class="watch-items">
+          @for (item of watchedItems(); track item.itemId) {
+            <li>
+              <div class="watch-item-head">
+                <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
+                <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
+              </div>
+              <vk-lane [segments]="lane(item)" />
+              <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+            </li>
+          }
+        </ul>
+      } @else if (accepted().length === 0) {
+        <p class="quiet muted">Nothing was accepted, so no run was created.</p>
+      }
+
+      <!--
+        The same panel the two retry screens use. Warn, not the failure ramp: a video the server
+        declined is not something the operator can fix here — the URLs come from the stored
+        catalog, not from a box they typed into.
+      -->
+      <vk-rejects [items]="rejected()" label="not started" />
+    </section>
   }
 
   <section class="panel">
@@ -59,13 +102,13 @@
       </p>
       <vk-pager [page]="page()" [size]="size" [total]="total()" (go)="page.set($event)" />
     } @else if (rows().length === 0) {
-      <vk-empty
-        [message]="
-          onlyNew()
-            ? 'Every upload in this catalog is already ingested.'
-            : 'This catalog is empty. Sync the channel to fetch its uploads.'
-        "
-      >
+      <!--
+        Nothing on the page at all, filter or no filter, which means the catalog is empty — not
+        that everything in it was ingested. Keying this off `onlyNew()` made a channel whose sync
+        had just failed with a yt-dlp 404 report "Every upload in this catalog is already
+        ingested", directly under the red panel naming the 404.
+      -->
+      <vk-empty message="This catalog is empty. Sync the channel to fetch its uploads.">
         <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
       </vk-empty>
     } @else {

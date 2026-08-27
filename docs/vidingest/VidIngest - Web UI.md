@@ -45,7 +45,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | Screen | Endpoints |
 |---|---|
 | **Ingest** (home) | `POST /pipelines`, `GET /health/ready`, `GET /health/ollama` |
-| **Channels** | `GET/POST /youtube/channels`, `POST /{id}/sync`, `GET /{id}/videos`, `POST /{id}/pipelines` |
+| **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos`, `POST /{id}/pipelines` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
@@ -55,7 +55,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 ## API discovery findings
 
 Measured against the running server on 2026-08-26 (18 runs, 3 videos, 303 audit events),
-not inferred from source. 39 operations, 42 schemas.
+not inferred from source. 40 operations, 42 schemas (39 before `deleteChannel`).
 
 ### 1. Errors are RFC 9457 ProblemDetail, not `ApiErrorResponse`
 
@@ -71,9 +71,9 @@ Titles are a closed set: `Bad request`, `Validation failed` (adds `fields`), `No
 `Conflict`, `Upstream failure` (502), `Internal error`. Every response also carries an
 `X-Correlation-Id` header — that is the log grep key, so the error panel shows it.
 
-**No operation documents any 4xx/5xx** (0 of 39) and no error schema exists in the spec, so the
+**No operation documents any 4xx/5xx** (0 of 40) and no error schema exists in the spec, so the
 generated client types error bodies as `any`. The frontend declares the `ProblemDetail` interface
-by hand; annotating 39 endpoints server-side is not worth it.
+by hand; annotating 40 endpoints server-side is not worth it.
 
 ### 2. `errorCode` is a pipeline field, not an HTTP field
 
@@ -249,6 +249,33 @@ rejects out of either shape.
   case nothing was queued at all. Both screens that fire a retry render those through `vk-rejects`,
   in warn rather than the failure ramp: nothing broke, the server declined.
 - `GET /pipelines?live=true` is the cheap poll for the live zone of the runs board.
+
+### 15. A channel catalog has no upload dates, so its order rests on two fallbacks
+
+`YoutubeChannelVideoSummary.publishedAt` is typed `date-time` and is **null on every row** —
+yt-dlp's `--flat-playlist` emits no upload date for a channel tab, measured 0 of 200 populated on
+a real sync. So the `Published` column is empty for a whole catalog, and the sort falls through to
+its fallbacks every time.
+
+Which is what made the screen open on the wrong end. `upsertVideos` keeps existing rows and
+inserts new ones, stamping `createdAt` per row in `@PrePersist` while it saves the discovered list
+in one pass — and yt-dlp lists a channel newest first. So `firstSeenAt` (one timestamp per sync
+batch) orders the batches and `createdAt` **ascending** preserves discovery order inside one.
+Sorting `createdAt` descending, as the original did, reversed each batch: the first sync puts the
+whole catalog in one batch, so page 0 held the fifty *oldest* uploads and the newest was on the
+last page — on the screen whose reason to exist is catching new ones.
+
+The catalog is also capped: `vidingest.youtube.sync.playlistLimit=200` becomes `--playlist-end`,
+so "200 in catalog" on a 700-upload channel is a window, not a count.
+
+### 16. Nothing reached `DISABLED`, so a bad channel was permanent
+
+`YoutubeChannelSyncScheduler` sweeps `findAllByStatusNot(DISABLED)` every half hour, and no
+endpoint ever set `DISABLED`. A mistyped URL therefore sat `ERROR` forever with yt-dlp re-run
+against it on a cron. `DELETE /youtube/channels/{channelId}` answers 204, or 404 for an id that is
+already gone; the discovered catalog follows through the `ON DELETE CASCADE` on
+`vidingest_youtube_channel_videos.channel_id`, and videos already ingested from the channel are
+untouched — they are `vidingest_videos` rows with no FK back.
 
 ## Design direction
 
@@ -495,6 +522,23 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   the active item already shows. No screen has to publish a title to the shell.
 - **Adding a channel syncs it.** A new channel used to sit `NEW` with an empty catalog until the
   operator noticed the Sync button or the half-hour scheduler ran, which made Add look inert.
+- **A channel can be removed.** Add was one-way: the only escape hatch a mistyped URL had was the
+  `DISABLED` status, which nothing set and no endpoint reached, so the row stayed `ERROR` while the
+  scheduler re-ran yt-dlp against it forever (finding 16). Remove sits beside Sync on the list,
+  behind a confirm that says what goes — the catalog — and what does not: the videos already
+  ingested from it.
+- **Starting a channel batch does not dead-end either.** It used to leave `Run started for N
+  video(s)` and a link, which is the dead end ingest had already been given lanes to fix — and the
+  N was `items.length`, so videos the server *refused* were counted as started. The panel now reads
+  `1 accepted · 1 rejected`, watches the run in place through the same `core/watch-run.ts` that
+  feeds ingest and run detail, and hands the refusals to `vk-rejects`. Warn rather than the failure
+  ramp, and labelled `not started` rather than `not retried`: a video declined here is not
+  something the operator can fix, because the URL came from the stored catalog and not from a box
+  they typed into.
+- **An empty catalog says it is empty.** The empty state branched on the "not ingested only"
+  filter, which defaults on, so a channel whose sync had just failed with a yt-dlp 404 reported
+  `Every upload in this catalog is already ingested` — directly under the red panel naming the 404.
+  Nothing on the page with the filter off means no uploads, not that they all ran.
 
 ### The phase lane
 

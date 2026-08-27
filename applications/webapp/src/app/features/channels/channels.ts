@@ -101,4 +101,32 @@ export class Channels {
       },
     });
   }
+
+  /**
+   * Stop tracking a channel.
+   *
+   * Without this a mistyped URL was permanent: nothing in the API reached the `DISABLED` status,
+   * so the row sat `ERROR` while the server's half-hour sweep re-ran yt-dlp against a dead URL
+   * forever. Confirmed first because it drops the discovered catalog — but not the videos already
+   * ingested from it, which is what the prompt says.
+   */
+  protected remove(channel: YoutubeChannelSummary): void {
+    if (!channel.id) return;
+    const name = channel.displayName || channel.url;
+    if (!confirm(`Stop tracking ${name}?\n\nIts discovered catalog goes too. Videos already ingested from it are kept.`)) {
+      return;
+    }
+    this.busy.set(channel.id);
+    this.actionFailure.set(null);
+    this.youtube.deleteChannel(channel.id).subscribe({
+      next: () => {
+        this.busy.set(null);
+        this.list.reload();
+      },
+      error: (err: unknown) => {
+        this.busy.set(null);
+        this.actionFailure.set(toApiFailure(err));
+      },
+    });
+  }
 }

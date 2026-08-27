@@ -17,7 +17,7 @@ import { ItemResult } from '../api/generated';
   template: `
     @if (items().length) {
       <div class="panel rejects" role="status">
-        <p class="eyebrow">not retried</p>
+        <p class="eyebrow">{{ label() }}</p>
         <dl class="mono sm">
           @for (reject of items(); track reject.itemId ?? reject.url) {
             <!-- Not truncated: every YouTube URL shares a prefix, so a clipped one names no item. -->
@@ -71,4 +71,6 @@ import { ItemResult } from '../api/generated';
 })
 export class Rejects {
   readonly items = input<ItemResult[]>([]);
+  /** Retry is the common case; a channel batch refuses videos that were never started. */
+  readonly label = input('not retried');
 }

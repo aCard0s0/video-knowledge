@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -94,6 +95,91 @@ class YoutubeChannelsApiIntegrationTest extends BaseVidingestIntegrationTest {
         JsonNode listVideos = objectMapper.readTree(listVideosRes.body());
         assertThat(listVideos.get("items").size()).isEqualTo(2);
         assertThat(listVideos.get("items").get(0).get("youtubeVideoId").asText()).isNotBlank();
+    }
+
+    /**
+     * The catalog comes back in discovery order — newest upload first.
+     *
+     * <p>Every candidate here has a null {@code publishedAt}, which is what a real
+     * {@code --flat-playlist} discovery returns: yt-dlp emits no upload date for a channel tab.
+     * That leaves the sort resting entirely on its fallbacks, and the old one (createdAt DESC)
+     * reversed the batch — a 200-video catalog opened on its fifty *oldest* uploads.
+     */
+    @Test
+    void channelVideosComeBackNewestFirst() throws Exception {
+        // The order yt-dlp lists a channel tab in: newest at index 0.
+        when(youtubeChannelDiscoveryService.discover(anyString(), anyInt(), anyLong()))
+                .thenReturn(new YoutubeChannelDiscoveryResult(
+                        "https://www.youtube.com/@order",
+                        "UC_ORDER",
+                        "Order Channel",
+                        Map.of(),
+                        List.of(candidate("newest"), candidate("middle"), candidate("oldest"))
+                ));
+
+        String channelId = createChannel("https://www.youtube.com/@order");
+        assertThat(post("/youtube/channels/" + channelId + "/sync").statusCode()).isEqualTo(200);
+
+        JsonNode listed = objectMapper.readTree(get("/youtube/channels/" + channelId + "/videos?page=0&size=50").body());
+        List<String> ids = new ArrayList<>();
+        listed.get("items").forEach(item -> ids.add(item.get("youtubeVideoId").asText()));
+        assertThat(ids).containsExactly("newest", "middle", "oldest");
+    }
+
+    /**
+     * A mistyped channel used to be permanent: nothing reaches the DISABLED status, so the
+     * half-hour scheduler re-ran yt-dlp against a dead URL forever.
+     */
+    @Test
+    void deleteRemovesTheChannelAndItsCatalog() throws Exception {
+        when(youtubeChannelDiscoveryService.discover(anyString(), anyInt(), anyLong()))
+                .thenReturn(new YoutubeChannelDiscoveryResult(
+                        "https://www.youtube.com/@doomed", "UC_DOOMED", "Doomed", Map.of(),
+                        List.of(candidate("gone"))
+                ));
+
+        String channelId = createChannel("https://www.youtube.com/@doomed");
+        assertThat(post("/youtube/channels/" + channelId + "/sync").statusCode()).isEqualTo(200);
+
+        HttpResponse<String> deleted = send(HttpRequest.newBuilder(uri("/youtube/channels/" + channelId)).DELETE());
+        assertThat(deleted.statusCode()).isEqualTo(204);
+
+        // The catalog goes with it via ON DELETE CASCADE; the channel itself is gone.
+        assertThat(get("/youtube/channels/" + channelId).statusCode()).isEqualTo(404);
+        assertThat(get("/youtube/channels/" + channelId + "/videos?page=0&size=50").statusCode()).isEqualTo(404);
+
+        // Deleting something already gone is a 404, not a silent success.
+        assertThat(send(HttpRequest.newBuilder(uri("/youtube/channels/" + channelId)).DELETE()).statusCode())
+                .isEqualTo(404);
+    }
+
+    private static YoutubeChannelDiscoveryResult.YoutubeVideoCandidate candidate(String id) {
+        return new YoutubeChannelDiscoveryResult.YoutubeVideoCandidate(
+                id, "Video " + id, null, "https://www.youtube.com/watch?v=" + id, Map.of("id", id));
+    }
+
+    private String createChannel(String url) throws Exception {
+        HttpResponse<String> res = send(HttpRequest.newBuilder(uri("/youtube/channels"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"url\":\"" + url + "\"}")));
+        assertThat(res.statusCode()).isEqualTo(201);
+        return objectMapper.readTree(res.body()).get("id").asText();
+    }
+
+    private URI uri(String path) {
+        return URI.create("http://localhost:" + port + "/vidingest/api/v1" + path);
+    }
+
+    private HttpResponse<String> get(String path) throws Exception {
+        return send(HttpRequest.newBuilder(uri(path)).GET());
+    }
+
+    private HttpResponse<String> post(String path) throws Exception {
+        return send(HttpRequest.newBuilder(uri(path)).POST(HttpRequest.BodyPublishers.noBody()));
+    }
+
+    private static HttpResponse<String> send(HttpRequest.Builder request) throws Exception {
+        return HttpClient.newHttpClient().send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 }
 
