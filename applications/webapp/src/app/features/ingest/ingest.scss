@@ -53,11 +53,40 @@ caption {
 
 .watch-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin: 0;
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border);
+}
+
+// Pushed to the far end of the meta row: the status and the age read left to right, the action
+// sits where an action sits, and neither moves when the other changes width. It keeps its own line
+// whole and lets the row wrap instead — at 390px the two sharing one line broke "46.2s ago" across
+// two, and the age is the number being read.
+.retry {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+// What the retry declined. A 202 still answers with REJECTED items, so this is not an error panel —
+// it is the rest of the answer, and it sits with the run it is about.
+.retry-rejects {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+  }
+
+  .reason {
+    color: var(--st-warn);
+  }
 }
 
 .watch-items,

@@ -44,7 +44,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 
 | Screen | Endpoints |
 |---|---|
-| **Ingest** (home) | `POST /pipelines`, `GET /health/ready`, `GET /health/ollama` |
+| **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /health/ready`, `GET /health/ollama` |
 | **Channels** | `GET/POST /youtube/channels`, `POST /{id}/sync`, `GET /{id}/videos`, `POST /{id}/pipelines` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
 | **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry` |
@@ -359,7 +359,7 @@ applications/webapp/
                                   watch-run.ts (run + audit + lanes, shared by 2 screens)
                                   poller.ts · url-state.ts · api-base.ts
   src/app/ui/                     lane · problem · fault · empty · pager · phase-picker · status-badge
-  src/app/features/               ingest · channels (+detail) · runs (+detail) · videos (+detail) · audit
+  src/app/features/               ingest (+spec) · channels (+detail) · runs (+detail) · videos (+detail) · audit
   src/styles/_tokens.scss         the corrected palette (this file's tokens win over MASTER.md)
 ```
 
@@ -397,7 +397,21 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
 - **Ingest does not dead-end.** Submitting used to leave a count and a link; the accepted items
   now appear beside the form as live lanes, polled at the same cadence as the runs board, so
   paste → start → diagnose happens on one screen. With nothing started, the column lists the last
-  five runs instead of standing empty.
+  five runs instead of standing empty. The screen carries **Retry run** too, because stopping at
+  "diagnose" sent the operator to the run screen for the one press that fixes what they were
+  already looking at. It sends **no request body**: an absent `skipPhases` means "reuse the run's
+  own set", and the phase picker on this screen describes the *next* run, not the one that failed.
+- **The run being watched is in the URL** (`/ingest?run=<id>`). It used to live only in the submit
+  response, so a refresh — or Back, or a pasted link — dropped the run that had just been started
+  and left the operator to find it again on the runs board. Nothing else on the screen is URL state:
+  the textarea is a draft and the picker configures the next run, but the run in flight is the thing
+  someone would want to reopen. With no `?run` the column falls back to the last five runs.
+- **Nothing the operator pasted is deleted for them.** The client filters non-http(s) lines out of
+  the request, and used to then overwrite the textarea with only the *server's* rejects — so a
+  batch of 100 with three typos ran 97 and erased the three, with no record they had ever been
+  pasted. Everything that did not start stays in the box, and the table under the form lists both
+  kinds together with the reason each one gave. That table was unreachable before: the server can
+  only reject blank, non-http and in-request duplicates, and the client filters all three.
 - **Runs triage is one click.** Status is a row of chips rather than a select, the FAILED chip
   carries its count (one extra one-row query — that number is why the screen gets opened), and
   FAILED rows carry a Retry button so triage does not require a navigation first.
@@ -452,6 +466,13 @@ is information); consecutive *unreached* phases collapse into a single void carr
 because an item that dies in METADATA otherwise renders as nine identical empty boxes. The failed
 phase takes a red cap, and the live one keeps growing against the poll clock. Clicking a segment filters the audit
 trail to that phase. `CREATED` and `DONE` never appear — they are run markers.
+
+**`[status]` is not optional on `<vk-lane>`.** It is the input for the one outcome no segment can
+express: an item reaped while still queued blames `CREATED`, so every segment reads `pending` and
+the track itself has to carry the failure. Without it `dead()` is permanently false and the lane
+labels a dead item `complete` — which is finding 3's blank-boxes bug, one binding over. The ingest
+screen shipped without it while run detail had it, so the same run read differently on the two
+screens that draw it; `features/ingest/ingest.spec.ts` now pins the `CREATED` case.
 
 ### Deliberate deviations from the Web Interface Guidelines
 

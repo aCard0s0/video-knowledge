@@ -47,7 +47,7 @@
       <div class="rejects" aria-live="polite">
         <table class="grid" translate="no">
           <caption class="eyebrow">
-            rejected — fix these and submit again
+            did not start — fix these and submit again
           </caption>
           <thead>
             <tr>
@@ -75,14 +75,35 @@
   <section class="panel watch">
     @if (watched(); as run) {
       <div class="panel-head">
-        <span class="eyebrow">started · {{ accepted().length }} accepted</span>
+        <span class="eyebrow">{{ headline() }}</span>
         <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
       </div>
 
       <p class="watch-meta mono sm" aria-live="polite">
         <vk-status [status]="run.status" />
         <span class="muted">· {{ watchedItems().length }} item(s) · {{ age(run.createdAt) }}</span>
+        @if (canRetry() || retrying()) {
+          <!--
+            Diagnosing a failure and fixing it happen on the same screen. Without this the operator
+            read the phase and the errorCode here, then navigated to the run screen to press the
+            button — and the run screen is where they already were, one screen ago.
+          -->
+          <button class="btn-sm retry" type="button" [disabled]="!canRetry()" (click)="retry()">
+            {{ retrying() ? 'Retrying…' : 'Retry run' }}
+          </button>
+        }
       </p>
+
+      @if (retryRejects().length) {
+        <ul class="retry-rejects mono sm" aria-live="polite">
+          @for (item of retryRejects(); track item.url) {
+            <li>
+              <span class="truncate" [title]="item.url">{{ item.url || 'run' }}</span>
+              <span class="reason">{{ item.reason }}</span>
+            </li>
+          }
+        </ul>
+      }
 
       <ul class="watch-items">
         @for (item of watchedItems(); track item.itemId) {
@@ -91,7 +112,12 @@
               <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
               <span class="url truncate" [title]="item.url">{{ item.videoTitle || item.url }}</span>
             </div>
-            <vk-lane [segments]="lane(item)" />
+            <!--
+              `status` is what tells the lane an item stopped before phase one: with it absent the
+              lane cannot distinguish "reaped while queued" from "finished", and announced a FAILED
+              item as complete. The run screen has always passed it.
+            -->
+            <vk-lane [segments]="lane(item)" [status]="item.status" />
             <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
           </li>
         }

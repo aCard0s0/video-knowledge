@@ -4,11 +4,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
-import { CreatePipelineRunResponse, PipelinesService } from '../../api/generated';
+import { CreatePipelineRunResponse, ItemResult, PipelinesService } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { statusVar } from '../../core/domain';
 import { watchRun } from '../../core/watch-run';
 import { humanAge } from '../../core/time';
+import { syncQueryParams } from '../../core/url-state';
 import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
 import { StatusBadge } from '../../ui/status-badge';
@@ -17,6 +18,19 @@ import { Problem } from '../../ui/problem';
 import { PhasePicker } from '../../ui/phase-picker';
 
 const MAX_URLS = 100; // CreatePipelineRunRequest: @Size(max = 100)
+
+/** A line that will not run, and why — the server's rejects and the client's own, one shape. */
+export interface Reject {
+  url: string;
+  reason: string;
+}
+
+/** The REJECTED items out of either response shape (202 retry, 200 create, 400 create). */
+export function rejectsOf(response: CreatePipelineRunResponse | null): Reject[] {
+  return (response?.items ?? [])
+    .filter((i: ItemResult) => i.status === 'REJECTED')
+    .map((i: ItemResult) => ({ url: i.url ?? '', reason: i.reason ?? 'rejected' }));
+}
 
 @Component({
   selector: 'vk-ingest',
@@ -35,16 +49,27 @@ export class Ingest {
   private readonly raw = toSignal(this.urls.valueChanges, { initialValue: '' });
   protected readonly skipped = signal<string[]>([]);
   protected readonly submitting = signal(false);
+  protected readonly retrying = signal(false);
   /**
-   * The submit error wins — it is the thing the operator just did — but a load failure has to
-   * surface too. With the server down this screen used to render its form and its empty
-   * "last five runs" column and say nothing at all about why.
+   * The failure of whatever the operator just did — submit or retry. One signal for both, because
+   * every handler clears it before sending, so it only ever holds the newest action. It goes in
+   * front of the load failures with `??`, which is the rule everywhere in this console.
    */
-  private readonly submitFailure = signal<ApiFailure | null>(null);
+  private readonly actionFailure = signal<ApiFailure | null>(null);
   protected readonly failure = computed(
-    () => this.submitFailure() ?? firstFailure(this.recent, this.watch.run, this.watch.audit),
+    () => this.actionFailure() ?? firstFailure(this.recent, this.watch.run, this.watch.audit),
   );
   protected readonly result = signal<CreatePipelineRunResponse | null>(null);
+
+  /**
+   * The run being watched, in the URL.
+   *
+   * It used to live only in `result()`, so a refresh — or a pasted link, or Back — dropped the run
+   * the operator had just started and left them to find it again on the runs board. It is the one
+   * piece of state on this screen worth a query param: the textarea is a draft and the phase picker
+   * describes the *next* run, but the run in flight is what someone would want to reopen.
+   */
+  private readonly runId = signal('');
 
   /** Recomputed on every keystroke so the count and the rejects are visible before submitting. */
   protected readonly parsed = computed(() => {
@@ -69,10 +94,10 @@ export class Ingest {
    * the form as live lanes, so paste → start → watch happens without moving.
    *
    * The same helper the run screen uses, so the audit tail and the lane build are fixed in one
-   * place rather than two. Idle until a submit answers: `watchRun` leaves both its resources alone
-   * while the id is undefined.
+   * place rather than two. Idle until there is an id: `watchRun` leaves both its resources alone
+   * while it is undefined.
    */
-  private readonly watch = watchRun(() => this.result()?.runId);
+  private readonly watch = watchRun(() => this.runId() || undefined);
 
   /** When nothing has been started yet, the column shows what was started last instead of nothing. */
   protected readonly recent = rxResource({ stream: () => this.pipelines.listRuns('ALL', 0, 5) });
@@ -89,13 +114,35 @@ export class Ingest {
   }
 
   protected readonly accepted = computed(() => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? []);
-  protected readonly rejected = computed(() => this.result()?.items?.filter((i) => i.status === 'REJECTED') ?? []);
+
+  /**
+   * Lines that will not run: the ones the server declined, plus the ones this screen never sent.
+   *
+   * The client filters non-http lines out of the request, which is why the server's own reject
+   * reasons (blank, not http, duplicate in request) are unreachable from here — so without the
+   * client's own list this table never rendered at all, and the discarded lines vanished silently.
+   */
+  private readonly notSent = signal<Reject[]>([]);
+  protected readonly rejected = computed(() => [...this.notSent(), ...rejectsOf(this.result())]);
+
+  /** What the retry declined, out of a 202 that still says ACCEPTED on the envelope. */
+  protected readonly retryRejects = signal<Reject[]>([]);
+  /** Only a FAILED run may be retried — the server answers 409 for anything else. */
+  protected readonly canRetry = computed(() => !this.retrying() && this.watched()?.status === 'FAILED');
+
+  /** "started · 2 accepted" is only true for the run this session started; a reopened one is watched. */
+  protected readonly headline = computed(() => {
+    const response = this.result();
+    if (response) return `started · ${this.accepted().length} accepted`;
+    return `watching · ${this.runId().slice(0, 8)}`;
+  });
 
   constructor() {
+    syncQueryParams({ run: this.runId });
     this.poller.every(
       () => (this.watch.live() ? POLL_LIVE : POLL_IDLE),
       () => {
-        if (this.result()?.runId) this.watch.reload();
+        if (this.runId()) this.watch.reload();
         this.recent.reload();
       },
     );
@@ -104,20 +151,60 @@ export class Ingest {
   protected submit(): void {
     if (!this.canSubmit()) return;
     this.submitting.set(true);
-    this.submitFailure.set(null);
+    this.actionFailure.set(null);
+    this.retryRejects.set([]);
     this.result.set(null);
+
+    // Captured before the request: the operator can keep typing while it is in flight, and these
+    // are the lines *this* submission left behind.
+    const notSent: Reject[] = this.parsed().invalid.map((url) => ({
+      url,
+      reason: 'not http(s) — not sent',
+    }));
 
     this.pipelines.createRuns({ urls: this.parsed().valid, skipPhases: this.skipped() }).subscribe({
       next: (response) => {
         this.result.set(response);
+        this.runId.set(response.runId ?? '');
+        this.notSent.set(notSent);
         this.submitting.set(false);
-        // Keep rejected URLs in the box so they can be fixed and resubmitted; drop the rest.
-        const rejects = (response.items ?? []).filter((i) => i.status === 'REJECTED').map((i) => i.url ?? '');
-        this.urls.setValue(rejects.join('\n'));
+        // Everything that did not start stays in the box so it can be fixed and resubmitted — the
+        // server's rejects *and* the lines the client never sent. Dropping the latter deleted the
+        // operator's typos along with the record that they had ever been pasted.
+        this.urls.setValue([...notSent.map((r) => r.url), ...rejectsOf(response).map((r) => r.url)].join('\n'));
       },
       error: (err: unknown) => {
-        this.submitFailure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
         this.submitting.set(false);
+      },
+    });
+  }
+
+  /**
+   * Retry the run in front of you, without leaving the screen.
+   *
+   * No request body. `skipPhases` absent means "reuse the run's own set" — sending the phase
+   * picker's current value instead would re-enable every enrichment phase this run was deliberately
+   * created without, and the picker describes the *next* run, not this one.
+   */
+  protected retry(): void {
+    const id = this.runId();
+    if (!id || !this.canRetry()) return;
+    this.retrying.set(true);
+    this.actionFailure.set(null);
+    this.retryRejects.set([]);
+
+    this.pipelines.retryRun(id).subscribe({
+      next: (response) => {
+        // A 202 does not mean the work was queued: the same body carries REJECTED items with a
+        // reason ("already running", "was cancelled"), so the response is read, never discarded.
+        this.retryRejects.set(rejectsOf(response));
+        this.retrying.set(false);
+        this.watch.reload();
+      },
+      error: (err: unknown) => {
+        this.actionFailure.set(toApiFailure(err));
+        this.retrying.set(false);
       },
     });
   }
