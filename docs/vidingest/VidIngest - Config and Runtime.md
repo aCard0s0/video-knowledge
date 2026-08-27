@@ -1,7 +1,7 @@
 # VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
-- **Last reviewed**: 2026-08-26
+- **Last reviewed**: 2026-08-27
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -199,7 +199,7 @@ the named volumes; services live in split files layered on top of it:
 
 | File | Services |
 |------|----------|
-| `compose/infra/infra.yml` | `timescaledb`, `ollama`, `whisper`, `paddleocr-server`, `diarize-asr` |
+| `compose/infra/infra.yml` | `postgres`, `ollama`, `whisper`, `paddleocr-server`, `diarize-asr` |
 | `compose/services.yml` | `vidingest` (REST server) |
 | `compose/cli.yml` | `vidingest-cli` |
 | `compose/mcp.yml` | `vidingest-mcp` |
@@ -219,7 +219,7 @@ a container. `package/` is only used when the server runs on the host, where
 |--------|-----------|---------|
 | `vidingest_data` | `/data/videos` | `vidingest` (rw) — `application-docker.properties` sets `vidingest.storage.video-path=/data/videos`; also `paddleocr-server` as `:ro` so OCR reads frames in place |
 | `app_logs` | `/app/logs` | `vidingest`, `vidingest-mcp` (`LOG_DIR=/app/logs`) |
-| `timescaledb_data` | `/home/postgres/pgdata/data` | `timescaledb` |
+| `postgres_data` | `/var/lib/postgresql/data` | `postgres` |
 | `ollama_data` | `/root/.ollama` | `ollama` |
 | `ai_models` | `/models` | shared model cache for `ollama`, `whisper` (`ASR_MODEL_PATH=/models/whisper`), `paddleocr-server`, `diarize-asr` |
 
