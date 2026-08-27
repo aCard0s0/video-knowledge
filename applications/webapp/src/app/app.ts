@@ -66,8 +66,14 @@ export const SECTIONS = [
 ] as const;
 
 /**
- * The server serializes naive `LocalDateTime` and the container runs UTC, so every timestamp on
- * every screen is UTC. The rail says so once, ticking, instead of each screen implying it.
+ * Every server timestamp carries an explicit UTC offset — the entities are `OffsetDateTime` and
+ * every `now()` is `OffsetDateTime.now(ZoneOffset.UTC)`, so the wire form is
+ * "2026-08-26T15:49:24.522757Z" whatever zone the JVM sits in. The rail names that clock once,
+ * ticking, instead of each screen implying which one it is showing.
+ *
+ * `timeZone: 'UTC'` here is deliberate and is *not* the same thing as `core/time.ts`: a screen
+ * renders an instant in the operator's local zone, while this is a UTC wall clock on purpose — the
+ * one place the console states the zone the server's numbers are in.
  */
 const UTC_TIME = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'UTC',

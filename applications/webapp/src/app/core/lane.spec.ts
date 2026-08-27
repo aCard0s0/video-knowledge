@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { buildLane, buildLanes, laneTotalMs } from './lane';
 import { RunItem, RunItemAuditEvent } from '../api/generated';
 
-/** Server timestamps are naive LocalDateTime in UTC. */
 // Offset-carrying, like every server timestamp since the entities became OffsetDateTime.
 // Zoneless here would only match the `now` literals below by accident of the runner's zone.
 const at = (s: string) => `2026-08-26T14:41:${s}Z`;
