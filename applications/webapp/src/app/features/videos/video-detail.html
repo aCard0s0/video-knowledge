@@ -2,7 +2,7 @@
   <!-- Before the value branch: reading value() on an errored resource throws, and the guard
        throwing means this branch is never reached. -->
   <h1 class="mono">video</h1>
-  <vk-problem [failure]="detailFailure()" />
+  <vk-problem [failure]="failure()" />
   <a class="mono sm" routerLink="/videos">← all videos</a>
 } @else if (video(); as v) {
   <div class="head">
@@ -23,7 +23,7 @@
     </div>
   </div>
 
-  <vk-problem [failure]="detailFailure()" />
+  <vk-problem [failure]="failure()" />
 
   <div class="split">
     <section class="panel player-panel">

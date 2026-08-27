@@ -1,7 +1,7 @@
 # VidIngest — Web UI
 
 **Owner**: TradingLabs Platform
-**Last reviewed**: 2026-08-26
+**Last reviewed**: 2026-08-27
 **Status**: built (Angular 22 app under `applications/webapp/`)
 
 **Applies to**:
@@ -81,6 +81,11 @@ HTTP errors carry no code. `errorCode` (`PipelineErrorCode`: `DUPLICATE_VIDEO`,
 `UPSTREAM_TOOL_FAILURE`, `TRANSCRIPTION_FAILURE`, `INVALID_METADATA`, `UNEXPECTED`) appears only
 on runs, run items and audit events. Two error renderers, never merged into one "something went
 wrong".
+
+Which failure a screen *shows* is one rule, not seven: `firstFailure` (`core/problem.ts`) takes the
+screen's resources in precedence order, and the action the operator just took goes in front of it as
+`actionFailure() ?? firstFailure(…)` — already an `ApiFailure`, so it needs no translation. Run detail is the exception on purpose — it gives the retry its own adjacent
+panel, and video detail keeps a second panel for the artifact panes.
 
 ### 3. A FAILED run reports `phase: "DONE"`
 
@@ -307,8 +312,10 @@ applications/webapp/
   openapi/vidingest.json          snapshot of the live spec (input to codegen)
   src/app/api/generated/          openapi-generator output — 11 services, 42 models, never edited
   src/app/core/                   domain.ts (mirrored enums) · time.ts (UTC parsing, durations)
-                                  lane.ts (+ spec) · problem.ts (ProblemDetail) · poller.ts
-                                  url-state.ts · api-base.ts
+                                  lane.ts (+ spec) · problem.ts (ProblemDetail, firstFailure)
+                                  audit.ts (tail paging, + spec) · paging.ts (clampPage, + spec)
+                                  watch-run.ts (run + audit + lanes, shared by 2 screens)
+                                  poller.ts · url-state.ts · api-base.ts
   src/app/ui/                     lane · problem · fault · empty · pager · phase-picker · status-badge
   src/app/features/               ingest · channels (+detail) · runs (+detail) · videos (+detail) · audit
   src/styles/_tokens.scss         the corrected palette (this file's tokens win over MASTER.md)
@@ -361,7 +368,9 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
 ### The phase lane
 
 The one visualization: per run item, the ten phases as a horizontal track whose segment widths
-are proportional to measured duration (`core/lane.ts`, unit-tested in `core/lane.spec.ts`).
+are proportional to measured duration (`core/lane.ts`, unit-tested in `core/lane.spec.ts`). Both
+screens that draw lanes — run detail and ingest — get the run, the audit tail and the built lanes
+from `core/watch-run.ts`, so a correction to either fetch lands once.
 Skipped phases render as hatched voids and stay individually visible (which ones were turned off
 is information); consecutive *unreached* phases collapse into a single void carrying their count,
 because an item that dies in METADATA otherwise renders as nine identical empty boxes. The failed

@@ -1,6 +1,5 @@
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { rxResource } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 
 import {
@@ -21,9 +20,9 @@ import {
   statusVar,
 } from '../../core/domain';
 import { absoluteTime, clockTime, humanAge, humanDuration, msBetween } from '../../core/time';
-import { LaneSegment, buildLanes, laneTotalMs } from '../../core/lane';
-import { auditTail } from '../../core/audit';
-import { ApiFailure, toApiFailure } from '../../core/problem';
+import { laneTotalMs } from '../../core/lane';
+import { watchRun } from '../../core/watch-run';
+import { ApiFailure, firstFailure, toApiFailure } from '../../core/problem';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Lane } from '../../ui/lane';
@@ -43,20 +42,13 @@ export class RunDetail {
   private readonly pipelines = inject(PipelinesService);
   protected readonly poller = inject(Poller);
 
-  protected readonly run = rxResource({
-    params: () => ({ id: this.runId() }),
-    stream: ({ params }) => this.pipelines.getRun(params.id),
-  });
-
   /**
-   * One request for every lane on the screen, not one per item: the run-level feed carries every
-   * item's events. `auditTail` takes whole pages from the *end* of that ascending feed — see there
-   * for why the last page on its own was not the last window.
+   * The run, its audit tail and the lanes drawn from both — the same four moving parts the ingest
+   * screen watches its own submit with. One request for every lane on the screen, not one per item:
+   * the run-level feed carries every item's events, and `auditTail` takes whole pages from the *end*
+   * of that ascending feed.
    */
-  protected readonly audit = rxResource({
-    params: () => ({ id: this.runId() }),
-    stream: ({ params }) => auditTail(this.pipelines, params.id),
-  });
+  private readonly watch = watchRun(() => this.runId());
 
   protected readonly retrying = signal(false);
   protected readonly retryFailure = signal<ApiFailure | null>(null);
@@ -68,33 +60,25 @@ export class RunDetail {
     syncQueryParams({ item: this.picked, phase: this.phaseFilter });
     this.poller.every(
       () => (isLive(this.detail()?.status) ? POLL_LIVE : POLL_IDLE),
-      () => {
-        this.run.reload();
-        this.audit.reload();
-      },
+      () => this.watch.reload(),
     );
   }
 
-  /**
-   * Every read of a resource's value goes through `hasValue()`.
-   *
-   * `value()` *throws* `ResourceValueError` once the resource is in its error state, so the old
-   * `@if (run.value(); as detail)` guard threw before the `@else if (run.error())` branch could
-   * be reached: a 404 run sat on "Loading run…" forever with the problem panel unreachable and
-   * the console filling once a second, because `intervalMs` above read `value()` too.
-   */
-  protected readonly detail = computed(() => (this.run.hasValue() ? this.run.value() : undefined));
-  protected readonly items = computed<RunItem[]>(() => this.detail()?.items ?? []);
-  protected readonly events = computed<RunItemAuditEvent[]>(() =>
-    this.audit.hasValue() ? (this.audit.value().items ?? []) : [],
-  );
-  protected readonly auditTotal = computed(() => (this.audit.hasValue() ? (this.audit.value().total ?? 0) : 0));
-  protected readonly auditTruncated = computed(() => this.auditTotal() > this.events().length);
+  /** The template branches on `run.error()` before it may read a value — see `watchRun`. */
+  protected readonly run = this.watch.run;
+  protected readonly detail = this.watch.detail;
+  protected readonly items = this.watch.items;
+  protected readonly events = this.watch.events;
+  protected readonly auditTotal = this.watch.auditTotal;
+  protected readonly auditTruncated = this.watch.auditTruncated;
+  protected readonly lane = this.watch.lane;
 
-  protected readonly failure = computed(() => {
-    const err = this.run.error() ?? this.audit.error();
-    return err ? toApiFailure(err) : null;
-  });
+  /**
+   * Loads only. Alone among the screens this one gives the retry its *own* adjacent panel rather
+   * than a place in a precedence order: a run that will not load and a retry that was refused are
+   * two different things to fix, and this screen has room to say both.
+   */
+  protected readonly failure = computed(() => firstFailure(this.watch.run, this.watch.audit));
 
   /**
    * The operator's pick, in the URL as `?item=`. A plain signal on purpose: it used to be a
@@ -170,20 +154,6 @@ export class RunDetail {
   protected readonly clockTime = clockTime;
   protected readonly humanDuration = humanDuration;
   protected readonly blank = blank;
-
-  /**
-   * Lanes are built once per change, not once per template read: the old code called buildLane
-   * twice per item on every clock tick, which on a 40-item run is 80 passes over ~640 events a
-   * second. The clock is only a dependency while something is actually live — a finished run's
-   * lanes never need rebuilding.
-   */
-  private readonly clock = computed(() => (this.items().some((i) => isLive(i.status)) ? this.poller.now() : 0));
-
-  private readonly lanes = computed(() => buildLanes(this.items(), this.events(), this.clock()));
-
-  protected lane(item: RunItem): LaneSegment[] {
-    return this.lanes().get(item.itemId) ?? [];
-  }
 
   /**
    * Measured lane time, or — for an item that never entered a phase — how long it sat before it
@@ -285,8 +255,7 @@ export class RunDetail {
         // and a reason when it could take nothing — already running, already cancelled — and
         // discarding that body made a retry that did nothing at all look like it had worked.
         this.retryRejects.set((response.items ?? []).filter((i) => i.status === 'REJECTED'));
-        this.run.reload();
-        this.audit.reload();
+        this.watch.reload();
       },
       error: (err: unknown) => {
         this.retrying.set(false);

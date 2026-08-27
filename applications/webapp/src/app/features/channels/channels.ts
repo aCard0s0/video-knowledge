@@ -7,7 +7,7 @@ import { YoutubeChannelSummary, YoutubeService } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
-import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
@@ -29,7 +29,7 @@ export class Channels {
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
   protected readonly busy = signal<string | null>(null);
-  protected readonly failure = signal<ApiFailure | null>(null);
+  private readonly actionFailure = signal<ApiFailure | null>(null);
 
   protected readonly form = new FormGroup({
     url: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -52,10 +52,7 @@ export class Channels {
 
   protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
-  protected readonly listFailure = computed(() => {
-    const err = this.list.error();
-    return err ? toApiFailure(err) : this.failure();
-  });
+  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.list));
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
@@ -69,7 +66,7 @@ export class Channels {
     if (this.form.invalid) return;
     const { url, displayName } = this.form.getRawValue();
     this.busy.set('add');
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.youtube.createChannel({ url, displayName: displayName || undefined }).subscribe({
       next: (channel) => {
         this.form.reset();
@@ -84,7 +81,7 @@ export class Channels {
       },
       error: (err: unknown) => {
         this.busy.set(null);
-        this.failure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
       },
     });
   }
@@ -92,7 +89,7 @@ export class Channels {
   protected sync(channel: YoutubeChannelSummary): void {
     if (!channel.id) return;
     this.busy.set(channel.id);
-    this.failure.set(null);
+    this.actionFailure.set(null);
     this.youtube.syncChannel(channel.id).subscribe({
       next: () => {
         this.busy.set(null);
@@ -100,7 +97,7 @@ export class Channels {
       },
       error: (err: unknown) => {
         this.busy.set(null);
-        this.failure.set(toApiFailure(err));
+        this.actionFailure.set(toApiFailure(err));
       },
     });
   }

@@ -6,7 +6,7 @@ import { PipelinesService, RunSummary } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { RUN_STATUSES, blank, isLive, statusVar } from '../../core/domain';
 import { humanAge, absoluteTime, parseServerTime } from '../../core/time';
-import { ApiFailure, toApiFailure, valueOf } from '../../core/problem';
+import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
@@ -75,10 +75,9 @@ export class Runs {
   );
   protected readonly historyRuns = computed(() => valueOf(this.history)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.history)?.total ?? 0);
-  protected readonly failure = computed(() => {
-    const err = this.history.error() ?? this.running.error() ?? this.pending.error();
-    return err ? toApiFailure(err) : this.retryFailure();
-  });
+  protected readonly failure = computed(
+    () => this.retryFailure() ?? firstFailure(this.history, this.running, this.pending),
+  );
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;

@@ -305,6 +305,13 @@ taking page 4 alone left ninety items with no events at all — and `buildLane` 
 `ITEM_PHASE_ENTERED` as ten hatched "skipped" boxes, so phases that ran reported themselves as
 turned off. `core/audit.ts` takes whole pages from the end (capped at four) and concatenates.
 
+**Two screens draw lanes**, run detail and ingest, and both take the run, its audit tail and the
+built lanes from `core/watch-run.ts` — declared inline they cost the same correction twice (the tail
+paging above, and the lane build moving out of the template's read path). **Which** failure a screen
+shows is `firstFailure` in `core/problem.ts`: load failures in precedence order, with the action the
+operator just took in front of the call as `actionFailure() ?? firstFailure(…)`. Both are called from an injection context, like
+`syncQueryParams` and `clampPage`.
+
 **A page number outlives the list it came from.** Delete the only row on page 2 and the response is
 0 rows with a total of 25, so the screen renders its "nothing matches" empty state over 25 rows
 that do — and the pager, which lives inside the non-empty branch, is gone with them. Every paged

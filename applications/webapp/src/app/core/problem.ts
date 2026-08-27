@@ -75,6 +75,29 @@ export function toApiFailure(err: unknown): ApiFailure {
 }
 
 /**
+ * The first load failure worth showing, in the order given.
+ *
+ * `toApiFailure` was always the one translator, but *which* failure wins was decided once per
+ * screen: seven hand-written computeds ORing resource errors together, under three different names,
+ * and with two different rules — the ingest screen showed the submit error over a load error, every
+ * other screen showed the opposite. Same operator, same question, a different answer per screen,
+ * and a new screen inherited whichever rule its copy came from.
+ *
+ * The rule is now the same everywhere and the shape says it: a mutation failure is already an
+ * `ApiFailure`, so it goes in front of this call with `??` — `actionFailure() ?? firstFailure(list)`
+ * — and the action the operator just took wins by construction. It is only ever set while it is the
+ * newest thing that happened (every handler clears it before sending), so it cannot bury a load
+ * error that outlives it.
+ */
+export function firstFailure(...resources: { error: () => unknown }[]): ApiFailure | null {
+  for (const resource of resources) {
+    const err = resource.error();
+    if (err) return toApiFailure(err);
+  }
+  return null;
+}
+
+/**
  * A resource's value, or undefined while it is loading *or* has errored.
  *
  * `ResourceRef.value()` **throws** `ResourceValueError` once the resource is in its error state,

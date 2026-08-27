@@ -6,7 +6,7 @@ import { AuditService } from '../../api/generated';
 import { EVENT_TYPES, RUN_STATUSES, blank, statusVar } from '../../core/domain';
 import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
-import { toApiFailure, valueOf } from '../../core/problem';
+import { firstFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
@@ -78,10 +78,7 @@ export class Audit {
 
   protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
-  protected readonly failure = computed(() => {
-    const err = this.list.error();
-    return err ? toApiFailure(err) : null;
-  });
+  protected readonly failure = computed(() => firstFailure(this.list));
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
