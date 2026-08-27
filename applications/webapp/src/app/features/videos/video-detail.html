@@ -40,22 +40,49 @@
 
       <p class="cursor mono sm muted">at {{ timecode(cursor()) }} — click any row to jump</p>
 
-      <div class="reruns">
+      <div class="reruns" (keydown.escape)="armed.set(null)">
         <span class="eyebrow">re-run a phase</span>
         <div class="phase-buttons">
           @for (phase of optionalPhases; track phase) {
             <button
               class="btn-sm mono"
               type="button"
-              [disabled]="running() !== null"
-              title="Wipes and rebuilds this phase's artifacts for this video"
-              (click)="runPhase(phase)"
+              [class.armed]="armed() === phase"
+              [class.unavailable]="refused(phase)"
+              [disabled]="running() !== null || refused(phase)"
+              (click)="confirmRun(phase)"
             >
-              {{ running() === phase ? phase + '…' : phase }}
+              {{ chipLabel(phase) }}
             </button>
           }
+          @if (armed()) {
+            <button class="btn-sm mono" type="button" (click)="armed.set(null)">Cancel</button>
+          }
         </div>
-        <p class="mono sm run-result" aria-live="polite">{{ lastRun() }}</p>
+
+        <!-- What a rerun costs, in text rather than in the `title` this used to carry: an
+             attribute no touch device and no keyboard can reach, the same trap the rail's health
+             checks and the phase picker's reasons were pulled out of. -->
+        <p class="note mono muted">Wipes this phase's artifacts for the video, then rebuilds them.</p>
+        @if (refused('KNOWLEDGE')) {
+          <p class="note mono warn">
+            KNOWLEDGE is off on this server — re-running it answers 409, not units.
+          </p>
+        }
+
+        <!--
+          Always in the DOM and never `display: none`: a live region inserted at the moment it has
+          something to say is not reliably announced. It carries elapsed time because the rerun is
+          synchronous and can run for minutes — OCR over seventeen frames measured past ten, with
+          nothing but a 10px ellipsis to say the request was still open.
+        -->
+        <p class="note mono run-result" role="status" [class.live]="running()">
+          @if (running(); as phase) {
+            {{ phase }} running — {{ humanDuration(elapsedMs()) }} elapsed
+          } @else {
+            {{ lastRun() }}
+          }
+        </p>
       </div>
 
       <!-- What is actually on disk for this video. Every number here comes from /detail, which the
@@ -209,10 +236,30 @@
 
           @if (knowledge.isLoading()) {
             <p class="quiet muted">Loading knowledge…</p>
+          } @else if (knowledgeAll().length === 0 && knowledgeType()) {
+            <!--
+              The filter's empty set, not the video's. This branch used to fall through to the
+              message below, so filtering to a type with no units claimed the video had none —
+              while the tab beside it counted them and the dossier agreed — and offered an LLM
+              extraction over the whole video as the fix for a chip. Same shape the videos list
+              was already corrected for.
+            -->
+            <vk-empty [message]="'No ' + knowledgeType() + ' units for this video.'">
+              <button class="btn-sm mono" type="button" (click)="knowledgeType.set('')">Show all types</button>
+            </vk-empty>
           } @else if (knowledgeAll().length === 0) {
             <vk-empty message="No knowledge units for this video.">
-              <button class="btn-primary" type="button" (click)="runPhase('KNOWLEDGE')">Run KNOWLEDGE</button>
-              <span class="mono sm muted">Needs a chat model loaded on the LLM runtime — check the rail before starting.</span>
+              @if (refused('KNOWLEDGE')) {
+                <!-- Naming the flag is the point: the line below blames a missing chat model,
+                     which is not why this deployment has no units. -->
+                <span class="mono sm warn">
+                  KNOWLEDGE is off on this server — set vidingest.knowledge.enabled=true. Until
+                  then the rerun endpoint answers 409.
+                </span>
+              } @else {
+                <button class="btn-primary" type="button" (click)="runPhase('KNOWLEDGE')">Run KNOWLEDGE</button>
+                <span class="mono sm muted">Needs a chat model loaded on the LLM runtime — check the rail before starting.</span>
+              }
             </vk-empty>
           } @else {
             @if (knowledgeAll().length > knowledgeShown().length) {

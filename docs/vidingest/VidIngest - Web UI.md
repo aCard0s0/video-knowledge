@@ -586,6 +586,38 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
 - **The video screen shows its dossier.** Transcription provider/language/character count,
   artifact counts and the file path fill the column under the player, all from the `/detail`
   response the screen was already fetching.
+- **A knowledge filter that matches nothing says so, and does not offer the phase.** The pane
+  branched only on "no units", so filtering to a type the video has none of rendered *No knowledge
+  units for this video.* over a **Run KNOWLEDGE** button — while the tab beside it counted the units
+  of every other type and the dossier agreed. It offered an LLM extraction over the whole video as
+  the fix for a chip. The filtered branch names the type and offers **Show all types**; only the
+  genuinely empty video is offered the phase. Same correction the videos list already carried.
+- **A rerun the server will refuse is not offered — and that is one phase, not six.**
+  `VideoPhaseRunnerService` deliberately skips `applies(ctx)`: the rerun row is the operator's
+  escape hatch ("re-OCR after a paddleocr-server upgrade"), so a phase the deployment has switched
+  off still runs. Measured against a server with DIARIZE, FRAME_SAMPLE, OCR and KNOWLEDGE off:
+  FRAME_SAMPLE answered `200` with 17 rows, DIARIZE reached its sidecar (`502`), and only KNOWLEDGE
+  answered `409` — `KnowledgeExtractionService` checks `vidingest.knowledge.enabled` itself, so the
+  toggle cannot be forced past. So the screen reads the same `Capabilities` singleton the phase
+  picker does (finding 17) but disables **only** KNOWLEDGE; greying out the rest would have broken
+  the one thing the row exists for. The knowledge empty state names the flag rather than blaming a
+  missing ollama model, which is not why that deployment has no units.
+- **A rerun takes two presses, and says what it costs in text.** A chip wipes this video's
+  artifacts for its phase before rebuilding them, so one stray click among seven cost a transcript
+  and a ten-minute whisper call — with the only warning in a `title` attribute, unreachable by
+  touch and by keyboard, the same trap the rail's health checks and the picker's reasons were
+  pulled out of. Now: arm on the first press, send on the second, re-arm by pressing another chip,
+  Cancel or Esc to back out — the shape the videos list already uses for delete. The empty-state
+  CTAs inside the panes stay **one** press on purpose: an empty pane has nothing to wipe, and a
+  confirm that guards nothing is the kind people learn to click through.
+- **A synchronous rerun reports its elapsed time into a live region.** OCR over seventeen frames
+  measured past ten minutes (individual frames 2s–120s, several timing out), and the only feedback
+  for the whole of it was a 10px `OCR…` in a 20px chip: the `role="status"` line was empty, and
+  `:empty { display: none }` had taken it out of the accessibility tree — a live region inserted at
+  the moment it has something to say is not reliably announced. The line is now always present and
+  carries `PHASE running — 1m 12s elapsed`, on its own interval rather than `poller.now()`, which
+  stops when the operator pauses polling while the request does not (the reason the rail's wall
+  clock has one). The chips also went from 20px to a 24px minimum target.
 - **Theme is the operator's, and dark is still the default the console was drawn for.** The rail
   foot toggles light/dark beside Collapse; with no stored choice the tokens follow the OS with no
   JavaScript. See "The light theme" below for the measured ramp and the three-step resolution.

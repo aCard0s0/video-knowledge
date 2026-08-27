@@ -56,18 +56,44 @@
   margin-top: var(--space-sm);
 }
 
+// 10px in a 20px box put all seven under the 24px minimum target, on the row that fires the
+// longest and most destructive thing this screen can do.
 .reruns .btn-sm {
-  font-size: 10px;
+  min-height: 24px;
   letter-spacing: 0.04em;
 }
 
-.run-result {
-  margin: var(--space-sm) 0 0;
-  color: var(--st-done);
+// Armed, not fired. The failure ramp rather than the accent: the next press destroys artifacts.
+.reruns .armed {
+  border-color: var(--st-failed);
+  color: var(--st-failed);
+  background: color-mix(in srgb, var(--st-failed-fill) 12%, transparent);
+}
 
-  &:empty {
-    display: none;
-  }
+// Same treatment the phase picker gives a phase the deployment has switched off, so the two rows
+// that name phases do not disagree about what "unavailable" looks like.
+.reruns .unavailable {
+  border-color: var(--st-cancelled);
+  border-style: dotted;
+  color: var(--fg-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--st-cancelled);
+}
+
+.note {
+  margin: var(--space-sm) 0 0;
+  font-size: var(--fs-xs);
+}
+
+// Reserved whether or not it has anything to say. It is a live region, so it must be in the
+// accessibility tree before the update it announces — `display: none` while empty took it out.
+.run-result {
+  min-height: 1lh;
+  color: var(--st-done);
+}
+
+.run-result.live {
+  color: var(--st-running);
 }
 
 .dossier {
