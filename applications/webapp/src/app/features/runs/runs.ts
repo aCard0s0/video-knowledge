@@ -105,7 +105,12 @@ export class Runs {
   });
 
   constructor() {
-    syncQueryParams({ status: this.status, page: this.page, sortBy: this.sortBy });
+    // `?status=` reaches `RunStatus.valueOf` and `?sortBy=` a JPA property name — the second one
+    // silently falls back server-side, the first 400s with the raw Java message.
+    syncQueryParams(
+      { status: this.status, page: this.page, sortBy: this.sortBy },
+      { status: this.statuses, sortBy: ['createdAt', 'updatedAt'] },
+    );
     // Retrying the FAILED runs on a page empties it out from under the FAILED filter.
     clampPage(this.page, PAGE_SIZE, this.history);
     this.poller.every(

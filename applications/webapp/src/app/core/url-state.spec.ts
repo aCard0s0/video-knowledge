@@ -25,8 +25,11 @@ function setup(initialUrl: Record<string, string> = {}) {
   });
 }
 
-function sync(state: Record<string, WritableSignal<string | number | boolean>>) {
-  TestBed.runInInjectionContext(() => syncQueryParams(state));
+function sync(
+  state: Record<string, WritableSignal<string | number | boolean>>,
+  allowed?: Record<string, readonly string[]>,
+) {
+  TestBed.runInInjectionContext(() => syncQueryParams(state, allowed));
   TestBed.tick();
 }
 
@@ -75,6 +78,40 @@ describe('syncQueryParams', () => {
     const onlyNew = signal(true);
     sync({ onlyNew });
     expect(onlyNew()).toBe(false);
+  });
+
+  /**
+   * A query param is whatever someone pasted, and `status` reaches a server-side `valueOf`.
+   * `?status=BOGUS` used to arrive as a 400 carrying a raw Java enum name, under a control showing
+   * its own default because no option matched.
+   */
+  it('ignores a URL value outside the allow-list and heals the URL', () => {
+    setup({ status: 'BOGUS' });
+    const status = signal('ALL');
+    sync({ status }, { status: ['ALL', 'COMPLETED', 'FAILED'] });
+
+    expect(status()).toBe('ALL');
+    expect(written['status']).toBeNull();
+  });
+
+  it('still reads an allowed URL value', () => {
+    setup({ status: 'FAILED' });
+    const status = signal('ALL');
+    sync({ status }, { status: ['ALL', 'COMPLETED', 'FAILED'] });
+
+    expect(status()).toBe('FAILED');
+    expect(written['status']).toBe('FAILED');
+  });
+
+  /** A key with no allow-list is unconstrained — most of them are free text. */
+  it('leaves keys without an allow-list alone', () => {
+    setup({ channel: 'anything at all', status: 'BOGUS' });
+    const channel = signal('');
+    const status = signal('ALL');
+    sync({ channel, status }, { status: ['ALL'] });
+
+    expect(channel()).toBe('anything at all');
+    expect(status()).toBe('ALL');
   });
 
   it('takes the declared value as the default even when the URL disagrees on entry', () => {

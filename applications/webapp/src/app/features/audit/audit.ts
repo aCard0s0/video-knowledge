@@ -80,16 +80,27 @@ export class Audit {
   });
 
   constructor() {
-    syncQueryParams({
-      runId: this.runId,
-      eventType: this.eventType,
-      status: this.status,
-      phase: this.phase,
-      errorCode: this.errorCode,
-      from: this.from,
-      to: this.to,
-      page: this.page,
-    });
+    // All four selects reach a server-side enum parse, and `''` is the "any" option each starts on.
+    // A pasted `?status=BOGUS` used to go straight through to a 400 carrying a raw Java enum name,
+    // under a select showing "any" because nothing matched.
+    syncQueryParams(
+      {
+        runId: this.runId,
+        eventType: this.eventType,
+        status: this.status,
+        phase: this.phase,
+        errorCode: this.errorCode,
+        from: this.from,
+        to: this.to,
+        page: this.page,
+      },
+      {
+        eventType: ['', ...this.eventTypes],
+        status: ['', ...this.statuses],
+        phase: ['', ...this.phases],
+        errorCode: ['', ...this.errorCodes],
+      },
+    );
     // A shared link carries its page: ?page=9&eventType=ITEM_FAILED on a feed with three failures.
     clampPage(this.page, PAGE_SIZE, this.list);
     this.poller.every(

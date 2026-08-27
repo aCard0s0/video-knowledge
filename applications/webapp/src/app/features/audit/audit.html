@@ -13,7 +13,11 @@
       <!-- The placeholder shows a whole uuid because that is what `?runId` takes, and the eight
            characters the Run column prints are not it — showing `710a9419…` here taught the form
            that 400s. `aria-describedby` is unconditional: pointing at an element that is not in
-           the DOM yet is what makes the hint unannounced when it does appear. -->
+           the DOM yet is what makes the hint unannounced when it does appear.
+
+           `(search)` as well as `(change)`: the native clear button fires `input`/`search` and
+           defers `change` to blur, so the × emptied the box while the filtered feed and `?runId=`
+           both stayed — the control contradicting its own screen. -->
       <input
         id="runId"
         name="runId"
@@ -27,6 +31,7 @@
         [attr.aria-invalid]="runIdInvalid() || null"
         [value]="runId()"
         (change)="set('runId', $any($event.target).value)"
+        (search)="set('runId', $any($event.target).value)"
       />
       <p id="runIdHint" class="hint mono warn" role="status">
         @if (runIdInvalid()) {

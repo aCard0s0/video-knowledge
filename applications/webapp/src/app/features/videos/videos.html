@@ -2,25 +2,46 @@
 <p class="sub">Everything the pipeline has persisted. Deleting a video removes its transcript, frames and knowledge with it.</p>
 
 <vk-problem [failure]="failure()" />
+<!-- Present even when empty, so it is a region a screen reader can announce into rather than one
+     that appears with its text already in place. A deleted row leaves the table, and a row silently
+     disappearing is indistinguishable from a press that did nothing. -->
+<p class="said mono muted" role="status">{{ said() }}</p>
 
 <section class="panel">
   <div class="panel-head">
     <div class="filters">
-      <label class="sr-only" for="status">Status</label>
-      <select id="status" [value]="status()" (change)="setStatus($any($event.target).value)">
+      <!-- Chips, not a `<select>`: triage is one press, and the status the screen gets opened for
+           carries its count. Same row the runs board uses, for the same reason. -->
+      <div class="chips" role="group" aria-label="Filter videos by status">
         @for (option of statuses; track option) {
-          <option [value]="option">{{ option }}</option>
+          <button
+            class="chip mono"
+            type="button"
+            [class.on]="status() === option"
+            [attr.aria-pressed]="status() === option"
+            (click)="setStatus(option)"
+          >
+            {{ option }}
+            @if (option === 'FAILED' && failed() > 0) {
+              <span class="count">{{ failed() }}</span>
+            }
+          </button>
         }
-      </select>
+      </div>
 
       <label class="sr-only" for="channel">Channel</label>
+      <!-- `(search)` as well as `(change)`: the native clear button on a search input fires `input`
+           and `search`, and defers `change` to blur — so clicking the × emptied the box while the
+           filtered rows and `?channel=` stayed, the control contradicting its own screen. -->
       <input
         id="channel"
         type="search"
         placeholder="Channel name, e.g. LuxAlgo…"
         autocomplete="off"
+        spellcheck="false"
         [value]="channel()"
         (change)="setChannel($any($event.target).value)"
+        (search)="setChannel($any($event.target).value)"
       />
     </div>
     <span class="eyebrow">{{ total() }} total</span>
@@ -29,12 +50,25 @@
   <!--
     `rows()` is `[]` while the list is loading *and* while it has errored, so the empty state used
     to claim "nothing matches" over a request that never answered — under a problem panel already
-    saying it failed. It renders only once the resource actually holds a value; before that the
-    panel above is the answer, and a "Loading…" line here would sit there forever on an error.
+    saying it failed. It renders only once the resource actually holds a value; on an error none of
+    these branches match and the panel above is the whole answer.
+
+    `!list.hasValue()` on the loading branch is what keeps the poll invisible: `reload()` holds the
+    previous page while it refetches, so without that guard the table would be replaced by
+    "Loading…" every two seconds.
   -->
-  @if (list.hasValue() && rows().length === 0) {
-    <vk-empty message="No videos match this filter.">
-      <a class="mono" routerLink="/ingest">Ingest a URL →</a>
+  @if (list.isLoading() && !list.hasValue()) {
+    <p class="quiet mono muted">Loading videos…</p>
+  } @else if (list.hasValue() && rows().length === 0) {
+    <!-- Which emptiness this is decides the way out: a filter that matched nothing is cleared, an
+         empty corpus is filled. Offering "Ingest a URL →" to someone who had simply mistyped a
+         channel name pointed at the one action that could not help. -->
+    <vk-empty [message]="filtered() ? 'No videos match this filter.' : 'No videos ingested yet.'">
+      @if (filtered()) {
+        <button class="btn-sm" type="button" (click)="clearFilters()">Clear filters</button>
+      } @else {
+        <a class="mono" routerLink="/ingest">Ingest a URL →</a>
+      }
     </vk-empty>
   } @else if (rows().length) {
     <div class="table-scroll">
@@ -44,10 +78,15 @@
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
             <th scope="col">Status</th>
             <th scope="col">Title</th>
-            <th scope="col">Channel</th>
-            <th scope="col">Source</th>
+            <!-- Drawn only when it says something: under a channel filter every row repeats the
+                 filter's own value, which is the widest column on the screen saying nothing. -->
+            @if (showChannel()) {
+              <th scope="col" class="hide-sm">Channel</th>
+            }
+            <th scope="col" class="hide-sm">Source</th>
+            <th scope="col" class="hide-sm">Run</th>
             <th scope="col" class="num">Ingested</th>
-            <th scope="col"><span class="sr-only">Actions</span></th>
+            <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -55,21 +94,51 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(video.status)"></td>
               <td><vk-status [status]="video.status" /></td>
+              <!-- `.cell-link` is what makes `.truncate` work here at all — see styles.scss. -->
               <td>
-                <a [routerLink]="['/videos', video.id]" class="truncate" [title]="video.title">{{ video.title || '—' }}</a>
+                <a class="cell-link truncate" [routerLink]="['/videos', video.id]" [title]="video.title">
+                  {{ video.title || '—' }}
+                </a>
               </td>
-              <td class="truncate">{{ video.channelName || '—' }}</td>
-              <td class="mono sm muted">{{ video.source }}/{{ video.sourceVideoId }}</td>
+              @if (showChannel()) {
+                <td class="truncate hide-sm">{{ video.channelName || '—' }}</td>
+              }
+              <!-- Both halves go through `blank()`: `""` is how this API says absent, and an
+                   unguarded pair renders a bare "/seed0001". -->
+              <td class="mono sm muted hide-sm">{{ sourceLabel(video) }}</td>
+              <!-- A FAILED video used to dead-end here: the reason it failed lives on the run
+                   (`error`, `errorCode`) and on its item (`failedPhase`), none of which is on a
+                   `VideoSummary` — but `pipelineId` is, and was rendered nowhere. `""` when the run
+                   row is gone (`ON DELETE SET NULL`), which is a dash and not a link to nothing. -->
+              <td class="mono sm hide-sm">
+                @if (blank(video.pipelineId)) {
+                  <span class="muted">—</span>
+                } @else {
+                  <a class="cell-link" [routerLink]="['/runs', video.pipelineId]">{{ video.pipelineId?.slice(0, 8) }}</a>
+                }
+              </td>
               <td class="num sm" [title]="absoluteTime(video.createdAt)">{{ age(video.createdAt) }}</td>
-              <td>
+              <td class="stick">
                 <span class="row-actions">
+                  <!--
+                    One button that changes its label, not two swapped by an `@if`: Angular destroys
+                    the element it replaces, so arming a row from the keyboard dropped focus to
+                    `<body>` and the confirm the operator had just asked for was a whole tab cycle
+                    away. It stays enabled while the request is in flight for the same reason —
+                    `disabled` takes an element out of the tab order — and `remove()` ignores the
+                    repeat press instead.
+                  -->
+                  <button
+                    class="btn-sm"
+                    type="button"
+                    [class.btn-danger]="armed() === video.id"
+                    [attr.aria-disabled]="deleting() ? 'true' : null"
+                    (click)="remove(video)"
+                  >
+                    {{ armed() === video.id ? (deleting() ? 'Deleting…' : 'Confirm delete') : 'Delete' }}
+                  </button>
                   @if (armed() === video.id) {
-                    <button class="btn-sm btn-danger" type="button" [disabled]="deleting()" (click)="remove(video)">
-                      {{ deleting() ? 'Deleting…' : 'Confirm delete' }}
-                    </button>
-                    <button class="btn-sm" type="button" (click)="armed.set(null)">Keep</button>
-                  } @else {
-                    <button class="btn-sm" type="button" (click)="remove(video)">Delete</button>
+                    <button class="btn-sm" type="button" (click)="armed.set(null); said.set('')">Keep</button>
                   }
                 </span>
               </td>

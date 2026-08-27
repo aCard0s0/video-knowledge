@@ -70,7 +70,10 @@
               <td class="spine" [style.--spine]="statusVar(channel.status)"></td>
               <td><vk-status [status]="channel.status" /></td>
               <td>
-                <a [routerLink]="['/channels', channel.id]" class="truncate" [title]="channel.url">
+                <!-- Without `.cell-link` this is a bare inline anchor: `.truncate` is inert on one
+                     (measured 85×15px with a `max-width` the box ignores), so a long channel name
+                     would widen this column the way it widened the videos grid. -->
+                <a [routerLink]="['/channels', channel.id]" class="cell-link truncate" [title]="channel.url">
                   {{ channel.displayName || channel.url }}
                 </a>
               </td>

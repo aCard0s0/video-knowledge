@@ -134,6 +134,40 @@ class VideosApiIntegrationTest extends BaseVidingestIntegrationTest {
         assertThat(getJson.get("status").asText()).isEqualTo("DOWNLOADED");
     }
 
+    /**
+     * The console filters channels through a search box, so a fragment has to match. This was
+     * `cb.equal`: `comp` returned nothing while the Computerphile rows sat in the table.
+     */
+    @Test
+    void channelNameFilterMatchesOnACaseInsensitiveFragment() throws Exception {
+        videoRepository.saveAndFlush(Video.builder()
+                .source("youtube").sourceVideoId("chan001").title("Listed")
+                .channelName("Computerphile").status(VideoStatus.COMPLETED).build());
+        videoRepository.saveAndFlush(Video.builder()
+                .source("youtube").sourceVideoId("chan002").title("Other")
+                .channelName("Blender Studio").status(VideoStatus.COMPLETED).build());
+
+        assertThat(channelFilterIds("comp")).containsExactly("chan001");
+        assertThat(channelFilterIds("COMPUTERPHILE")).containsExactly("chan001");
+        assertThat(channelFilterIds("Computerphile")).containsExactly("chan001");
+        // Still a filter, not a match-anything: a fragment of neither name selects neither row.
+        assertThat(channelFilterIds("zzz")).isEmpty();
+    }
+
+    private java.util.List<String> channelFilterIds(String channelName) throws Exception {
+        URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/videos?page=0&size=25&channelName="
+                + java.net.URLEncoder.encode(channelName, java.nio.charset.StandardCharsets.UTF_8));
+        HttpResponse<String> res = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(uri).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(res.statusCode()).isEqualTo(200);
+        JsonNode items = objectMapper.readTree(res.body()).get("items");
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        items.forEach(item -> ids.add(item.get("sourceVideoId").asText()));
+        return ids;
+    }
+
     @Test
     void deleteReturnsDeletedResult() throws Exception {
         UUID id = UUID.fromString("1ad04d10-d31e-4a37-abab-e1ce103459d1");

@@ -154,6 +154,10 @@ offset that says so.
 `errorCode`, `error`, `videoId`, `channelName`, `videoTitle`, `previousPhase` all come back as
 empty strings. One `blank()` guard keeps empty badges from rendering.
 
+`VideoSummary.pipelineId` is the same: `""` once the run row is gone, since
+`vidingest_videos.pipeline_run_id` is `ON DELETE SET NULL`. The videos list guards it with `blank()`
+and renders `—` rather than a link to `/runs/`, which is what an unguarded `routerLink` would build.
+
 `videoCount` is the numeric equivalent: it counts the **video rows attached to the run**
 (`RunSummaryPageService` groups `findRunVideoPreviews`), not the URLs submitted, so a run that died
 before PERSIST and a COMPLETED run whose video was later deleted both report `0`. The board renders
@@ -680,6 +684,104 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   carries `PHASE running — 1m 12s elapsed`, on its own interval rather than `poller.now()`, which
   stops when the operator pauses polling while the request does not (the reason the rail's wall
   clock has one). The chips also went from 20px to a 24px minimum target.
+- **`.truncate` needs a box, and a `<td>` is one where an inline `<a>` is not.** `max-width` does
+  not apply to a non-replaced inline box, so the videos list's title anchor rendered its full 293px
+  and its `text-overflow: ellipsis` could never fire. The grid ran 131px past its panel at 1440px
+  and 882px at 390px, which put Delete 52px and 804px past the viewport respectively — and squeezed
+  the 3px status spine to **0px**, since `width` on a table cell is only a suggestion once the table
+  is wider than its container. So the one screen with fifty rows to sweep was the one with no spine,
+  while runs and channels (whose tables fit) rendered theirs fine. The class moves to the cell,
+  `td.spine`/`th.sp` carry `min-width` as well as `width`, and the same latent bug still sits on
+  `channels.html`'s url anchor.
+- **The videos list gives up two columns and pins Delete**, the corrections the runs board already
+  carried for the identical table shape. CHANNEL is the filter's own value repeated down the page —
+  and the widest cell on the screen, a channel name having no length limit — and SOURCE is an
+  extractor plus an id that video detail shows in full; both go below 767px, both come back above
+  it. Two things the port taught that the runs board had not had to state: restating
+  `tbody tr { background }` for the sticky cell to inherit **silently kills the global
+  `tr:hover` wash** (equal specificity, and component styles are injected last), and the pinned
+  column **covered the focus ring** on a short title at 390px — the focused link is lifted over it
+  rather than left 15px short of a closed rectangle.
+- **`.truncate` keeps its single line below 767px on this grid only.** `table.grid td` sets
+  `white-space: normal` there and outranks a bare `.truncate` (0,1,2 against 0,1,0), so a cell that
+  opted into truncation *wrapped* at the 18ch cap instead of clipping at it: a 63-character channel
+  name became five lines and took its row to 114px next to rows of 36px. Fixed in
+  `features/videos/videos.scss`, deliberately **not** in `styles.scss` — ingest's rejected URLs and
+  the channel catalog's titles are fully readable on a phone *because* of that wrap, and a global
+  fix trades two phone layouts for one.
+- **A search box has to match a fragment.** `?channelName=` was `cb.equal`, so typing `comp` into a
+  box labelled "Channel name, e.g. LuxAlgo…" returned nothing while nine Computerphile videos sat in
+  the table under "No videos match this filter". `VideoSpecifications.hasChannelName` is now a
+  case-insensitive `LIKE %…%`; channel detail's `Ingested videos →` link still matches, as a
+  substring of itself. `source` stays exact — it is a yt-dlp extractor id, not something anyone
+  types a fragment of. The cost is that `idx_vidingest_videos_channel_name` can no longer serve the
+  predicate: a leading wildcard defeats the btree, and the index is left in place rather than
+  dropped in the same change.
+- **Which emptiness it is decides the way out.** "No videos match this filter." over an unfiltered
+  empty corpus, with `Ingest a URL →` as the only action, pointed someone who had merely mistyped a
+  channel name at the one thing that could not help them. Filtered says so and offers **Clear
+  filters**; unfiltered reads "No videos ingested yet." and keeps the ingest link. Same defect the
+  channel catalog had when it reported "Every upload is already ingested" over a 404ed sync, and
+  `empty-state.spec.ts` now pins both branches.
+- **A FAILED video no longer dead-ends.** Why it failed lives on the run (`error`, `errorCode`) and
+  on its item (`failedPhase`), none of which is on a `VideoSummary` — but `pipelineId` is, and was
+  rendered nowhere, so six FAILED rows had nothing to click. A `Run` column carries the id as a link
+  and `—` where the run row is gone (`ON DELETE SET NULL` makes that `""`). It fits at 1440px because
+  the title and channel caps leave slack, and it is `hide-sm` like the two columns beside it.
+- **A two-press delete has to keep its focus.** The confirm used to be a *different* button swapped
+  in by an `@if`, so Angular destroyed the one the operator was standing on and focus fell to
+  `<body>` — the confirm they had just asked for was a whole tab cycle away. One button that changes
+  its label instead, and it stays **enabled** while the request is in flight (`disabled` removes an
+  element from the tab order, which was the same bug one press later) with `remove()` ignoring the
+  repeat press. On success the focus moves to the neighbouring row's button before the deleted row
+  is taken away, so deleting three videos is three presses rather than three trips in from the top.
+- **The screen says what the press did.** There was no live region anywhere on it: a deleted row
+  simply left the table, which is indistinguishable from a press that did nothing. A `role="status"`
+  line, always in the DOM so it is a region to announce into rather than one that appears already
+  spoken, reads `Press Confirm delete to remove <title>.` and then `Deleted <title>.` — the same
+  shape the runs board gives a retry — literally, now: `.said` is one class in `styles.scss` rather
+  than the same four declarations under two names.
+- **Videos triage is one press too, and the count is on the chip.** A `<select>` of nine statuses
+  put the screen's whole reason for existing two clicks away and showed no number; the row of chips
+  is the runs board's, with `FAILED` carrying its total from one extra one-row query. Nine chips wrap
+  to five lines at 390px, which is the price of one-press triage on a phone — `FAILED` is last in
+  pipeline order, so it lands nearest the table. `.chips` / `.chip` / `.chip .count` moved out of
+  `runs.scss` into `styles.scss` when the second screen grew them.
+- **A query param is whatever someone pasted.** `?status=BOGUS` went straight into the signal, out to
+  `GET /videos`, and came back as `No enum constant …VideoStatus.BOGUS` — under a control that showed
+  `ALL`, because nothing matched. `syncQueryParams` takes an optional per-key allow-list; an unlisted
+  value is ignored, so the signal keeps its declared default and the write effect drops the key from
+  the URL, the same self-healing `clampPage` gives a page past the end. Passed on all three screens
+  whose filters reach a server-side enum parse — `/videos` and `/runs` (`status`, plus `sortBy`,
+  which the server *silently* falls back on) and `/audit` (`eventType`, `status`).
+- **The × on a search box has to re-query.** `<input type="search">` fires `input` and `search` when
+  its native clear button is pressed and defers `change` to blur, so a `(change)`-only handler left
+  the box empty while the filtered rows and `?channel=` stayed — the control contradicting its own
+  screen. Both search inputs in the console (`/videos` channel, `/audit` runId) now carry `(search)`
+  alongside `(change)`. No debounce, because neither fires per keystroke.
+- **A panel head wraps rather than pushing its last child off the screen.** `space-between` plus a
+  filter group that cannot shrink put "64 total" at a right edge of 406px in a 390px viewport — a
+  horizontal scrollbar on the *document*, not on the table that has one by design. `flex-wrap` on the
+  shared `.panel-head`, and the channel input went from `width: 22ch` to `flex: 0 1 28ch` so its
+  placeholder stops being cut to "Channel name, e.g. Lu" — losing the example is losing the half that
+  says what the box matches.
+- **The channel column is drawn only when it distinguishes the rows.** Under a channel filter every
+  row repeats the value already in the box above, and it is the widest column on the screen. Both
+  halves of the condition matter: the filter is a *substring* match, so an active filter no longer
+  implies one channel, and an unfiltered page that happens to hold one keeps its column rather than
+  dropping it on page 1 and growing it back on page 2.
+- **Small controls get 24px.** `.btn-sm` was 4px of padding around 13px type — a 22px control, and
+  every small button in the console is one (Delete 53×22, the pager 43×22, a chip 20px). The title
+  link was worse at 293×**15**px, and `min-height` on an inline box does nothing: `display: block`
+  on the anchor is what gives it a target *and* what makes `.truncate`'s `max-width` apply, so that
+  one line replaced the cell-level workaround the first pass had used.
+- **The videos list polls, because half its statuses are transitional.** It fetched once and never
+  again: a row left TRANSCRIBING stayed TRANSCRIBING for as long as the screen was open, under a
+  rail saying "updated 2.0s ago" and ages that ticked — the `Poller` was injected only to move those
+  labels. Six of the twenty-five rows on a fresh page 1 were non-terminal. Cadence is `POLL_LIVE`
+  while any row on *this page* is neither COMPLETED nor FAILED and `POLL_IDLE` otherwise, the same
+  question the runs board asks of its own rows; the set names what is *finished*, so a status the
+  server adds counts as moving rather than frozen.
 - **Theme is the operator's, and dark is still the default the console was drawn for.** The rail
   foot toggles light/dark beside Collapse; with no stored choice the tokens follow the OS with no
   JavaScript. See "The light theme" below for the measured ramp and the three-step resolution.
