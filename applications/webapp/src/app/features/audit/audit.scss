@@ -8,8 +8,12 @@
 }
 
 // From and To are one range and wrap as one — split, From sat on a line above the To it belongs to.
+/* Wraps like the row it sits in. Two 160px date inputs plus the gap is 332px, which at 390px puts
+   its right edge 23px outside the viewport — a scrollbar on the document, not on the table that has
+   one by design. `.filters` above already wraps; this inner pair did not. */
 .filter-pair {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-md);
 }
 
