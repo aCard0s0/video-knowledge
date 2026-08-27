@@ -47,7 +47,7 @@ Validate (REST):
 - **Persistence**:
   - `com.tradinglabs.vidingest.youtube.domain.YoutubeChannel`
   - `com.tradinglabs.vidingest.youtube.domain.YoutubeChannelVideo`
-  - Liquibase: `applications/vidingest/vidingest-server/src/main/resources/db/changelog/changesets/002-youtube-channels.sql`
+  - Liquibase: `applications/vidingest/vidingest-server/src/main/resources/db/changelog/changesets/006-youtube-channels.sql`
 - **Discovery (yt-dlp)**:
   - Command builder: `com.tradinglabs.vidingest.core.download.util.YtDlpCommandBuilder#buildChannelListingCommand`
   - Executor: `com.tradinglabs.vidingest.core.download.util.YtDlpExecutor`
