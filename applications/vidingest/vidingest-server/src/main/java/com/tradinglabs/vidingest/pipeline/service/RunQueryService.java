@@ -29,9 +29,24 @@ public class RunQueryService {
         return pipelineRunRepository.findByStatusOrderByCreatedAtDesc(status);
     }
 
+    /**
+     * Sortable columns, by wire name.
+     *
+     * A whitelist rather than a pass-through: {@code Sort.by} takes a JPA property name, so an
+     * unknown one is a 500 from deep inside the persistence layer and an attacker-controlled one is
+     * a way to order by, and therefore probe, any field on the entity. Anything not named here
+     * falls back to the default rather than failing the request — the sort is a view preference,
+     * not part of what was asked for.
+     */
+    private static final List<String> SORTABLE = List.of("createdAt", "updatedAt");
+    private static final String DEFAULT_SORT = "createdAt";
+
     @Transactional(readOnly = true)
-    public Page<PipelineRun> listPipelineRunsPage(String status, Integer page, Integer size) {
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+    public Page<PipelineRun> listPipelineRunsPage(String status, Integer page, Integer size, String sortBy) {
+        // Null-checked first: List.of() throws NPE on contains(null), and the controller default
+        // only covers the HTTP path — an internal caller can still pass nothing.
+        String property = sortBy != null && SORTABLE.contains(sortBy) ? sortBy : DEFAULT_SORT;
+        Sort sort = Sort.by(Sort.Direction.DESC, property);
         RunStatus runStatus = parseStatus(status);
 
         int pageValue = page != null ? Math.max(0, page) : 0;

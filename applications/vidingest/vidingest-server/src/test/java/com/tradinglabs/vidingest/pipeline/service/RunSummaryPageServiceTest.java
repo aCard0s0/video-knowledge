@@ -51,7 +51,7 @@ class RunSummaryPageServiceTest {
         UUID runId = UUID.randomUUID();
         PipelineRun run = mock(PipelineRun.class);
         when(run.getId()).thenReturn(runId);
-        when(runQueryService.listPipelineRunsPage(null, 0, 20)).thenReturn(new PageImpl<>(List.of(run)));
+        when(runQueryService.listPipelineRunsPage(null, 0, 20, "createdAt")).thenReturn(new PageImpl<>(List.of(run)));
 
         UUID pendingVideo = UUID.randomUUID();
         UUID completedVideo = UUID.randomUUID();
@@ -60,7 +60,7 @@ class RunSummaryPageServiceTest {
                 new RunVideoPreview(runId, completedVideo, "chan", "completed video", VideoStatus.COMPLETED, OffsetDateTime.now(ZoneOffset.UTC))
         ));
 
-        PageResponse<RunSummary> page = service.list(null, 0, 20);
+        PageResponse<RunSummary> page = service.list(null, 0, 20, "createdAt");
 
         assertThat(page.items()).hasSize(1);
         RunSummary summary = page.items().get(0);

@@ -40,18 +40,7 @@
   <vk-problem [failure]="failure()" />
   <vk-problem [failure]="retryFailure()" />
 
-  @if (retryRejects().length) {
-    <div class="panel rejects" role="status">
-      <p class="eyebrow">not retried</p>
-      <dl class="mono sm">
-        @for (reject of retryRejects(); track reject.itemId ?? reject.url) {
-          <!-- Not truncated: every YouTube URL shares a prefix, so a clipped one names no item. -->
-          <dt>{{ reject.url }}</dt>
-          <dd>{{ reject.reason }}</dd>
-        }
-      </dl>
-    </div>
-  }
+  <vk-rejects [items]="retryRejects()" />
 
   @if (retryable()) {
     <details class="panel opts">

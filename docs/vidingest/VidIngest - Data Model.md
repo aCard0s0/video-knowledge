@@ -20,7 +20,7 @@ server ran on a host.
 
 | File | Role |
 |------|------|
-| `applications/vidingest/vidingest-server/src/main/resources/db/changelog/changesets/` | Liquibase changesets (source of truth for schema): `001-core-pipeline.sql`, `002-youtube-channels.sql`, `003-knowledge-extraction.sql`, `004-run-item-lease.sql`, `005-run-skip-phases.sql`, `006-index-cleanup.sql`, `007-speaker-labels.sql` |
+| `applications/vidingest/vidingest-server/src/main/resources/db/changelog/changesets/` | Liquibase changesets (source of truth for schema), one per scope: `001-pipeline.sql`, `002-transcription.sql`, `003-frames-ocr.sql`, `004-knowledge.sql`, `005-search.sql`, `006-youtube-channels.sql` |
 | `applications/vidingest/vidingest-server/src/main/resources/db/changelog/db.changelog-master.yaml` | Liquibase master changelog |
 | `applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/config/LiquibaseConfig.java` | Explicit Liquibase bean wiring |
 
@@ -238,20 +238,32 @@ Used by `PipelineRun`.
 
 The master changelog is at `db/changelog/db.changelog-master.yaml` and includes changesets from the `changesets/` subdirectory.
 
-Notable changesets (consolidated 2026-06-01):
+Changesets are grouped by scope, not by migration history — the schema reads as if the service were
+being stood up for the first time (consolidated 2026-08-27, replacing seven incremental files):
 
-- `001-core-pipeline.sql`: pgvector extension + core schema (`vidingest_pipeline_runs`, `vidingest_videos`, `vidingest_transcriptions`, `vidingest_transcription_segments`, `vidingest_context_chunks`, `vidingest_pipeline_run_items`, `vidingest_pipeline_run_item_events`)
-- `002-youtube-channels.sql`: channel sync catalog (`vidingest_youtube_channels`, `vidingest_youtube_channel_videos`)
-- `003-knowledge-extraction.sql`: multi-modal knowledge tables (`vidingest_speakers`, `vidingest_video_frames`, `vidingest_ocr_results`, `vidingest_multimodal_segments`, `vidingest_knowledge_units`) and the `vidingest_transcription_segments.speaker_id` column
-- `004-run-item-lease.sql`: `lease_owner` / `lease_expires_at` on `vidingest_pipeline_run_items`
-- `005-run-skip-phases.sql`: `skip_phases` on `vidingest_pipeline_runs`
-- `006-index-cleanup.sql`: drops seven single-column indexes that were leftmost-prefix subsets of
-  an existing composite, plus all three `metadata` GIN indexes. A leftmost-prefix duplicate looks
-  used in `pg_stat_user_indexes` because the planner prefers the narrower of two interchangeable
-  indexes — verified by dropping them against production data and re-planning every query
-- `007-speaker-labels.sql`: `vidingest_multimodal_segments.speaker_ids UUID[]` becomes
-  `speaker_labels TEXT[]`, because DIARIZE recreates speaker rows under new uuids and the array
-  had no FK to catch the stale reference
+| File | Tables |
+|------|--------|
+| `001-pipeline.sql` | `vector` extension, `vidingest_pipeline_runs`, `vidingest_videos`, `vidingest_pipeline_run_items`, `vidingest_pipeline_run_item_events` |
+| `002-transcription.sql` | `vidingest_speakers`, `vidingest_transcriptions`, `vidingest_transcription_segments` |
+| `003-frames-ocr.sql` | `vidingest_video_frames`, `vidingest_ocr_results` |
+| `004-knowledge.sql` | `vidingest_multimodal_segments`, `vidingest_knowledge_units` |
+| `005-search.sql` | `vidingest_context_chunks` |
+| `006-youtube-channels.sql` | `vidingest_youtube_channels`, `vidingest_youtube_channel_videos` |
+
+The four pipeline tables share a file because they reference each other in both directions
+(`videos` → `runs`, `run_items` → `runs` + `videos`, `run_item_events` → `items` + `runs` +
+`videos`), so no split ordering creates each table after its target. `vidingest_speakers` sits with
+the transcription tables because `vidingest_transcription_segments.speaker_id` carries the FK to it —
+keeping them apart is what previously forced an `ALTER TABLE`.
+
+**Add a migration, do not edit these.** Consolidating rewrote every changeset id and checksum, which
+only worked because the database was recreated from a backup in the same change. From here on a
+schema change is a new numbered file plus an include, exactly as before.
+
+Two rules the omissions encode, so they are not undone: there is **no single-column index on a
+column that is the leftmost member of an existing composite or unique index** (the planner prefers
+the narrower of two interchangeable indexes, so `pg_stat_user_indexes` reports both as used), and
+**no GIN index on any `metadata` column** (nothing queries JSONB by content — no `@>`, no `->>`).
 
 The `LiquibaseConfig` bean explicitly wires `SpringLiquibase` to ensure migrations run at startup.
 
@@ -268,7 +280,7 @@ Migrations create the pgvector extension (`CREATE EXTENSION IF NOT EXISTS vector
 - Deleting a pipeline run sets `pipeline_run_id` to NULL on associated videos (SET NULL)
 - Deleting a pipeline run cascades to its pipeline run items (CASCADE)
 
-## M2–M8 knowledge-extraction entities (changeset `003-knowledge-extraction.sql`)
+## M2–M8 knowledge-extraction entities (changesets `002-transcription.sql`, `003-frames-ocr.sql`, `004-knowledge.sql`)
 
 The following tables back the multi-modal knowledge-extraction phases. All use the
 `vidingest_` prefix and cascade on `video_id` (or on the parent frame, which itself

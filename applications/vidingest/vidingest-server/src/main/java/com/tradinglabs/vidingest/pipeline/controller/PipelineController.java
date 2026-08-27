@@ -19,6 +19,7 @@ import com.tradinglabs.vidingest.pipeline.service.RunSummaryPageService;
 import com.tradinglabs.vidingest.pipeline.util.SkipPhasesParser;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,13 +63,15 @@ public class PipelineController {
             @RequestParam(name = "page", required = false) Integer page,
             @RequestParam(name = "size", required = false) Integer size,
             @RequestParam(name = "ids", required = false) List<UUID> ids,
-            @RequestParam(name = "live", defaultValue = "false") boolean live
+            @RequestParam(name = "live", defaultValue = "false") boolean live,
+            @Parameter(description = "Column to order by, newest first. `createdAt` (default) or `updatedAt`; anything else falls back to the default.")
+            @RequestParam(name = "sortBy", defaultValue = "createdAt") String sortBy
     ) {
         if (live && ids != null && !ids.isEmpty()) {
             List<RunSummary> items = runLiveSummaryService.listLiveSummariesInOrder(ids);
             return new PageResponse<>(items, 0, items.size(), items.size());
         }
-        return runSummaryPageService.list(status, page, size);
+        return runSummaryPageService.list(status, page, size, sortBy);
     }
 
     @PostMapping("/{runId}/retry")
