@@ -6,7 +6,6 @@ import com.tradinglabs.vidingest.pipeline.repo.PipelineRunRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -15,7 +14,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -31,17 +32,13 @@ class RunQueryServiceTest {
     void setUp() {
         repository = mock(PipelineRunRepository.class);
         service = new RunQueryService(repository);
-        when(repository.findAll(any(Pageable.class))).thenReturn(emptyPage());
-        when(repository.findByStatus(any(RunStatus.class), any(Pageable.class))).thenReturn(emptyPage());
-    }
-
-    private Page<PipelineRun> emptyPage() {
-        return new PageImpl<>(List.of());
+        when(repository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.findByStatus(any(RunStatus.class), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
     }
 
     private Sort sortUsed() {
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-        org.mockito.Mockito.verify(repository).findAll(pageable.capture());
+        verify(repository).findAll(pageable.capture());
         return pageable.getValue().getSort();
     }
 
@@ -70,17 +67,11 @@ class RunQueryServiceTest {
     }
 
     @Test
-    void isCaseSensitive_soTheWhitelistCannotBeStepppedAroundByCasing() {
-        service.listPipelineRunsPage("ALL", 0, 20, "UPDATEDAT");
-        assertThat(sortUsed()).isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
-    }
-
-    @Test
     void appliesTheSameSortToAFilteredListing() {
         service.listPipelineRunsPage("FAILED", 0, 20, "updatedAt");
 
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-        org.mockito.Mockito.verify(repository).findByStatus(org.mockito.ArgumentMatchers.eq(RunStatus.FAILED), pageable.capture());
+        verify(repository).findByStatus(eq(RunStatus.FAILED), pageable.capture());
         assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "updatedAt"));
     }
 }

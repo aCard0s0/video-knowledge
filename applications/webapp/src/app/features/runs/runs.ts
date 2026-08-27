@@ -44,9 +44,7 @@ export function marker(run: RunSummary): string {
  * voice repeating "0" adds nothing.
  */
 export function retrySaid(queued: number, asked: number): string {
-  if (queued === 0) return '';
-  if (queued === asked) return `Queued ${queued} run${queued > 1 ? 's' : ''}.`;
-  return `Queued ${queued} of ${asked} runs.`;
+  return queued ? `Queued ${queued} of ${asked} runs.` : '';
 }
 
 /**

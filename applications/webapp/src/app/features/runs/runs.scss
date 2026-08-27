@@ -146,13 +146,7 @@ tr:has(+ .fault-row) td {
    this way it is in the tab order and answers the keyboard for free. It inherits the header's own
    type so the row still reads as a header row. */
 .sort {
-  border: 0;
-  padding: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
+  all: unset;
   cursor: pointer;
 
   &:hover {

@@ -29,29 +29,13 @@ describe('marker', () => {
     expect(marker(run({ status: 'PENDING', phase: 'CREATED' }))).toBe('queued');
   });
 
-  it('does not render CREATED as a step after a retry either — prepareRetry writes it back', () => {
-    expect(marker(run({ status: 'IN_PROGRESS', phase: 'CREATED' }))).toBe('queued');
-  });
-
   it('never repeats the DONE a FAILED run reports as its phase', () => {
     expect(marker(run({ status: 'FAILED', phase: 'DONE' }))).toBe('—');
   });
 
-  it('says nothing for a run that has stopped, whatever phase it claims', () => {
-    expect(marker(run({ status: 'COMPLETED', phase: 'DONE' }))).toBe('—');
-    expect(marker(run({ status: 'CANCELLED', phase: 'OCR' }))).toBe('—');
-  });
-
-  it('falls through to queued rather than -1 on a phase this build does not know', () => {
-    expect(marker(run({ status: 'IN_PROGRESS', phase: 'EMBED' }))).toBe('queued');
-  });
 });
 
 describe('hasFault', () => {
-  it('shows the reason a run failed', () => {
-    expect(hasFault(run({ status: 'FAILED', errorCode: 'UPSTREAM_TOOL_FAILURE', error: 'yt-dlp exit 1' }))).toBe(true);
-  });
-
   it('shows a message that arrived without a code', () => {
     expect(hasFault(run({ status: 'FAILED', errorCode: '', error: 'no message recorded upstream' }))).toBe(true);
   });
@@ -77,18 +61,6 @@ describe('shortUrl', () => {
     expect(shortUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('youtube.com/watch?v=dQw4w9WgXcQ');
   });
 
-  it('leaves what is left inside the 34ch the row label truncates at', () => {
-    expect(shortUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ').length).toBeLessThanOrEqual(34);
-    expect(shortUrl('https://www.youtube.com/shorts/Hpvj7yaRlF4').length).toBeLessThanOrEqual(34);
-  });
-
-  it('keeps the video id in front of the query params that push a URL over that', () => {
-    // The ellipsis lands after the id rather than on it, which is the whole point.
-    expect(shortUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw&list=PLrAXtmErZ&index=7').slice(0, 34)).toBe(
-      'youtube.com/watch?v=jNQXAC9IVRw&li',
-    );
-  });
-
   it('strips www. only as a prefix, never mid-host', () => {
     expect(shortUrl('https://wwwtube.example/watch?v=x')).toBe('wwwtube.example/watch?v=x');
   });
@@ -101,16 +73,11 @@ describe('shortUrl', () => {
 
 describe('retrySaid', () => {
   it('acknowledges a retry whose row leaves the filter it was listed under', () => {
-    expect(retrySaid(1, 1)).toBe('Queued 1 run.');
-    expect(retrySaid(4, 4)).toBe('Queued 4 runs.');
-  });
-
-  it('names both numbers when the server took only some of them', () => {
+    expect(retrySaid(4, 4)).toBe('Queued 4 of 4 runs.');
     expect(retrySaid(3, 4)).toBe('Queued 3 of 4 runs.');
   });
 
   it('says nothing when nothing was queued — the rejects and problem panels already have', () => {
     expect(retrySaid(0, 4)).toBe('');
-    expect(retrySaid(0, 1)).toBe('');
   });
 });

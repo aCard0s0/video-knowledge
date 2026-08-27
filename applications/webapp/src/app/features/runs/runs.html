@@ -79,7 +79,7 @@
          the number on the chip. -->
     @if (failedHere().length > 1) {
       <button class="btn-sm" type="button" [disabled]="retrying().size > 0" (click)="retryAll()">
-        {{ retrying().size > 1 ? 'Retrying ' + retrying().size + '…' : 'Retry ' + failedHere().length + ' failed' }}
+        {{ retrying().size ? 'Retrying…' : 'Retry ' + failedHere().length + ' failed' }}
       </button>
     }
   </div>

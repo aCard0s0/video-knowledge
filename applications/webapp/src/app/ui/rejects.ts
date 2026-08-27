@@ -22,7 +22,7 @@ import { ItemResult } from '../api/generated';
           @for (reject of items(); track reject.itemId ?? reject.url) {
             <!-- Not truncated: every YouTube URL shares a prefix, so a clipped one names no item. -->
             <dt>{{ reject.url || 'this run' }}</dt>
-            <dd>{{ reject.reason || 'no reason given' }}</dd>
+            <dd>{{ reject.reason }}</dd>
           }
         </dl>
       </div>
