@@ -48,13 +48,19 @@
     }
   </div>
 
-  @if (rows().length === 0) {
+  <!--
+    `rows()` is `[]` while the list is loading *and* while it has errored, so the empty state used
+    to claim "nothing matches" over a request that never answered — under a problem panel already
+    saying it failed. It renders only once the resource actually holds a value; before that the
+    panel above is the answer, and a "Loading…" line here would sit there forever on an error.
+  -->
+  @if (list.hasValue() && rows().length === 0) {
     <vk-empty message="No events match these filters." >
       @if (filtered()) {
         <button class="btn-sm" type="button" (click)="clear()">Clear filters</button>
       }
     </vk-empty>
-  } @else {
+  } @else if (rows().length) {
     <div class="table-scroll">
       <table class="grid" translate="no">
         <thead>
