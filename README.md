@@ -16,6 +16,10 @@ extracts searchable knowledge units into PostgreSQL + pgvector.
 | [vidingest-mcp](applications/vidingest/vidingest-mcp) | Standalone MCP (SSE) server delegating via the client |
 | [vidingest-cli](applications/vidingest/vidingest-cli) | Spring Shell console |
 
+The operator console is [applications/webapp](applications/webapp) — Angular 22, zoneless, built
+into the server jar and served from the same origin at `/vidingest`. It is not a Maven module; see
+its [README](applications/webapp/README.md) for the dev server and the generated API client.
+
 Shared Java libraries live in [libraries](libraries) (`common-logging`, `common-web`,
 `common-http-client-core`, `common-observability-web`, `common-operation-logging-web`,
 `common-operation-logging-mcp`, `common-mcp-configs`).
@@ -46,7 +50,8 @@ Shared Java libraries live in [libraries](libraries) (`common-logging`, `common-
 ./scripts/tradey.sh down --volumes    # tear everything down (incl. data)
 ```
 
-- REST: <http://localhost:8051/vidingest>
+- Console: <http://localhost:8051/vidingest>
+- REST: <http://localhost:8051/vidingest/api/v1>
 - MCP (SSE): <http://localhost:8055/vidingest/sse>
 
 `tradey` layers the split compose files (`compose.yml` + `compose/*`). Infra
@@ -61,8 +66,16 @@ in [compose/ports.env](compose/ports.env).
 ./mvnw clean package
 ```
 
-The Maven wrapper (`./mvnw`) pins the build; no system Maven required. Java 26 is
-enforced by the root POM.
+The Maven wrapper (`./mvnw`) pins the build; no system Maven required. Java 26 and Maven 3.9+ are
+enforced by the root POM. Note the wrapper resolves **Maven 4.0.0-rc-4** while the container images
+install **3.9.11** (`MAVEN_VERSION` in each Dockerfile) — both satisfy the enforcer, so a host build
+and an image build do not use the same Maven.
+
+To work on the console:
+
+```bash
+cd applications/webapp && npm install && npm start
+```
 
 ## Docs
 

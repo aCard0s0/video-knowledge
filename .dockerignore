@@ -8,4 +8,8 @@ docs
 data
 applications/webapp/node_modules
 applications/webapp/dist
-applications/webapp/.angular
+# Anywhere, not just under the webapp: `ng` had also written a 7.1 MB cache at the repo root,
+# and every image build was shipping it into the context.
+**/.angular
+**/out-tsc
+/package

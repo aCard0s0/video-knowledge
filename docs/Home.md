@@ -20,6 +20,13 @@ update those pointers when you move/rename code.
 - MCP with LM Studio: [VidIngest - MCP with LM Studio](vidingest/VidIngest%20-%20MCP%20with%20LM%20Studio.md)
 - Test scenarios: [VidIngest - Test Scenarios](vidingest/VidIngest%20-%20Test%20Scenarios.md)
 
+## Frontend
+
+- Skill order for UI work: [frontend-skills.md](frontend-skills.md)
+- How the console was first generated: [frontend-bootstrap-prompt.md](frontend-bootstrap-prompt.md)
+  — historical. The console exists; this is kept as provenance, like
+  [design-system/vidingest-console/MASTER.md](../design-system/vidingest-console/MASTER.md).
+
 Diagrams live in [vidingest/diagrams](vidingest/diagrams) (`mermaid/` sources,
 `svg/` rendered output — regenerate with `./scripts/regenerate-mermaid-svgs.sh`).
 
@@ -32,7 +39,8 @@ plus `compose/{infra/infra,services,cli,mcp}.yml`. Host ports come from
 
 ## Quick links
 
-- REST base URL: <http://localhost:8051/vidingest>
+- Operator console: <http://localhost:8051/vidingest>
+- REST base URL: <http://localhost:8051/vidingest/api/v1>
 - MCP (SSE): <http://localhost:8055/vidingest/sse>
 - Ports (defaults): postgres 3030, whisper 9000, diarize-asr 9001, paddleocr 8002,
   ollama 11434, vidingest 8051, vidingest-mcp 8055

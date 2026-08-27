@@ -1,35 +1,54 @@
-# Java / Maven
-target/
-*.class
-!.mvn/wrapper/maven-wrapper.jar
+# One ignore file for the whole repo. The webapp had its own — the Angular CLI's generated
+# default — which duplicated a third of this one and carried entries for tools this project
+# has never used (bazel, Cloud9, testem, karma, libsass, typings).
 
-# Local databases / runtime data
+# --- Java / Maven ---
+target/
+
+# --- Node / Angular (applications/webapp) ---
+node_modules/
+/applications/webapp/dist/
+# `outDir` in tsconfig.app.json and tsconfig.spec.json — only a bare `tsc -p` writes here.
+/applications/webapp/out-tsc/
+/applications/webapp/coverage/
+# Build cache. It was committed once, 35 files and 4.8 MB of it, because only the webapp's own
+# ignore file covered it and `ng` had also written a copy at the repo root.
+.angular/
+.sass-cache/
+
+# --- Generated / downloaded ---
+/skills-lock.json
+
+# --- Local databases and runtime data ---
 data/
 *.db
+# Video storage + logs, resolved by ProjectPathResolver — at the root and per module.
+package/
 
-# IDEs and editors
+# --- Secrets ---
+.env
+**/.env
+
+# --- Logs ---
+# The CLI/server run outside the container write here.
+*.log
+
+# --- IDEs and editors ---
 .idea/
+.project
+.classpath
+.settings/
+*.sublime-workspace
+.history/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-.project
-.classpath
-.settings/
 
-# System files
+# --- Agent tooling ---
+/.claude/
+
+# --- System files ---
 .DS_Store
 Thumbs.db
-
-# Secrets
-.env
-**/.env
-
-# Runtime output (video storage + logs resolved by ProjectPathResolver)
-package/
-
-# Stray logs from running the CLI/server outside the container
-*.log
-/.claude/
-/skills-lock.json
