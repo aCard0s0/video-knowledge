@@ -11,13 +11,14 @@ import java.util.Optional;
 /**
  * Registry that defines the canonical execution order of the pipeline phases.
  *
- * <p>Order (M1):
+ * <p>Order:
  * <pre>
  *   METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE → OCR → FUSE → KNOWLEDGE → CONTEXT
  * </pre>
- * The five new phases between {@code TRANSCRIBE} and {@code CONTEXT} are stubs in M1
- * (their {@code applies(ctx)} always returns {@code false}); subsequent milestones replace
- * them with real implementations one at a time.
+ * Order is this constructor's argument list, not the {@link PipelineRunPhase} declaration order —
+ * reordering here reorders the pipeline. Every phase is implemented; whether one runs is decided
+ * by its own {@code applies(ctx)}, which combines the run's skip set with a
+ * {@code vidingest.<phase>.enabled} toggle that mostly defaults to {@code false}.
  */
 @Component
 public class PipelinePhaseRegistry {

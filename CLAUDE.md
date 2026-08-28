@@ -212,12 +212,13 @@ Schema is Liquibase-only (`ddl-auto=none`): SQL changesets under
 `db.changelog-master.yaml`. New migrations are a new numbered file plus an include —
 never edit an applied changeset.
 
-**The six changesets are grouped by scope, not by history** (`001-pipeline`, `002-transcription`,
+**The first six changesets are grouped by scope, not by history** (`001-pipeline`, `002-transcription`,
 `003-frames-ocr`, `004-knowledge`, `005-search`, `006-youtube-channels`), so a table's current shape
 reads in one place instead of across a migration and three later `ALTER`s. That consolidation
 rewrote every changeset id and checksum, which was only possible because the database was recreated
 from a backup in the same change (Aug 2026) — it is **not** repeatable against a populated
-changelog. From here on, a schema change is a new numbered file, as it always was.
+changelog. From here on, a schema change is a new numbered file, as it always was —
+`007-run-created-at-index.sql` is the first one added since.
 
 **Two index rules the schema has already broken once.** A single-column index whose column is the
 leftmost prefix of an existing composite or unique index is dead weight — the planner just prefers
@@ -326,7 +327,7 @@ API facts worth not rediscovering: a **FAILED run still reports `phase: "DONE"`*
 `item.failedPhase` — but see below); **`?live=true` on `/pipelines` is only honoured together with
 `ids`** — alone it silently returns every run, so the board queries `status=IN_PROGRESS` and
 `status=PENDING`; **`POST /pipelines` answers 400 with a `CreatePipelineRunResponse` body** (not a
-ProblemDetail) when every URL was rejected; **`/health/readiness` answers 503 carrying the full
+ProblemDetail) when every URL was rejected; **`/health/ready` answers 503 carrying the full
 `ReadinessResult`**, so the failing response *is* the report (`app.ts` reads the checks out of
 `HttpErrorResponse.error` and says "server unreachable" only on status 0 — treating any error as
 unreachable hid the one line naming the broken dependency); and **a 202 on either retry endpoint
@@ -336,7 +337,7 @@ does not mean the work was queued** — the same body carries `REJECTED` items w
 **`failedPhase` is not always a phase.** It is `CREATED` for an item reaped while still queued and
 `DONE` on a clean finish, so `LANE_PHASES.indexOf` answers `-1` — call `isLanePhase()` before
 treating it as a position. **Run-level `phase` carries the same two markers**: a run is `CREATED`
-from `RunLifecycleService.create` until METADATA starts and `prepareRetry` writes it back, so it is
+from `RunLifecycleService.createPipelineRun` until METADATA starts and `prepareRetry` writes it back, so it is
 what a run reports right after a retry — the runs board renders that as `queued`, never as a step. And **audit `size` is clamped to 500** server-side
 (`PipelineAuditQueryService.MAX_PAGE_SIZE`) on an **ascending** feed, so page 0 is the oldest
 window and the tail is what the screen needs. The last *page* is not the last *window*: it holds
@@ -394,6 +395,10 @@ run in a fixed order — see [docs/frontend-skills.md](docs/frontend-skills.md).
 Docs in [docs/](docs/) are treated as source-of-truth companions to the code: each page
 carries repo-relative code pointers and a "Last reviewed" line. When you move or rename
 code that a doc points at, fix the pointer in the same change.
+
+[docs/map/](docs/map/) is the change-impact map: one card per noun with `path:line` citations,
+five process cards, and [effects/](docs/map/effects/CONTEXT.md) — "I am changing X, open these".
+Read it *before* an edit; it answers what a change hits, not why the design is what it is.
 
 Every merged PR gets a summary in [.claude/pr/](.claude/pr/) — see
 [.claude/pr/README.md](.claude/pr/README.md) for the format. Record the decisions and the
