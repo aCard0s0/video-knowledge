@@ -16,9 +16,6 @@ node_modules/
 .angular/
 .sass-cache/
 
-# --- Generated / downloaded ---
-/skills-lock.json
-
 # --- Local databases and runtime data ---
 data/
 *.db
