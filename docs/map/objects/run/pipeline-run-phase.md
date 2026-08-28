@@ -4,7 +4,7 @@ cluster: run
 universe: live
 status: verified
 verified: 2026-08-28
-commit: 0a40fa2
+commit: 69f9110
 entity: applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/pipeline/domain/PipelineRunPhase.java
 ---
 
@@ -18,21 +18,18 @@ The twelve-value enum that is the pipeline's spine. Ten phases plus two **marker
 - **`isOptional()` is one answer to two questions** — "can a run skip this?" and "can the rerun
   endpoint re-execute it alone?" — because they have the same cause: an optional phase consumes the
   persisted `Video` row, while METADATA/DOWNLOAD/PERSIST consume the source URL
-  (`PipelineRunPhase.java:33-38`).
+  (`PipelineRunPhase.java:31-36`).
 - **Order is not in the enum, it is in the registry.** `PipelinePhaseRegistry` fixes execution
-  order by constructor injection (`PipelinePhaseRegistry.java:40`), and `PipelinePhase` is a
+  order by constructor injection (`PipelinePhaseRegistry.java:41`), and `PipelinePhase` is a
   **sealed interface** whose `permits` clause lists every phase (`PipelinePhase.java:6`). Sealed
   means tests cannot stub it — they use the real impls with mocked services.
-- **The javadoc on this file is stale.** It says DIARIZE/FRAME_SAMPLE/OCR/FUSE/KNOWLEDGE "are
-  no-ops in M1"; `PipelinePhaseRegistry` says "stubs in M1". All five are wired to real sidecars
-  and LLM extraction. Code wins.
 
 ## Shape
 
 Order: `METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE → OCR → FUSE → KNOWLEDGE → CONTEXT`.
 
-- Optional (7): `TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT` — `:35`
-- Mandatory (3) + 2 markers: `METADATA, DOWNLOAD, PERSIST`, `CREATED`, `DONE` — `:36`
+- Optional (7): `TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT` — `:33`
+- Mandatory (3) + 2 markers: `METADATA, DOWNLOAD, PERSIST`, `CREATED`, `DONE` — `:34`
 - Most `vidingest.<phase>.enabled` default **false**: a default local run does
   metadata → download → persist → transcribe → fuse → context.
 - Each phase gates itself in `applies(ctx)`; the default is `!ctx.skipped(phase())`. Overrides add
@@ -42,7 +39,7 @@ Order: `METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_S
 
 - **owned-by:** nothing — it is an enum, stored as a string on runs, items and events
 - **joins:** `PhaseSetConverter` (persists `Set<PipelineRunPhase>` to one column), `SkipPhasesParser` (400s on mandatory or unknown)
-- **looks-like-but-is-not:** `LanePhase` in the console — that is this enum **minus** `CREATED` and `DONE` (`core/domain.ts:36`)
+- **looks-like-but-is-not:** `LanePhase` in the console — that is this enum **minus** `CREATED` and `DONE` (`core/domain.ts:47`)
 
 ## If you change this
 

@@ -4,7 +4,7 @@ cluster: console
 universe: live
 status: verified
 verified: 2026-08-28
-commit: 0a40fa2
+commit: 69f9110
 entity: applications/webapp/src/app/core/domain.ts
 ---
 
@@ -23,10 +23,10 @@ file is the console's only typed copy — and the one file a server enum change 
 - **`LanePhase` exists because `CREATED` and `DONE` are not phases.** `LANE_PHASES` is `ALL_PHASES`
   minus those two, and `isLanePhase()` must be called before `LANE_PHASES.indexOf` — `failedPhase`
   answers `CREATED` for an item reaped while queued and `DONE` on a clean finish, and `indexOf`
-  returns `-1` for both (`domain.ts:36-49`).
+  returns `-1` for both (`domain.ts:47-60`).
 - **`PHASE_REQUIRES` encodes the upstream dependencies** the server enforces in `applies(ctx)` —
   OCR needs FRAME_SAMPLE, DIARIZE needs TRANSCRIBE — so the phase picker cannot offer an impossible
-  combination (`domain.ts:77`).
+  combination (`domain.ts:88`).
 
 ## Shape
 
