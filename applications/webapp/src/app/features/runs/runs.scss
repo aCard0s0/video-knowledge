@@ -81,3 +81,8 @@
 th[aria-sort='descending'] .sort {
   color: var(--fg);
 }
+
+// FAILED keeps the failure ramp; the other four are counts, not alarms.
+.count.quietcount {
+  color: var(--fg-muted);
+}

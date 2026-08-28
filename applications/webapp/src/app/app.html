@@ -39,7 +39,6 @@
           [title]="section.label + ' (Alt+' + (i + 1) + ')'"
           [attr.aria-keyshortcuts]="'Alt+' + (i + 1)"
         >
-          <span class="idx" aria-hidden="true">{{ ordinal(i) }}</span>
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
             @for (d of section.d; track d) {
               <path [attr.d]="d" />
@@ -87,34 +86,17 @@
         }
       </div>
 
+      <!-- The age of the last poll, with no control beside it: the browser already stops the loop
+           when the tab goes to the background, which is the only time anyone reached for the pause.
+           `Poller.toggle()` is still there for whatever offers it next. -->
       <div class="tick mono">
         @if (poller.hidden()) {
           <span class="age">paused<span class="wide"> — tab hidden</span></span>
-        } @else if (poller.paused()) {
-          <span class="age">paused</span>
         } @else {
           <span class="age"
             ><span class="wide">updated </span>{{ tickAge() }}<span class="wide"> ago</span></span
           >
         }
-        <!-- The label collapses to screen-reader-only with the rail; the icon and title carry it. -->
-        <button
-          class="btn-sm"
-          type="button"
-          (click)="poller.toggle()"
-          [title]="poller.paused() ? 'Resume polling' : 'Pause polling'"
-        >
-          @if (poller.paused()) {
-            <svg class="icon solid" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m6 3 14 9-14 9z" />
-            </svg>
-          } @else {
-            <svg class="icon solid" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-            </svg>
-          }
-          <span class="label">{{ poller.paused() ? 'Resume polling' : 'Pause polling' }}</span>
-        </button>
       </div>
 
       <!--

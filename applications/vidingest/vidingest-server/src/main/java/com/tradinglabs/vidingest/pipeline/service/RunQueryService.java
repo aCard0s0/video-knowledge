@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -42,7 +43,8 @@ public class RunQueryService {
     private static final String DEFAULT_SORT = "createdAt";
 
     @Transactional(readOnly = true)
-    public Page<PipelineRun> listPipelineRunsPage(String status, Integer page, Integer size, String sortBy) {
+    public Page<PipelineRun> listPipelineRunsPage(
+            String status, Integer page, Integer size, String sortBy, OffsetDateTime createdAfter) {
         // Null-checked first: List.of() throws NPE on contains(null), and the controller default
         // only covers the HTTP path — an internal caller can still pass nothing.
         String property = sortBy != null && SORTABLE.contains(sortBy) ? sortBy : DEFAULT_SORT;
@@ -53,10 +55,9 @@ public class RunQueryService {
         int sizeValue = size != null ? Math.clamp(size, 1, 200) : 50;
         var pageable = PageRequest.of(pageValue, sizeValue, sort);
 
-        if (runStatus == null) {
-            return pipelineRunRepository.findAll(pageable);
-        }
-        return pipelineRunRepository.findByStatus(runStatus, pageable);
+        // Both filters are nullable and the repository answers all four combinations in one query,
+        // so "no status" and "no lower bound" need no branch here.
+        return pipelineRunRepository.findPage(runStatus, createdAfter, pageable);
     }
 
     @Transactional(readOnly = true)

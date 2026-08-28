@@ -256,9 +256,11 @@ describe('App shell', () => {
     const { el } = shell();
     const links = [...el.querySelectorAll('nav a')];
 
-    expect(links.length).toBe(5);
+    expect(links.length).toBe(6);
     expect(links[0].getAttribute('aria-keyshortcuts')).toBe('Alt+1');
-    expect(links[4].getAttribute('aria-keyshortcuts')).toBe('Alt+5');
+    // The rail no longer prints `01`…`06`, so the title is the only thing naming each shortcut.
+    expect(links[5].getAttribute('aria-keyshortcuts')).toBe('Alt+6');
     expect(links[0].getAttribute('title')).toBe('Ingest (Alt+1)');
+    expect(links[5].getAttribute('title')).toBe('Settings (Alt+6)');
   });
 });

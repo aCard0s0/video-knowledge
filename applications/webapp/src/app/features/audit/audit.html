@@ -1,23 +1,20 @@
-<h1 class="mono">audit</h1>
-<p class="sub prose">
-  Every phase transition across every run. Filter to <span class="mono">ITEM_FAILED</span> to see
-  what has been breaking, and which error code did it.
-</p>
-
 <vk-problem [failure]="failure()" />
 
 <section class="panel">
   <div class="panel-head filters">
     <div class="filter">
-      <label for="runId">Run id</label>
-      <!-- The placeholder shows a whole uuid because that is what `?runId` takes, and the eight
-           characters the Run column prints are not it — showing `710a9419…` here taught the form
-           that 400s. `aria-describedby` is unconditional: pointing at an element that is not in
-           the DOM yet is what makes the hint unannounced when it does appear.
+      <!-- The label moved into the box, so the placeholder carries both the field name and the
+           whole uuid: `?runId` takes nothing shorter, and the eight characters the Run column
+           prints are exactly what an operator copies — showing `710a9419…` here taught the form
+           that 400s. The `<label>` stays for the accessible name; only its pixels are gone.
 
-           `(search)` as well as `(change)`: the native clear button fires `input`/`search` and
-           defers `change` to blur, so the × emptied the box while the filtered feed and `?runId=`
-           both stayed — the control contradicting its own screen. -->
+           `aria-describedby` is unconditional: pointing at an element that is not in the DOM yet
+           is what makes the hint unannounced when it does appear.
+
+           `(input)`, so the feed follows what is being typed, and it covers the native clear
+           button too — the × fires `input` and defers `change` to blur, which used to empty the
+           box while the filtered feed and `?runId=` both stayed. -->
+      <label class="sr-only" for="runId">Run id</label>
       <input
         id="runId"
         name="runId"
@@ -25,13 +22,12 @@
         class="mono"
         autocomplete="off"
         spellcheck="false"
-        placeholder="710a9419-0f4e-4b2c-9d61-2b6f0c8a51e7"
+        placeholder="run id — 710a9419-0f4e-4b2c-9d61-2b6f0c8a51e7"
         translate="no"
         aria-describedby="runIdHint"
         [attr.aria-invalid]="runIdInvalid() || null"
         [value]="runId()"
-        (change)="set('runId', $any($event.target).value)"
-        (search)="set('runId', $any($event.target).value)"
+        (input)="setRunId($any($event.target).value)"
       />
       <p id="runIdHint" class="hint mono warn" role="status">
         @if (runIdInvalid()) {
@@ -41,9 +37,9 @@
     </div>
 
     <div class="filter">
-      <label for="eventType">Event</label>
+      <label class="sr-only" for="eventType">Event</label>
       <select id="eventType" name="eventType" [value]="eventType()" (change)="set('eventType', $any($event.target).value)">
-        <option value="">any</option>
+        <option value="">any event</option>
         @for (type of eventTypes; track type) {
           <option [value]="type">{{ type }}</option>
         }
@@ -51,9 +47,9 @@
     </div>
 
     <div class="filter">
-      <label for="status">Status</label>
+      <label class="sr-only" for="status">Status</label>
       <select id="status" name="status" [value]="status()" (change)="set('status', $any($event.target).value)">
-        <option value="">any</option>
+        <option value="">any status</option>
         @for (option of statuses; track option) {
           <option [value]="option">{{ option }}</option>
         }
@@ -61,9 +57,9 @@
     </div>
 
     <div class="filter">
-      <label for="phase">Phase</label>
+      <label class="sr-only" for="phase">Phase</label>
       <select id="phase" name="phase" [value]="phase()" (change)="set('phase', $any($event.target).value)">
-        <option value="">any</option>
+        <option value="">any phase</option>
         <!-- CREATED and DONE included: they are never lane *steps*, but ITEM_CREATED and
              ITEM_COMPLETED genuinely carry them, so filtering to one is a real question here. -->
         @for (option of phases; track option) {
@@ -73,9 +69,9 @@
     </div>
 
     <div class="filter">
-      <label for="errorCode">Error code</label>
+      <label class="sr-only" for="errorCode">Error code</label>
       <select id="errorCode" name="errorCode" [value]="errorCode()" (change)="set('errorCode', $any($event.target).value)">
-        <option value="">any</option>
+        <option value="">any error code</option>
         @for (option of errorCodes; track option) {
           <option [value]="option">{{ option }}</option>
         }
@@ -83,20 +79,21 @@
     </div>
 
     <div class="filter-pair">
-      <div class="filter">
-        <label for="from">From (local)</label>
+      <!--
+        `datetime-local` renders its own format mask, so there is no placeholder to put a label in.
+        The word sits inside the box instead, and the wrapping `<label>` is what makes it the
+        field's accessible name — From and To are otherwise two identical masks side by side.
+      -->
+      <label class="boxed">
+        <span class="tag">from</span>
         <input id="from" name="from" type="datetime-local" [value]="from()" (change)="set('from', $any($event.target).value)" />
-      </div>
+      </label>
 
-      <div class="filter">
-        <label for="to">To (local)</label>
+      <label class="boxed">
+        <span class="tag">to</span>
         <input id="to" name="to" type="datetime-local" [value]="to()" (change)="set('to', $any($event.target).value)" />
-      </div>
+      </label>
     </div>
-
-    @if (filtered()) {
-      <button class="btn-sm" type="button" (click)="clear()">Clear filters</button>
-    }
   </div>
 
   <!-- Changing a filter refetches 50 rows and moves a count in the pager, which announces nothing.
@@ -128,13 +125,14 @@
         <thead>
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
-            <th scope="col" class="num">When</th>
+            <th scope="col" class="num">Time</th>
+            <th scope="col">Run</th>
+            <th scope="col">Status</th>
             <th scope="col">Event</th>
             <th scope="col">Phase</th>
             <th scope="col" class="from">From</th>
-            <th scope="col">Status</th>
-            <th scope="col" class="num att">Attempt</th>
-            <th scope="col">Run</th>
+            <th scope="col" class="num att">Attempts</th>
+            <th scope="col">Video</th>
           </tr>
         </thead>
         <tbody>
@@ -143,21 +141,13 @@
             <!-- The clock cannot say which midnight a row is on, and this feed spans days. -->
             @if (day !== dayLabel(rows()[$index - 1]?.occurredAt)) {
               <tr class="day-row">
-                <td colspan="8" class="mono">{{ day }}</td>
+                <td colspan="9" class="mono">{{ day }}</td>
               </tr>
             }
             <tr>
               <td class="spine" [style.--spine]="statusVar(event.status)"></td>
               <!-- A clock, not an age: see the trail on the run screen, and `clockTime`. -->
               <td class="num sm" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
-              <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
-              <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
-              <td class="mono sm">{{ event.phase || '—' }}</td>
-              <!-- `previousPhase` is on ENTERED and on RETRY_REQUESTED, and on the latter it is the
-                   only phase the event names — dropping it left those rows naming no phase at all. -->
-              <td class="mono sm muted from">{{ event.previousPhase || '—' }}</td>
-              <td><vk-status [status]="event.status" /></td>
-              <td class="num att">{{ event.attempt }}</td>
               <td class="mono sm">
                 <!-- `?item` so the run screen opens on the item this event belongs to: without it a
                      100-URL run lands the operator on a list to search. No `?phase` — that filters
@@ -168,8 +158,22 @@
                   [title]="event.runId"
                   >{{ event.runId?.slice(0, 8) }}</a
                 >
+              </td>
+              <td><vk-status [status]="event.status" /></td>
+              <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
+              <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
+              <td class="mono sm">{{ event.phase || '—' }}</td>
+              <!-- `previousPhase` is on ENTERED and on RETRY_REQUESTED, and on the latter it is the
+                   only phase the event names — dropping it left those rows naming no phase at all. -->
+              <td class="mono sm muted from">{{ event.previousPhase || '—' }}</td>
+              <td class="num att">{{ event.attempt }}</td>
+              <!-- Its own column now rather than a tail on the run cell: an event that has no video
+                   left that cell reading as one link with a stray separator. -->
+              <td class="mono sm">
                 @if (event.videoId) {
-                  · <a [routerLink]="['/videos', event.videoId]">video</a>
+                  <a [routerLink]="['/videos', event.videoId]">video</a>
+                } @else {
+                  <span class="muted">—</span>
                 }
               </td>
             </tr>
@@ -178,7 +182,7 @@
             @if (!blank(event.errorCode) || !blank(event.error)) {
               <tr class="fault-row">
                 <td class="spine" [style.--spine]="statusVar(event.status)"></td>
-                <td colspan="7">
+                <td colspan="8">
                   <vk-fault
                     [errorCode]="event.errorCode"
                     [error]="event.error"

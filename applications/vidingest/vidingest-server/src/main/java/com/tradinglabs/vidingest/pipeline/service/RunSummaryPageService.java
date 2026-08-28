@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,8 +25,10 @@ public class RunSummaryPageService {
     private final RunSummaryMapper runSummaryMapper;
 
     @Transactional(readOnly = true)
-    public PageResponse<RunSummary> list(String status, Integer page, Integer size, String sortBy) {
-        Page<PipelineRun> pageResult = runQueryService.listPipelineRunsPage(status, page, size, sortBy);
+    public PageResponse<RunSummary> list(
+            String status, Integer page, Integer size, String sortBy, OffsetDateTime createdAfter) {
+        Page<PipelineRun> pageResult =
+                runQueryService.listPipelineRunsPage(status, page, size, sortBy, createdAfter);
 
         List<PipelineRun> runs = pageResult.getContent();
         List<UUID> runIds = runs.stream()

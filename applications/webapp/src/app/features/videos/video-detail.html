@@ -362,8 +362,15 @@
                     <td class="num">{{ speaker.segmentCount }}</td>
                     <td>
                       <span class="row-actions">
-                        <button class="btn-sm" type="button" [disabled]="renaming() === speaker.id" (click)="rename(speaker, nameInput.value)">
-                          {{ renaming() === speaker.id ? 'Saving…' : 'Save name' }}
+                        <button
+                          class="btn-sm icon-btn"
+                          type="button"
+                          [disabled]="renaming() === speaker.id"
+                          [title]="renaming() === speaker.id ? 'Saving…' : 'Save name'"
+                          (click)="rename(speaker, nameInput.value)"
+                        >
+                          <vk-icon name="check" />
+                          <span class="sr-only">{{ renaming() === speaker.id ? 'Saving…' : 'Save name' }}</span>
                         </button>
                       </span>
                     </td>

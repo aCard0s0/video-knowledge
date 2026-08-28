@@ -1,175 +1,247 @@
-<h1 class="mono">ingest</h1>
-<p class="prose sub">
-  One URL per line, up to {{ maxUrls }} per run. Anything yt-dlp can fetch works — the pipeline
-  reads metadata, downloads, and then runs the phases you leave enabled below.
-</p>
-
 <vk-problem [failure]="failure()" />
 
-<div class="split">
-  <form class="panel form" [formGroup]="form" (ngSubmit)="submit()">
-    <div class="field">
-      <label for="urls">Source URLs</label>
-      <!--
-        Ctrl/Cmd+Enter submits. Enter has to keep inserting a newline in a box whose whole point is
-        one URL per line, so without a shortcut the only way to fire a paste from the keyboard was
-        seven tabs through the phase chips.
-      -->
-      <textarea
-        id="urls"
-        rows="8"
-        spellcheck="false"
-        autocomplete="off"
-        aria-describedby="url-counts"
-        placeholder="https://www.youtube.com/watch?v=…"
-        formControlName="urls"
-        (keydown.control.enter)="submit()"
-        (keydown.meta.enter)="submit()"
-      ></textarea>
+<form class="panel form" [formGroup]="form" (ngSubmit)="submit()">
+  <div class="field">
+    <!-- The label rides in the placeholder; it stays in the DOM as `sr-only` because a placeholder
+         is not an accessible name, and it leaves the moment there is a value. -->
+    <label class="sr-only" for="urls">Source URLs</label>
+    <!--
+      Ctrl/Cmd+Enter submits. Enter has to keep inserting a newline in a box whose whole point is
+      one URL per line, so without a shortcut the only way to fire a paste from the keyboard was
+      seven tabs through the phase chips.
+    -->
+    <textarea
+      id="urls"
+      rows="8"
+      spellcheck="false"
+      autocomplete="off"
+      aria-describedby="url-counts"
+      placeholder="source URLs, one per line — https://www.youtube.com/watch?v=…"
+      formControlName="urls"
+      (keydown.control.enter)="submit()"
+      (keydown.meta.enter)="submit()"
+    ></textarea>
 
-      <!--
-        Not aria-live: this changes on every keystroke, and a live region would read the whole
-        line back each time. aria-describedby puts it on the field, where a screen reader reaches
-        it on focus and on demand.
-      -->
-      <p id="url-counts" class="counts mono" [class.warn]="hasDiscards()">
-        {{ parsed().valid.length }} URL(s) ready
-        @if (parsed().duplicates > 0) {
-          · {{ parsed().duplicates }} duplicate(s) dropped
-        }
-        @if (parsed().invalid.length) {
-          · {{ parsed().invalid.length }} line(s) are not http(s) and will be left out
-        }
-        @if (tooMany()) {
-          · over the {{ maxUrls }}-URL limit for one run
-        }
-      </p>
-    </div>
+    <!--
+      Not aria-live: this changes on every keystroke, and a live region would read the whole
+      line back each time. aria-describedby puts it on the field, where a screen reader reaches
+      it on focus and on demand.
+    -->
+    <p id="url-counts" class="counts mono" [class.warn]="hasDiscards()">
+      {{ parsed().valid.length }} URL(s) ready
+      @if (parsed().duplicates > 0) {
+        · {{ parsed().duplicates }} duplicate(s) dropped
+      }
+      @if (parsed().invalid.length) {
+        · {{ parsed().invalid.length }} line(s) are not http(s) and will be left out
+      }
+      @if (tooMany()) {
+        · over the {{ maxUrls }}-URL limit for one run
+      }
+    </p>
+  </div>
 
-    <div class="field">
-      <vk-phase-picker [(skipped)]="skipped" />
-    </div>
+  <div class="field">
+    <vk-phase-picker [(skipped)]="skipped" />
+  </div>
 
-    <div class="actions">
-      <button class="btn-primary" type="submit" [disabled]="!canSubmit()">
-        {{ submitting() ? 'Starting…' : 'Ingest ' + parsed().valid.length + ' URL(s)' }}
-      </button>
-      <span class="hint mono muted">or ⌘/Ctrl + Enter</span>
-    </div>
+  <div class="actions">
+    <button class="btn-primary" type="submit" [disabled]="!canSubmit()">
+      {{ submitting() ? 'Starting…' : 'Ingest ' + parsed().valid.length + ' URL(s)' }}
+    </button>
+    <span class="hint mono muted">or ⌘/Ctrl + Enter</span>
+  </div>
 
-    @if (rejected().length) {
-      <div class="rejects" aria-live="polite">
-        <table class="grid" translate="no">
-          <caption class="eyebrow">
-            did not start — fix these and submit again
-          </caption>
-          <thead>
+  @if (rejected().length) {
+    <div class="rejects" aria-live="polite">
+      <table class="grid" translate="no">
+        <caption class="eyebrow">
+          did not start — fix these and submit again
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">URL</th>
+            <th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of rejected(); track item.url) {
             <tr>
-              <th scope="col">URL</th>
-              <th scope="col">Reason</th>
+              <td class="mono truncate" [title]="item.url">{{ shortUrl(item.url) }}</td>
+              <td class="reason">{{ item.reason }}</td>
             </tr>
-          </thead>
-          <tbody>
-            @for (item of rejected(); track item.url) {
-              <tr>
-                <td class="mono truncate" [title]="item.url">{{ shortUrl(item.url) }}</td>
-                <td class="reason">{{ item.reason }}</td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-    }
-  </form>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</form>
 
-  <!--
-    The run you just started, advancing in place. Same lane component as the run screen, so what
-    you learn to read here is what you read when something breaks. `tabindex="-1"` so a finished
-    submit can put the keyboard here — the submit button disables itself and the browser would
-    otherwise drop focus to <body>.
-  -->
-  <section class="panel watch" #watchPanel tabindex="-1">
-    @if (watched(); as run) {
-      <div class="panel-head">
-        <span class="eyebrow">{{ headline() }}</span>
-        <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
-      </div>
+<!--
+  The run you just started, advancing in place. Same lane component as the run screen, so what
+  you learn to read here is what you read when something breaks. `tabindex="-1"` so a finished
+  submit can put the keyboard here — the submit button disables itself and the browser would
+  otherwise drop focus to <body>.
+-->
+<section class="panel watch" #watchPanel tabindex="-1">
+  @if (watched(); as run) {
+    <div class="panel-head">
+      <span class="eyebrow">{{ headline() }}</span>
+      <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
+    </div>
 
-      <p class="watch-meta mono sm" aria-live="polite">
-        <vk-status [status]="run.status" />
-        <span class="muted">· {{ watchedItems().length }} item(s) ·
-          <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
-        @if (canRetry() || retrying()) {
+    <p class="watch-meta mono sm" aria-live="polite">
+      <vk-status [status]="run.status" />
+      <span class="muted">· {{ watchedItems().length }} item(s) ·
+        <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
+      @if (canRetry() || retrying()) {
+        <!--
+          Diagnosing a failure and fixing it happen on the same screen. Without this the operator
+          read the phase and the errorCode here, then navigated to the run screen to press the
+          button — and the run screen is where they already were, one screen ago.
+        -->
+        <button class="btn-sm retry" type="button" [disabled]="!canRetry()" (click)="retry()">
+          {{ retrying() ? 'Retrying…' : 'Retry run' }}
+        </button>
+      }
+    </p>
+
+    <vk-rejects [items]="retryRejects()" />
+
+    <ul class="watch-items">
+      @for (item of watchedItems(); track item.itemId) {
+        <li>
+          <div class="watch-item-head">
+            <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
+            <span class="url" [title]="label(item.videoTitle, item.url)">
+              @if (!blank(item.channelName)) {
+                <a class="channel" routerLink="/videos" [queryParams]="{ channel: item.channelName }">{{ item.channelName }}</a> -
+              }
+              {{ label(item.videoTitle, item.url) }}
+            </span>
+            <vk-status [status]="item.status" />
+          </div>
           <!--
-            Diagnosing a failure and fixing it happen on the same screen. Without this the operator
-            read the phase and the errorCode here, then navigated to the run screen to press the
-            button — and the run screen is where they already were, one screen ago.
+            `status` is what tells the lane an item stopped before phase one: with it absent the
+            lane cannot distinguish "reaped while queued" from "finished", and announced a FAILED
+            item as complete. The run screen has always passed it.
+
+            A segment opens the run screen with the trail filtered to that phase. Unwired, these
+            were focusable buttons that did nothing — ten per completed item.
           -->
-          <button class="btn-sm retry" type="button" [disabled]="!canRetry()" (click)="retry()">
-            {{ retrying() ? 'Retrying…' : 'Retry run' }}
-          </button>
+          <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="openPhase(item, $event)" />
+          <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+        </li>
+      }
+    </ul>
+  } @else {
+    <div class="panel-head">
+      <!-- Chips, not a `<select>`: three ranges, and the one you want is one press away. Same row
+           the videos and runs boards use, for the same reason. -->
+      <div class="filters">
+        <div class="chips" role="group" aria-label="Filter runs by when they started">
+          @for (option of ranges; track option) {
+            <button
+              class="chip mono"
+              type="button"
+              [class.on]="range() === option"
+              [attr.aria-pressed]="range() === option"
+              (click)="range.set(option)"
+            >
+              {{ option }}
+            </button>
+          }
+        </div>
+        <span class="eyebrow">{{ recentRuns().length }} run(s)</span>
+      </div>
+      <a class="mono sm" routerLink="/runs">all runs →</a>
+    </div>
+
+    <!--
+      The empty state waits for the resource to hold a value: `recentRuns()` is `[]` while the
+      list is loading *and* while it has errored. A "Loading…" line here would be no better —
+      on an error it never resolves, which is the trap the run screen was pulled out of in #13.
+      Loading and errored both render nothing; the panel above is the answer.
+    -->
+    @if (recent.hasValue() && recentRuns().length === 0) {
+      <p class="quiet muted">
+        @if (range() === 'all') {
+          Nothing ingested yet. The run you start appears here and keeps advancing.
+        } @else {
+          Nothing started {{ range() === 'today' ? 'today' : 'this week' }}. Widen the range, or start a run above.
         }
       </p>
-
-      <vk-rejects [items]="retryRejects()" />
-
-      <ul class="watch-items">
-        @for (item of watchedItems(); track item.itemId) {
+    } @else if (recentRuns().length) {
+      <ul class="recent">
+        @for (run of recentRuns(); track run.id) {
           <li>
-            <div class="watch-item-head">
-              <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
-              <span class="url" [title]="item.url">{{ label(item.videoTitle, item.url) }}</span>
-              <vk-status [status]="item.status" />
-            </div>
             <!--
-              `status` is what tells the lane an item stopped before phase one: with it absent the
-              lane cannot distinguish "reaped while queued" from "finished", and announced a FAILED
-              item as complete. The run screen has always passed it.
+              The row opens the run. The error code is the one thing in it that does not: it opens
+              the message it names, in place, because that message is free text whose tail is what
+              separates one yt-dlp failure from the next — and a row that navigated on the way to
+              reading it would take the reader off the screen they are triaging on.
 
-              A segment opens the run screen with the trail filtered to that phase. Unwired, these
-              were focusable buttons that did nothing — ten per completed item.
+              `closest('a, button')` is what keeps the two apart: everything in the row that is
+              already a control keeps its own click, and the rest of the row is the link.
             -->
-            <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="openPhase(item, $event)" />
-            <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
+            <div class="row" (click)="openRun(run, $event)">
+              <span class="spine-dot" [style.background]="statusVar(run.status)" aria-hidden="true"></span>
+              <a class="mono sm" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
+              <!--
+                The status was a 3px coloured bar and nothing else — aria-hidden, so five FAILED
+                runs read to a screen reader as five unremarkable rows, and to anyone else as
+                five rows distinguishable only by hue. Beside the id, where the state of the thing
+                the id names is what the eye is already on.
+              -->
+              <vk-status [status]="run.status" />
+              <!-- `errorCode` is on every RunSummary and never used to be rendered. -->
+              <vk-error-code
+                [code]="run.errorCode"
+                [cancelled]="run.status === 'CANCELLED'"
+                [open]="disclosure.isOpen(run.id)"
+                [controls]="'msg-' + run.id"
+                (toggled)="disclosure.toggle(run.id)"
+              />
+              <!--
+                Channel and title in tracks of their own, not one caption: sharing a cell made the
+                title start wherever the channel happened to end, so no two rows lined up and the
+                column could not be read down. They are links to different places — the channel to
+                `/videos?channel=`, which answers "what else came from here", and the title to the
+                video itself.
+              -->
+              <span class="channel ellipsis sm">
+                @if (blank(run.channelName)) {
+                  <span class="muted">—</span>
+                } @else {
+                  <a routerLink="/videos" [queryParams]="{ channel: run.channelName }" [title]="run.channelName">{{
+                    run.channelName
+                  }}</a>
+                }
+              </span>
+              <!-- `videoId` is `""` until PERSIST has run, and a link to nothing is worse than
+                   text — a queued run's title is not a destination yet. -->
+              <span class="url" [title]="label(run.videoTitle, run.videoUrl)">
+                @if (blank(run.videoId)) {
+                  {{ label(run.videoTitle, run.videoUrl) }}
+                } @else {
+                  <a [routerLink]="['/videos', run.videoId]">{{ label(run.videoTitle, run.videoUrl) }}</a>
+                }
+              </span>
+              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span>
+            </div>
+            @if (disclosure.isOpen(run.id)) {
+              <p class="msg mono sm" [id]="'msg-' + run.id">{{ run.error || 'No message recorded.' }}</p>
+            }
           </li>
         }
       </ul>
-    } @else {
-      <div class="panel-head">
-        <span class="eyebrow">last five runs</span>
-        <a class="mono sm" routerLink="/runs">all runs →</a>
-      </div>
 
-      <!--
-        The empty state waits for the resource to hold a value: `recentRuns()` is `[]` while the
-        list is loading *and* while it has errored. A "Loading…" line here would be no better —
-        on an error it never resolves, which is the trap the run screen was pulled out of in #13.
-        Loading and errored both render nothing; the panel above is the answer.
-      -->
-      @if (recent.hasValue() && recentRuns().length === 0) {
-        <p class="quiet muted">Nothing ingested yet. The run you start appears here and keeps advancing.</p>
-      } @else if (recentRuns().length) {
-        <ul class="recent">
-          @for (run of recentRuns(); track run.id) {
-            <li>
-              <span class="spine-dot" [style.background]="statusVar(run.status)" aria-hidden="true"></span>
-              <a class="mono sm" [routerLink]="['/runs', run.id]">{{ run.id?.slice(0, 8) }}</a>
-              <span class="url" [title]="run.videoTitle || run.videoUrl">{{ label(run.videoTitle, run.videoUrl) }}</span>
-              <!--
-                The status was a 3px coloured bar and nothing else — aria-hidden, so five FAILED
-                runs read to a screen reader as five unremarkable rows, and to anyone else as five
-                rows distinguishable only by hue.
-              -->
-              <vk-status [status]="run.status" />
-              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span>
-              <!-- `errorCode` and `error` are on every RunSummary and neither was ever rendered. -->
-              @if (!blank(run.errorCode) || !blank(run.error)) {
-                <vk-fault class="recent-fault" [errorCode]="run.errorCode" [error]="run.error" />
-              }
-            </li>
-          }
-        </ul>
+      <!-- The page is capped at 200; a cap that says nothing reads as "that is all of them". -->
+      @if (truncated()) {
+        <p class="quiet muted">
+          Showing the newest {{ recentRuns().length }} — the runs board has the rest.
+        </p>
       }
     }
-  </section>
-</div>
+  }
+</section>

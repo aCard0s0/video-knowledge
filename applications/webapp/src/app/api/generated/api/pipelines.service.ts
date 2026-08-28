@@ -396,14 +396,15 @@ export class PipelinesService extends BaseService {
      * @param ids 
      * @param live 
      * @param sortBy Column to order by, newest first. &#x60;createdAt&#x60; (default) or &#x60;updatedAt&#x60;; anything else falls back to the default.
+     * @param createdAfter Only runs created at or after this instant, e.g. &#x60;2026-08-28T00:00:00+01:00&#x60;. Send an offset: which midnight \&quot;today\&quot; starts at is the caller\&#39;s business, not the server\&#39;s.
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PageResponseRunSummary>;
-    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PageResponseRunSummary>>;
-    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PageResponseRunSummary>>;
-    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, createdAfter?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<PageResponseRunSummary>;
+    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, createdAfter?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<PageResponseRunSummary>>;
+    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, createdAfter?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<PageResponseRunSummary>>;
+    public listRuns(status?: string, page?: number, size?: number, ids?: Array<string>, live?: boolean, sortBy?: string, createdAfter?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
 
         let localVarQueryParameters = new OpenApiHttpParams(this.encoder);
 
@@ -456,6 +457,15 @@ export class PipelinesService extends BaseService {
             localVarQueryParameters,
             'sortBy',
             <any>sortBy,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'createdAfter',
+            <any>createdAfter,
             QueryParamStyle.Form,
             true,
         );

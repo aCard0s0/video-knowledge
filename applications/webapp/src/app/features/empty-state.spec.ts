@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuditService, PipelinesService, VideosService, YoutubeService } from '../api/generated';
 import { Audit } from './audit/audit';
@@ -72,9 +72,13 @@ describe('list screens: the empty state is not a failed load', () => {
     const el = screen(SCREENS[0], () => of(PAGE));
     expect(el.querySelector('vk-empty')!.textContent).toContain('No videos ingested yet');
 
+    // The box filters as it is typed, one pause at a time — `input`, then the pause.
+    vi.useFakeTimers();
     const input = el.querySelector<HTMLInputElement>('#channel')!;
     input.value = 'comp';
-    input.dispatchEvent(new Event('change'));
+    input.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(250);
+    vi.useRealTimers();
     TestBed.tick();
 
     const empty = el.querySelector('vk-empty')!;

@@ -1,6 +1,3 @@
-<h1 class="mono">videos</h1>
-<p class="sub prose">Everything the pipeline has persisted. Deleting a video removes its transcript, frames and knowledge with it.</p>
-
 <vk-problem [failure]="failure()" />
 <!-- Present even when empty, so it is a region a screen reader can announce into rather than one
      that appears with its text already in place. A deleted row leaves the table, and a row silently
@@ -30,18 +27,17 @@
       </div>
 
       <label class="sr-only" for="channel">Channel</label>
-      <!-- `(search)` as well as `(change)`: the native clear button on a search input fires `input`
-           and `search`, and defers `change` to blur — so clicking the × emptied the box while the
-           filtered rows and `?channel=` stayed, the control contradicting its own screen. -->
+      <!-- `(input)`, so the rows follow what is being typed. It covers the native clear button too:
+           the × fires `input` and defers `change` to blur, which used to empty the box while the
+           filtered rows and `?channel=` both stayed — the control contradicting its own screen. -->
       <input
         id="channel"
         type="search"
-        placeholder="Channel name, e.g. LuxAlgo…"
+        placeholder="channel name, e.g. LuxAlgo…"
         autocomplete="off"
         spellcheck="false"
         [value]="channel()"
-        (change)="setChannel($any($event.target).value)"
-        (search)="setChannel($any($event.target).value)"
+        (input)="setChannelLive($any($event.target).value)"
       />
     </div>
     <span class="eyebrow">{{ total() }} total</span>
@@ -77,6 +73,7 @@
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
             <th scope="col">Status</th>
+            <th scope="col" class="hide-sm">Run</th>
             <th scope="col">Title</th>
             <!-- Drawn only when it says something: under a channel filter every row repeats the
                  filter's own value, which is the widest column on the screen saying nothing. -->
@@ -84,7 +81,6 @@
               <th scope="col" class="hide-sm">Channel</th>
             }
             <th scope="col" class="hide-sm">Source</th>
-            <th scope="col" class="hide-sm">Run</th>
             <th scope="col" class="num">Ingested</th>
             <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
           </tr>
@@ -94,6 +90,17 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(video.status)"></td>
               <td><vk-status [status]="video.status" /></td>
+              <!-- A FAILED video used to dead-end here: the reason it failed lives on the run
+                   (`error`, `errorCode`) and on its item (`failedPhase`), none of which is on a
+                   `VideoSummary` — but `pipelineId` is, and was rendered nowhere. `""` when the run
+                   row is gone (`ON DELETE SET NULL`), which is a dash and not a link to nothing. -->
+              <td class="mono sm hide-sm">
+                @if (blank(video.pipelineId)) {
+                  <span class="muted">—</span>
+                } @else {
+                  <a class="cell-link" [routerLink]="['/runs', video.pipelineId]">{{ video.pipelineId?.slice(0, 8) }}</a>
+                }
+              </td>
               <!-- `.cell-link` is what makes `.truncate` work here at all — see styles.scss. -->
               <td>
                 <a class="cell-link truncate" [routerLink]="['/videos', video.id]" [title]="video.title">
@@ -106,17 +113,6 @@
               <!-- Both halves go through `blank()`: `""` is how this API says absent, and an
                    unguarded pair renders a bare "/seed0001". -->
               <td class="mono sm muted hide-sm">{{ sourceLabel(video) }}</td>
-              <!-- A FAILED video used to dead-end here: the reason it failed lives on the run
-                   (`error`, `errorCode`) and on its item (`failedPhase`), none of which is on a
-                   `VideoSummary` — but `pipelineId` is, and was rendered nowhere. `""` when the run
-                   row is gone (`ON DELETE SET NULL`), which is a dash and not a link to nothing. -->
-              <td class="mono sm hide-sm">
-                @if (blank(video.pipelineId)) {
-                  <span class="muted">—</span>
-                } @else {
-                  <a class="cell-link" [routerLink]="['/runs', video.pipelineId]">{{ video.pipelineId?.slice(0, 8) }}</a>
-                }
-              </td>
               <td class="num sm" [title]="absoluteTime(video.createdAt)">{{ age(video.createdAt) }}</td>
               <td class="stick">
                 <span class="row-actions">
@@ -129,16 +125,30 @@
                     repeat press instead.
                   -->
                   <button
-                    class="btn-sm"
+                    class="btn-sm icon-btn"
                     type="button"
                     [class.btn-danger]="armed() === video.id"
                     [attr.aria-disabled]="deleting() ? 'true' : null"
+                    [title]="armed() === video.id ? (deleting() ? 'Deleting…' : 'Confirm delete') : 'Delete'"
                     (click)="remove(video)"
                   >
-                    {{ armed() === video.id ? (deleting() ? 'Deleting…' : 'Confirm delete') : 'Delete' }}
+                    <!-- The icons carry their name in `title` *and* in a hidden span: a `title`
+                         alone is a tooltip no touch device and no screen reader is obliged to read. -->
+                    <vk-icon [name]="armed() === video.id ? 'check' : 'trash'" />
+                    <span class="sr-only">
+                      {{ armed() === video.id ? (deleting() ? 'Deleting…' : 'Confirm delete') : 'Delete' }}
+                    </span>
                   </button>
                   @if (armed() === video.id) {
-                    <button class="btn-sm" type="button" (click)="armed.set(null); said.set('')">Keep</button>
+                    <button
+                      class="btn-sm icon-btn"
+                      type="button"
+                      title="Keep the video"
+                      (click)="armed.set(null); said.set('')"
+                    >
+                      <vk-icon name="close" />
+                      <span class="sr-only">Keep the video</span>
+                    </button>
                   }
                 </span>
               </td>

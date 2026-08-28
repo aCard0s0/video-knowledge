@@ -16,7 +16,7 @@
           <span class="muted">(newest {{ limit }} only)</span>
         }
         · synced
-        <span [title]="absoluteTime(ch.lastSyncSuccessAt)">{{ ch.lastSyncSuccessAt ? age(ch.lastSyncSuccessAt) : 'never' }}</span>
+        <span [title]="absoluteTime(ch.lastSyncSuccessAt)">{{ ch.lastSyncSuccessAt ? syncAge(ch.lastSyncSuccessAt) : 'never' }}</span>
       </p>
     </div>
     <div class="head-actions">

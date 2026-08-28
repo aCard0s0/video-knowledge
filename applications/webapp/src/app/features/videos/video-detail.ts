@@ -29,6 +29,7 @@ import { API_V1 } from '../../core/api-base';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
+import { Icon } from '../../ui/icon';
 import { Problem } from '../../ui/problem';
 import { syncQueryParams } from '../../core/url-state';
 
@@ -43,7 +44,7 @@ const FUSED_SIZE = 50;
 
 @Component({
   selector: 'vk-video-detail',
-  imports: [RouterLink, StatusBadge, Pager, Empty, Problem],
+  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, Icon],
   templateUrl: './video-detail.html',
   styleUrl: './video-detail.scss',
 })

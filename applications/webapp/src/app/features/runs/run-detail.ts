@@ -27,13 +27,15 @@ import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Lane } from '../../ui/lane';
 import { Fault } from '../../ui/fault';
+import { ErrorCode } from '../../ui/error-code';
+import { rowDisclosure } from '../../core/disclosure';
 import { Problem } from '../../ui/problem';
 import { Rejects } from '../../ui/rejects';
 import { PhasePicker } from '../../ui/phase-picker';
 
 @Component({
   selector: 'vk-run-detail',
-  imports: [RouterLink, StatusBadge, Lane, Fault, Problem, PhasePicker, Rejects],
+  imports: [RouterLink, StatusBadge, Lane, Fault, Problem, PhasePicker, Rejects, ErrorCode],
   templateUrl: './run-detail.html',
   styleUrl: './run-detail.scss',
 })
@@ -162,6 +164,9 @@ export class RunDetail {
   protected readonly clockTime = clockTime;
   protected readonly humanDuration = humanDuration;
   protected readonly blank = blank;
+
+  /** Which trail row has its message open. See `core/disclosure.ts`. */
+  protected readonly disclosure = rowDisclosure();
 
   /**
    * Measured lane time, or — for an item that never entered a phase — how long it sat before it

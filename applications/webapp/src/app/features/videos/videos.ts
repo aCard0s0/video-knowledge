@@ -8,10 +8,12 @@ import { absoluteTime, humanAge } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
+import { debouncedWrite } from '../../core/debounce';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
+import { Icon } from '../../ui/icon';
 import { Problem } from '../../ui/problem';
 
 const PAGE_SIZE = 25;
@@ -33,7 +35,7 @@ function focusNeighbourRow(): void {
 
 @Component({
   selector: 'vk-videos',
-  imports: [RouterLink, StatusBadge, Pager, Empty, Problem],
+  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, Icon],
   templateUrl: './videos.html',
   styleUrl: './videos.scss',
 })
@@ -44,6 +46,8 @@ export class Videos {
   protected readonly statuses = ['ALL', ...VIDEO_STATUSES];
   protected readonly status = signal('ALL');
   protected readonly channel = signal('');
+  /** The box filters as it is typed; the write waits for a pause. See `core/debounce.ts`. */
+  protected readonly setChannelLive = debouncedWrite((value: string) => this.setChannel(value));
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
 

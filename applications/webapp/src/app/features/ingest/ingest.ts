@@ -25,8 +25,13 @@ import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/prob
 import { Problem } from '../../ui/problem';
 import { PhasePicker } from '../../ui/phase-picker';
 import { Rejects } from '../../ui/rejects';
+import { ErrorCode } from '../../ui/error-code';
+import { rowDisclosure } from '../../core/disclosure';
 
 const MAX_URLS = 100; // CreatePipelineRunRequest: @Size(max = 100)
+const RECENT_SIZE = 50; // one screenful of a range the server now bounds; 200 is the API ceiling
+const RANGES = ['today', 'week', 'all'] as const;
+type RunRange = (typeof RANGES)[number];
 const HTTP_URL = /^https?:\/\//i;
 
 /** The REJECTED items out of either response shape (202 retry, 200 create, 400 create). */
@@ -80,6 +85,7 @@ export function parseUrls(raw: string): { valid: string[]; invalid: string[]; du
     Fault,
     StatusBadge,
     Rejects,
+    ErrorCode,
   ],
   templateUrl: './ingest.html',
   styleUrl: './ingest.scss',
@@ -141,18 +147,67 @@ export class Ingest {
    */
   private readonly watch = watchRun(() => this.runId() || undefined);
 
-  /** When nothing has been started yet, the column shows what was started last instead of nothing. */
-  protected readonly recent = rxResource({ stream: () => this.pipelines.listRuns('ALL', 0, 5) });
+  protected readonly ranges = RANGES;
+  protected readonly range = signal<RunRange>('today');
+
+  /**
+   * Local midnight, not "24 hours ago": a boundary that slides with the clock moves runs out of
+   * "today" while the operator is reading them.
+   *
+   * Reading `poller.now()` inside a `computed` is safe even though this feeds a request: the value
+   * it returns is the same ISO string on every tick, so signal equality stops the change there and
+   * the resource's params never move until the day does.
+   */
+  private readonly since = computed(() => {
+    const range = this.range();
+    if (range === 'all') return undefined;
+    const start = new Date(this.poller.now());
+    start.setHours(0, 0, 0, 0);
+    if (range === 'week') start.setDate(start.getDate() - 6);
+    return start.toISOString();
+  });
+
+  /**
+   * When nothing has been started yet, the panel shows what has been started instead of nothing.
+   *
+   * The range is the *server's* now, via `?createdAfter=`: it used to be a client-side cut of one
+   * 200-row page, which is a range only while every run fits in that page and silently a window
+   * past it. The instant carries an offset because which midnight "today" starts at is this
+   * screen's business and not the server's.
+   */
+  protected readonly recent = rxResource({
+    params: () => ({ since: this.since() }),
+    stream: ({ params }) =>
+      this.pipelines.listRuns('ALL', 0, RECENT_SIZE, undefined, undefined, undefined, params.since),
+  });
 
   protected readonly watched = this.watch.detail;
   protected readonly watchedItems = this.watch.items;
   protected readonly lane = this.watch.lane;
   protected readonly recentRuns = computed(() => valueOf(this.recent)?.items ?? []);
 
+  /**
+   * Whether the range holds runs this page did not carry — `total` is now the count of the *range*
+   * rather than of the table, so this is one comparison instead of an inference from the oldest row
+   * in hand. Still worth saying: a cap that says nothing reads as "that is all of them".
+   */
+  protected readonly truncated = computed(
+    () => (valueOf(this.recent)?.total ?? 0) > this.recentRuns().length,
+  );
+
   protected readonly statusVar = statusVar;
   protected readonly blank = blank;
   protected readonly shortUrl = shortUrl;
   protected readonly absoluteTime = absoluteTime;
+
+  /** Which recent row has its message open. See `core/disclosure.ts`. */
+  protected readonly disclosure = rowDisclosure();
+
+  /** The row is the link to the run; anything in it that is already a control keeps its own click. */
+  protected openRun(run: { id?: string }, event: Event): void {
+    if ((event.target as HTMLElement).closest('a, button')) return;
+    if (run.id) void this.router.navigate(['/runs', run.id]);
+  }
 
   protected age(value: string | undefined): string {
     return humanAge(value, this.poller.now());
@@ -162,6 +217,7 @@ export class Ingest {
   protected label(title: string | undefined, url: string | undefined): string {
     return blank(title) ? shortUrl(url) : title!;
   }
+
 
   protected readonly accepted = computed(
     () => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? [],

@@ -17,19 +17,59 @@
   gap: var(--space-md);
 }
 
-.filter label {
-  margin-bottom: var(--space-xs);
-}
-
+// Transparent, so the row of controls reads as one bar rather than seven boxes floating on the
+// panel. The border is what says "control"; the fill was only ever repeating the panel behind it.
 .filter input,
 .filter select {
   font-size: var(--fs-sm);
   padding: 4px 8px;
+  background: transparent;
+}
+
+// Firefox hands the popup the select's own background, so transparent options land unreadable on
+// the UA's white list in dark mode. Only the closed control is meant to disappear.
+.filter option {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+// The label that could not be a placeholder, inside the box with the control it names.
+//
+// The box takes no padding of its own — only the left gutter the word needs. Padding on both the
+// box *and* the input inside it made this pair some 8px taller than the selects beside it and put a
+// visible gap between "from" and the mask it labels, so the one row read as two heights.
+.boxed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 0 var(--space-sm);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+
+  &:hover {
+    border-color: var(--border-hover);
+  }
+
+  .tag {
+    font-size: var(--fs-xs);
+    color: var(--fg-muted);
+  }
+
+  input {
+    border: 0;
+    background: transparent;
+    padding: 4px 8px 4px 0;
+    font-size: var(--fs-sm);
+  }
 }
 
 .filter input[type='search'] {
-  // A whole uuid is 36 characters, and the placeholder is the format the field actually takes.
-  width: 37ch;
+  // The placeholder is now the field's name *and* the format it takes — "run id — " plus a whole
+  // 36-character uuid, 45 in all. At the old 37ch it clipped to `…-9d61…`, which is the truncated
+  // id the placeholder exists to stop anyone pasting.
+  width: 46ch;
+  max-width: 100%;
 }
 
 // Reserves nothing: the hint is a `role="status"` region that is always in the DOM, so an empty one

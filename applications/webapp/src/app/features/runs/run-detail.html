@@ -148,32 +148,46 @@
         <table class="grid" translate="no">
           <thead>
             <tr>
-              <th scope="col">When</th>
-              <th scope="col" class="num">Gap</th>
+              <th scope="col" class="st">Status</th>
+              <th scope="col" class="err-col"><span class="sr-only">Error</span></th>
               <th scope="col">Event</th>
               <th scope="col">Phase</th>
               <th scope="col" class="from">From</th>
-              <th scope="col" class="st">Status</th>
+              <th scope="col" class="num">Gap</th>
+              <th scope="col">When</th>
             </tr>
           </thead>
           <tbody>
             @for (event of timeline(); track event.id; let i = $index) {
               <tr>
-                <td class="mono sm when" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
-                <td class="num sm muted">{{ gap(event, i) }}</td>
+                <td class="st"><vk-status [status]="event.status" /></td>
+                <!-- The code in a column beside the status it qualifies, and it is what opens the
+                     message: as a row of its own that message took the width under every event that
+                     had one, and most of this trail has nothing to say there. -->
+                <td class="err-col">
+                  <vk-error-code
+                    [code]="event.errorCode || (blank(event.error) ? '' : 'no code')"
+                    [cancelled]="event.status === 'CANCELLED'"
+                    [open]="disclosure.isOpen(event.id)"
+                    [controls]="'evt-' + event.id"
+                    (toggled)="disclosure.toggle(event.id)"
+                  />
+                </td>
                 <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
                 <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
                 <td class="mono sm">{{ event.phase || '—' }}</td>
                 <td class="mono sm muted from">{{ event.previousPhase || '—' }}</td>
-                <td class="st"><vk-status [status]="event.status" /></td>
+                <td class="num sm muted">{{ gap(event, i) }}</td>
+                <td class="mono sm when" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
               </tr>
               <!-- Under the row, not in a seventh column: as a column the message is squeezed on a
                    desktop and past the right edge of a phone, and every event without one pays for
                    the width anyway. Most rows have nothing to say here. -->
-              @if (!blank(event.errorCode) || !blank(event.error)) {
-                <tr class="detail-row">
-                  <td colspan="6">
+              @if ((!blank(event.errorCode) || !blank(event.error)) && disclosure.isOpen(event.id)) {
+                <tr class="detail-row" [id]="'evt-' + event.id">
+                  <td colspan="7">
                     <vk-fault
+                      [hideCode]="true"
                       [errorCode]="event.errorCode"
                       [error]="event.error"
                       [cancelled]="event.status === 'CANCELLED'"

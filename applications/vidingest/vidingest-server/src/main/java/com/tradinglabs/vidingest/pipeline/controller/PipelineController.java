@@ -22,12 +22,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -65,13 +67,16 @@ public class PipelineController {
             @RequestParam(name = "ids", required = false) List<UUID> ids,
             @RequestParam(name = "live", defaultValue = "false") boolean live,
             @Parameter(description = "Column to order by, newest first. `createdAt` (default) or `updatedAt`; anything else falls back to the default.")
-            @RequestParam(name = "sortBy", defaultValue = "createdAt") String sortBy
+            @RequestParam(name = "sortBy", defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Only runs created at or after this instant, e.g. `2026-08-28T00:00:00+01:00`. Send an offset: which midnight \"today\" starts at is the caller's business, not the server's.")
+            @RequestParam(name = "createdAfter", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime createdAfter
     ) {
         if (live && ids != null && !ids.isEmpty()) {
             List<RunSummary> items = runLiveSummaryService.listLiveSummariesInOrder(ids);
             return new PageResponse<>(items, 0, items.size(), items.size());
         }
-        return runSummaryPageService.list(status, page, size, sortBy);
+        return runSummaryPageService.list(status, page, size, sortBy, createdAfter);
     }
 
     @PostMapping("/{runId}/retry")

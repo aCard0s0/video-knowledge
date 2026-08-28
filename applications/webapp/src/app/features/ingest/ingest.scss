@@ -1,17 +1,6 @@
-// Form left, the run it starts right. Below 1200px the watch panel drops under the form, which is
-// also the order you read them in.
-//
-// The form used to take a fixed 720px and leave the run the remainder, which had it backwards: the
-// form is a textarea and seven chips, while the right column carries the lane, the errorCode and a
-// yt-dlp message that was wrapping to three lines beside 200px of empty form. The diagnosis gets
-// the larger share now, and the form gets what it needs.
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: var(--space-md);
-  align-items: start;
-}
-
+// Form above, the run it starts below. They used to sit in two columns, which put the lane, the
+// errorCode and a yt-dlp message beside a textarea and seven chips; stacked, each gets the panel's
+// whole width and the reading order is the order you work in.
 .form {
   padding: var(--space-md);
 }
@@ -22,6 +11,7 @@
 
 textarea {
   width: 100%;
+  background: transparent;
   // Grows with what is in it instead of always reserving eight rows. On a phone that reservation
   // was ~290px of empty box between the operator and the run they had just started; `rows` stays
   // as the fallback where field-sizing is not supported.
@@ -63,11 +53,6 @@ caption {
   white-space: normal;
 }
 
-.watch {
-  position: sticky;
-  top: var(--space-md);
-}
-
 // The panel takes focus after a submit; it is a scroll container, not a control, so it gets the
 // ring but never looks pressable.
 .watch:focus-visible {
@@ -75,15 +60,8 @@ caption {
   outline-offset: 2px;
 }
 
-// Pushed to the far end of the meta row: the status and the age read left to right, the action
-// sits where an action sits, and neither moves when the other changes width. It keeps its own line
-// whole and lets the row wrap instead — at 390px the two sharing one line broke "46.2s ago" across
-// two, and the age is the number being read. Only ingest offers it, so it stays here.
-.retry {
-  margin-left: auto;
-  white-space: nowrap;
-}
-
+// Up to 200 rows now that the list is a range rather than the last five, so it scrolls inside the
+// panel instead of pushing the page down by a screenful.
 .recent {
   list-style: none;
   margin: 0;
@@ -93,12 +71,14 @@ caption {
   overscroll-behavior-y: contain;
 }
 
-.recent > li {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+.filters {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+}
+
+.recent > li {
   border-bottom: 1px solid var(--border);
 
   &:last-child {
@@ -106,49 +86,67 @@ caption {
   }
 }
 
-.recent-fault {
-  grid-column: 2 / -1;
+// The row: spine, id, status, errorCode, channel, title, age — one track each, so the list reads
+// down as well as across. The two variable-width fields get fractions rather than `auto`: `auto`
+// sizes to content, which is what let one long channel name shove every title on the page sideways.
+// The pointer and the hover say the row is one target; the id inside it is the keyboard's way to
+// the same place.
+.recent .row {
+  display: grid;
+  grid-template-columns: auto auto auto auto minmax(0, 0.45fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--muted);
+  }
+}
+
+// The clipping is the global `.ellipsis` on the span — `max-width` and `text-overflow` do nothing
+// on the inline anchor inside it, so the grid item is what has to carry them.
+.channel {
+  color: var(--fg-muted);
+}
+
+// The message the code names. Never truncated: the useful part is usually the tail. Indented past
+// the spine so it reads as belonging to the row above it.
+.recent .msg {
+  margin: 0;
+  padding: 0 var(--space-md) var(--space-sm) calc(var(--space-md) + 3px + var(--space-sm));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .recent .age {
   white-space: nowrap;
 }
 
-@media (max-width: 1199px) {
-  .split {
-    grid-template-columns: 1fr;
-  }
-
-  .watch {
-    position: static;
-  }
-
-  .recent {
-    max-height: none;
-  }
-}
-
-// Five columns have nowhere left to go at this width. Wrap instead, and give the label its own
-// full-width line — it is the one field that needs the room, and sharing a row with four other
-// things is what left it showing `youtube.com/watch…`.
+// Seven columns have nowhere left to go at this width. Wrap instead, and give the channel and the
+// title a full-width line each — they are the two fields that need the room, and stacked they still
+// line up, which a shared wrapped line does not.
 @media (max-width: 767px) {
-  .recent > li {
+  .recent .row {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
   }
 
+  .recent .channel,
   .recent .url {
     flex: 1 1 100%;
+  }
+
+  .recent .channel {
     order: 3;
   }
 
-  .recent .age {
+  .recent .url {
     order: 4;
   }
 
-  .recent-fault {
-    flex: 1 1 100%;
+  .recent .age {
     order: 5;
   }
 }
