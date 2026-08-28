@@ -201,9 +201,7 @@ export class Ingest {
   protected readonly absoluteTime = absoluteTime;
 
   /** Which recent row has its message open. See `core/disclosure.ts`. */
-  private readonly disclosure = rowDisclosure();
-  protected readonly isOpen = (id: string | undefined) => this.disclosure.isOpen(id);
-  protected readonly toggleFault = (id: string | undefined) => this.disclosure.toggle(id);
+  protected readonly disclosure = rowDisclosure();
 
   /** The row is the link to the run; anything in it that is already a control keeps its own click. */
   protected openRun(run: { id?: string }, event: Event): void {

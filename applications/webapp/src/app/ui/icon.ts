@@ -16,7 +16,7 @@ const PATHS = {
   chevron: ['m6 9 6 6 6-6'],
 } as const;
 
-export type IconName = keyof typeof PATHS;
+type IconName = keyof typeof PATHS;
 
 @Component({
   selector: 'vk-icon',

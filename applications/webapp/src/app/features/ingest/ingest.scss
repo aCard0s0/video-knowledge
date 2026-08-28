@@ -104,14 +104,9 @@ caption {
   }
 }
 
-// Its own track now, so it clips itself rather than borrowing the caption's ellipsis — `max-width`
-// and `text-overflow` do nothing on the inline anchor inside it, so the span is what does the work.
+// The clipping is the global `.ellipsis` on the span — `max-width` and `text-overflow` do nothing
+// on the inline anchor inside it, so the grid item is what has to carry them.
 .channel {
-  min-width: 0;
-  font-size: var(--fs-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--fg-muted);
 }
 

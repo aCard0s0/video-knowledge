@@ -166,9 +166,7 @@ export class RunDetail {
   protected readonly blank = blank;
 
   /** Which trail row has its message open. See `core/disclosure.ts`. */
-  private readonly disclosure = rowDisclosure();
-  protected readonly isOpen = (id: string | undefined) => this.disclosure.isOpen(id);
-  protected readonly toggleFault = (id: string | undefined) => this.disclosure.toggle(id);
+  protected readonly disclosure = rowDisclosure();
 
   /**
    * Measured lane time, or — for an item that never entered a phase — how long it sat before it

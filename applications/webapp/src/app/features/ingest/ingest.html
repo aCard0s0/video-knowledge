@@ -198,9 +198,9 @@
               <vk-error-code
                 [code]="run.errorCode"
                 [cancelled]="run.status === 'CANCELLED'"
-                [open]="isOpen(run.id)"
+                [open]="disclosure.isOpen(run.id)"
                 [controls]="'msg-' + run.id"
-                (toggled)="toggleFault(run.id)"
+                (toggled)="disclosure.toggle(run.id)"
               />
               <!--
                 Channel and title in tracks of their own, not one caption: sharing a cell made the
@@ -209,7 +209,7 @@
                 `/videos?channel=`, which answers "what else came from here", and the title to the
                 video itself.
               -->
-              <span class="channel">
+              <span class="channel ellipsis sm">
                 @if (blank(run.channelName)) {
                   <span class="muted">—</span>
                 } @else {
@@ -229,7 +229,7 @@
               </span>
               <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span>
             </div>
-            @if (isOpen(run.id)) {
+            @if (disclosure.isOpen(run.id)) {
               <p class="msg mono sm" [id]="'msg-' + run.id">{{ run.error || 'No message recorded.' }}</p>
             }
           </li>

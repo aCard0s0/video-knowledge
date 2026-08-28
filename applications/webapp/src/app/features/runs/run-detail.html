@@ -168,9 +168,9 @@
                   <vk-error-code
                     [code]="event.errorCode || (blank(event.error) ? '' : 'no code')"
                     [cancelled]="event.status === 'CANCELLED'"
-                    [open]="isOpen(event.id)"
+                    [open]="disclosure.isOpen(event.id)"
                     [controls]="'evt-' + event.id"
-                    (toggled)="toggleFault(event.id)"
+                    (toggled)="disclosure.toggle(event.id)"
                   />
                 </td>
                 <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
@@ -183,7 +183,7 @@
               <!-- Under the row, not in a seventh column: as a column the message is squeezed on a
                    desktop and past the right edge of a phone, and every event without one pays for
                    the width anyway. Most rows have nothing to say here. -->
-              @if ((!blank(event.errorCode) || !blank(event.error)) && isOpen(event.id)) {
+              @if ((!blank(event.errorCode) || !blank(event.error)) && disclosure.isOpen(event.id)) {
                 <tr class="detail-row" [id]="'evt-' + event.id">
                   <td colspan="7">
                     <vk-fault

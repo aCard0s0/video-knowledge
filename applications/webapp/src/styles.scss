@@ -455,6 +455,16 @@ svg.icon {
   }
 }
 
+/*
+  The error code's own column, on the runs board and on the run trail. `width: 1%` is the table
+  idiom for "as narrow as the content allows": without it the auto layout hands the column a share
+  of the free width and the codes drift away from the statuses they qualify.
+*/
+.err-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
 .row-actions {
   display: flex;
   gap: var(--space-sm);
@@ -617,12 +627,16 @@ svg.icon {
 // Ellipsis from the column it sits in, not from `.truncate`'s fixed 34ch / 18ch cap: it already
 // sits in a track that constrains it, so the cap only ever cut the label shorter than the space
 // available — at 390px to 18 characters, which is `youtube.com/watch…` again.
+.ellipsis,
 .url {
   min-width: 0;
-  font-size: var(--fs-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.url {
+  font-size: var(--fs-sm);
 }
 
 @media (max-width: 1199px) {

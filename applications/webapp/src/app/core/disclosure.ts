@@ -15,6 +15,5 @@ export function rowDisclosure() {
     toggle: (id: string | null | undefined) => {
       if (id) open.update((current) => (current === id ? null : id));
     },
-    close: () => open.set(null),
   };
 }

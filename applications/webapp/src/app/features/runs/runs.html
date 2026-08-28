@@ -117,7 +117,7 @@
               rows in hand would answer "of the 25 oldest-created, which moved last".
             -->
             <th scope="col" class="num" aria-sort="descending">
-              <button class="sort mono" type="button" (click)="toggleSort()" [title]="sortHint()">
+              <button class="sort mono" type="button" (click)="toggleSort()" [title]="sortBy() === 'createdAt' ? 'Order by when each run last moved' : 'Order by when each run was created'">
                 {{ sortBy() === 'createdAt' ? 'Created' : 'Last moved' }}<span aria-hidden="true"> ↓</span>
               </button>
             </th>
@@ -138,9 +138,9 @@
                   <vk-error-code
                     [code]="run.errorCode || 'no code'"
                     [cancelled]="run.status === 'CANCELLED'"
-                    [open]="isOpen(run.id)"
+                    [open]="disclosure.isOpen(run.id)"
                     [controls]="'fault-' + run.id"
-                    (toggled)="toggleFault(run.id)"
+                    (toggled)="disclosure.toggle(run.id)"
                   />
                 }
               </td>
@@ -175,7 +175,7 @@
             <!-- The reason, in its own full-width row rather than a ninth column: `error` is free
                  text from the phase that died and the useful part is its tail, so it gets the width
                  to be read rather than a clip that makes eleven UPSTREAM_TOOL_FAILUREs identical. -->
-            @if (hasFault(run) && isOpen(run.id)) {
+            @if (hasFault(run) && disclosure.isOpen(run.id)) {
               <tr class="fault-row" [id]="'fault-' + run.id">
                 <td class="spine" [style.--spine]="statusVar(run.status)"></td>
                 <td colspan="8">

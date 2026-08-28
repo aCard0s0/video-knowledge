@@ -223,14 +223,8 @@ export class Runs {
     return this.sortBy() === 'createdAt' ? run.createdAt : run.updatedAt;
   }
 
-  protected readonly sortHint = computed(() =>
-    this.sortBy() === 'createdAt' ? 'Order by when each run last moved' : 'Order by when each run was created',
-  );
-
   /** Which row has its failure open. See `core/disclosure.ts`. */
-  private readonly disclosure = rowDisclosure();
-  protected readonly isOpen = (id: string | undefined) => this.disclosure.isOpen(id);
-  protected readonly toggleFault = (id: string | undefined) => this.disclosure.toggle(id);
+  protected readonly disclosure = rowDisclosure();
 
   /** Re-ordering the whole list invalidates the page you were on, the same as changing the filter. */
   protected setSort(value: string): void {
