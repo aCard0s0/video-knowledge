@@ -31,16 +31,20 @@ the form's own warning is to cut fields nobody reads.
 | `type` | `overview` \| `reference` \| `guide` \| `findings` |
 | `last_reviewed` | ISO date |
 
-**Where the dates came from.** Three pages already carried a `**Last reviewed**` line and kept
-their own date. The other eight were seeded from the file's **last commit date** — that is when the
-content last changed, not when a human last checked it against the code, and it is an upper bound
-on freshness rather than a promise. Re-date a page when you actually verify it.
+**Where the dates came from — two kinds, and they are not equal.**
+
+- **Verified against source.** `VidIngest.md`, `Config and Runtime`, `Download Pipeline` and
+  `YouTube Channels` read **2026-08-29** because their claims were re-checked against the code that
+  day. `Per-Phase Rerun` and the three Web UI pages carry dates their authors set.
+- **Seeded from the last commit date.** The rest. That is when the content last *changed*, not when
+  anyone checked it — an upper bound on freshness, not a promise. Re-date a page only when you have
+  actually verified it, and prefer an honest old date to a confident wrong one.
 
 `last_reviewed` lives in frontmatter and nowhere else. The three pages that had it in the body had
 it removed there — one home per fact.
 
-The oldest page is worth knowing:
-`VidIngest - YouTube Channels.md` reads **2026-05-12**, over three months behind the rest.
+The oldest pages are `VidIngest - CLI Commands.md` and `VidIngest - Test Scenarios.md`, both
+**2026-08-26**, and both seeded rather than verified.
 
 ## Naming
 

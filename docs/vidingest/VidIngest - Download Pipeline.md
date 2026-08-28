@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - Download Pipeline
@@ -128,6 +128,19 @@ Resolved in order of priority:
 2. `ProjectPathResolver` auto-detection: `{projectRoot}/package/vidingest/videos`
 3. Environment variables (Spring relaxed binding): `VIDEO_KNOWLEDGE_ROOT`, `VIDINGEST_STORAGE_VIDEO_PATH`
 4. Fallback: current working directory
+
+## Transcript artifacts
+
+When the TRANSCRIBE phase runs (it is not named in the run's `skipPhases`), VidIngest writes transcript artifacts to:
+
+The same directory as the downloaded video file under `package/vidingest/videos/` (local dev) or `/data/videos` (container).
+
+Files use the same base name as the video file (without extension):
+
+- `<videoFileBase>.whisper.json`
+- `<videoFileBase>.whisper.txt`
+
+Moved here from the overview page — these sit beside the downloaded file, so they belong with the naming and storage rules above.
 
 ## Beyond DOWNLOAD: the full ingestion pipeline
 
