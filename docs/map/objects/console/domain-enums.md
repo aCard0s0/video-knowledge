@@ -17,6 +17,9 @@ file is the console's only typed copy — and the one file a server enum change 
 
 - **It is a mirror with no mechanism keeping it in sync.** Nothing fails when the server gains a
   constant and this file does not; the console just stops recognising a value at runtime.
+- **Two of the eight are tracked without being listed.** `YoutubeChannelStatus` and
+  `TranscriptionStatus` are only ever *rendered*, never enumerated, so their values live as cases
+  in `statusVar` rather than in an exported array. A new constant on either needs a `case`.
 - **`LanePhase` exists because `CREATED` and `DONE` are not phases.** `LANE_PHASES` is `ALL_PHASES`
   minus those two, and `isLanePhase()` must be called before `LANE_PHASES.indexOf` — `failedPhase`
   answers `CREATED` for an item reaped while queued and `DONE` on a clean finish, and `indexOf`
@@ -27,21 +30,25 @@ file is the console's only typed copy — and the one file a server enum change 
 
 ## Shape
 
-Mirrors **eight** server enums, not seven:
+Tracks **eight** server enums; **six** as exported lists.
 
-| Console | Server | Home |
+| Console list | Server enum | Home |
 |---|---|---|
-| `RUN_STATUSES` | `RunStatus` | `pipeline/domain/` |
-| `ALL_PHASES` / `LANE_PHASES` / `OPTIONAL_PHASES` | `PipelineRunPhase` | `pipeline/domain/` |
-| `ERROR_CODES` | `PipelineErrorCode` (5 constants) | `pipeline/domain/` |
+| `RUN_STATUSES` | `RunStatus` (5) | `pipeline/domain/` |
+| `ALL_PHASES` / `LANE_PHASES` / `OPTIONAL_PHASES` | `PipelineRunPhase` (12) | `pipeline/domain/` |
+| `ERROR_CODES` | `PipelineErrorCode` (5) | `pipeline/domain/` |
 | `EVENT_TYPES` | `PipelineRunItemEventType` (8) | `pipeline/domain/` |
 | `VIDEO_STATUSES` | `VideoStatus` (8) | `videos/domain/` |
-| — | `YoutubeChannelStatus` (4) | `youtube/domain/` |
-| — | `TranscriptionStatus` | `core/transcription/domain/` |
-| `KNOWLEDGE_TYPES` | `KnowledgeUnitType` | **`vidingest-api`**, not the server |
+| `KNOWLEDGE_TYPES` | `KnowledgeUnitType` (5) | **`vidingest-api`**, not the server |
+| *(none — `statusVar` cases)* | `YoutubeChannelStatus` (5) | `youtube/domain/` |
+| *(none — `statusVar` cases)* | `TranscriptionStatus` (3) | `core/transcription/domain/` |
 
-The last row is why [root CLAUDE.md](../../../../CLAUDE.md) says "seven server enums" and this file
-carries eight — `KnowledgeUnitType` is in the API module.
+`KnowledgeUnitType` living in the API module is exactly how it stayed off the enum list in
+[root CLAUDE.md](../../../../CLAUDE.md) while this file mirrored it. It is also the one enum
+springdoc *does* emit — twice, per property, as `KnowledgeUnitDtoTypeEnum` and
+`SearchKnowledgeHitTypeEnum`. `KNOWLEDGE_TYPES` stays hand-written because picking either would
+bind the video-detail filter to one DTO's name, and `Object.values` on a TS `enum` gives
+`string[]`, not the literal union.
 
 ## Connected to
 

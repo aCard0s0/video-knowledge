@@ -1,11 +1,22 @@
 /**
  * Server enums mirrored by hand.
  *
- * The OpenAPI spec types every one of these as a plain `string` — springdoc only emits enum
- * schemas for `KnowledgeUnitType` and `ItemResult.status` — so the generated client cannot give
- * us unions. Source of truth is the server:
+ * The OpenAPI spec types almost every one of these as a plain `string` — springdoc emits enum
+ * schemas only for `KnowledgeUnitType` and `ItemResult.status` — so the generated client cannot
+ * give us unions. Source of truth is the server:
  *   pipeline/domain/{RunStatus,PipelineRunPhase,PipelineErrorCode,PipelineRunItemEventType}.java
- *   videos/domain/VideoStatus.java, youtube/domain/YoutubeChannelStatus.java
+ *   videos/domain/VideoStatus.java
+ *   vidingest-api .../api/knowledge/KnowledgeUnitType.java  (the API module, not the server)
+ *
+ * Two server enums are deliberately *not* mirrored as lists: `YoutubeChannelStatus` and
+ * `TranscriptionStatus` are only ever rendered, never enumerated, so their values live as cases in
+ * `statusVar` below. A new constant on either needs a `case`, not an array — and `statusVar`
+ * already falls through to the neutral spine, so forgetting costs a colour and nothing else.
+ *
+ * `KNOWLEDGE_TYPES` is mirrored even though the generator does emit that one: it arrives twice,
+ * per property, as `KnowledgeUnitDtoTypeEnum` and `SearchKnowledgeHitTypeEnum`. Picking either
+ * would bind the video-detail filter to one DTO's name, and a TS `enum` gives `string[]` from
+ * `Object.values`, not the literal union `KnowledgeType` is.
  *
  * ponytail: hand-mirrored, so a new server constant renders as unknown until this file is
  * updated. Every consumer falls through to a neutral style rather than throwing. Generate from

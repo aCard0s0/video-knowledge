@@ -311,9 +311,14 @@ derives ids from method names, they collide across controllers, and the client g
 
 What the generator cannot give us, and therefore lives by hand in `src/app/core/`:
 
-- `domain.ts` — the seven server enums (`RunStatus`, `PipelineRunPhase`, `PipelineErrorCode`,
-  `PipelineRunItemEventType`, `VideoStatus`, `YoutubeChannelStatus`, `TranscriptionStatus`).
-  springdoc emits them as bare `string`. **Update this file when a server enum gains a constant.**
+- `domain.ts` — server enums springdoc emits as bare `string`. **Six are mirrored as exported
+  lists**: `RunStatus`, `PipelineRunPhase`, `PipelineErrorCode`, `PipelineRunItemEventType`,
+  `VideoStatus`, and `KnowledgeUnitType` — that last one lives in **`vidingest-api`**, not the
+  server, which is exactly how it stayed off this list while the console mirrored it as
+  `KNOWLEDGE_TYPES`. Two more, `YoutubeChannelStatus` and `TranscriptionStatus`, have no list at
+  all: their values reach the UI only as cases in `statusVar()`, so a new constant there needs a
+  new `case`, not a new array. **Update this file when any of the eight gains a constant** — nothing
+  fails if you don't, the console just renders the value as unknown.
 - `problem.ts` — the RFC 9457 `ProblemDetail` envelope. No operation in the spec documents a
   4xx/5xx, so error bodies generate as `any`. `errorCode` is a *pipeline* field, never an HTTP one;
   the two are rendered by different components and never merged.
