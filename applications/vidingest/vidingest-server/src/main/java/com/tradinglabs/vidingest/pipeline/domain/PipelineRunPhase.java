@@ -5,9 +5,7 @@ package com.tradinglabs.vidingest.pipeline.domain;
  *
  * This is persisted on {@code PipelineRun} to make failures diagnosable and retries safer.
  *
- * <p>The {@code DIARIZE} / {@code FRAME_SAMPLE} / {@code OCR} / {@code FUSE} / {@code KNOWLEDGE}
- * values are introduced in M1 of the knowledge-extraction expansion. Their implementing phases
- * are no-ops in M1; subsequent milestones wire them up to real sidecars and LLM extraction.
+ * <p>Execution order lives in {@code PipelinePhaseRegistry}, not in this declaration order.
  */
 public enum PipelineRunPhase {
     CREATED,

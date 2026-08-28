@@ -20,6 +20,11 @@ update those pointers when you move/rename code.
 - MCP with LM Studio: [VidIngest - MCP with LM Studio](vidingest/VidIngest%20-%20MCP%20with%20LM%20Studio.md)
 - Test scenarios: [VidIngest - Test Scenarios](vidingest/VidIngest%20-%20Test%20Scenarios.md)
 
+## Change-impact map
+
+- What a change hits: [map/](map/CLAUDE.md) — nouns, the five processes, and
+  [effects](map/effects/CONTEXT.md). Cites `path:line`; the code stays the source of truth.
+
 ## Frontend
 
 - Skill order for UI work: [frontend-skills.md](frontend-skills.md)
