@@ -1,4 +1,9 @@
-# VidIngest — Knowledge Extraction (M2–M8)
+---
+type: reference
+last_reviewed: 2026-08-27
+---
+
+# VidIngest — Knowledge Extraction
 
 - **Owner**: TradingLabs Platform
 - **Last reviewed**: 2026-08-27
@@ -20,7 +25,7 @@ All phases are **disabled by default** so existing pipelines keep their current 
 unchanged. Operators opt in per-deploy by flipping config flags and (where required)
 standing up sidecars.
 
-## Pipeline phases (M1–M8)
+## Pipeline phases
 
 ```
 METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE → OCR → FUSE → KNOWLEDGE → CONTEXT
@@ -195,7 +200,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   to transcript-only when no multimodal segments are present — pre-M7 behaviour preserved
   byte-identically for videos ingested without fusion.
 
-## REST API (M8)
+## REST API
 
 All under `/vidingest/api/v1`. Existing endpoints unchanged; new endpoints:
 
@@ -211,7 +216,7 @@ All under `/vidingest/api/v1`. Existing endpoints unchanged; new endpoints:
 | `GET`   | `/frames/{frameId}/image`                          | Inline JPG bytes for a sampled frame (UI `<img src>`) |
 | `POST`  | `/videos/{videoId}/phases/{phase}/run`             | Re-run one phase against an existing video. See [Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md) |
 
-## MCP tools (M8)
+## MCP tools
 
 Seven tools added on top of the original nine. See
 [MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md) for the full
@@ -225,7 +230,7 @@ list and parameter reference.
 - `getMultimodalTimeline(videoId, fromSeconds, toSeconds)`
 - `getOcrResults(videoId)`
 
-## CLI commands (M8)
+## CLI commands
 
 ```
 search-knowledge --query "options gamma" --type ENTITY --limit 10

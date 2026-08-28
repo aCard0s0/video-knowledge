@@ -1,3 +1,8 @@
+---
+type: reference
+last_reviewed: 2026-08-26
+---
+
 # VidIngest - Test Scenarios
 
 - **Last reviewed**: 2026-03-15

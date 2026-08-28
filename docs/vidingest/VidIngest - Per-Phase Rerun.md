@@ -1,7 +1,11 @@
+---
+type: reference
+last_reviewed: 2026-08-27
+---
+
 # VidIngest — Per-Phase Rerun
 
 **Owner**: TradingLabs Platform
-**Last reviewed**: 2026-08-27
 **Status**: stable
 
 **Applies to**:

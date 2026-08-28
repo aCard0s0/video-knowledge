@@ -1,3 +1,8 @@
+---
+type: overview
+last_reviewed: 2026-08-27
+---
+
 # VidIngest (server + MCP + CLI)
 
 - **Owner**: TradingLabs Platform
@@ -6,7 +11,7 @@
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-client`, `vidingest-api`
 - **Capabilities**: download + transcription + semantic chunk search (stable);
   speaker diarization + frame sampling + OCR + multimodal fusion + LLM-driven knowledge
-  extraction (M2–M8, disabled by default — see
+  extraction (disabled by default — see
   [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md))
 - **Source of truth**:
   - Server: `applications/vidingest/vidingest-server/`

@@ -1,3 +1,8 @@
+---
+type: guide
+last_reviewed: 2026-08-27
+---
+
 # VidIngest - MCP with LM Studio
 
 This page shows how to use VidIngest MCP tools with a model you run in LM Studio.
@@ -221,9 +226,9 @@ spring.ai.mcp.client.sse.connections.vidingest.url=http://vidingest-mcp:8055/vid
 spring.ai.mcp.client.sse.connections.vidingest.url=${MCP_VIDINGEST_URL:http://vidingest-mcp:8055/vidingest/sse}
 ```
 
-## M2–M8 knowledge-extraction tools
+## Knowledge-extraction tools
 
-Seven additional tools are exposed in M8. They delegate to the matching REST endpoints
+Seven further tools are exposed. They delegate to the matching REST endpoints
 on `vidingest-server` and require the corresponding pipeline phases to have run
 successfully (or, for `searchKnowledge`, that `vidingest.search.semantic-enabled=true`
 plus a populated `vidingest_knowledge_units` table). All listed on the same MCP endpoint

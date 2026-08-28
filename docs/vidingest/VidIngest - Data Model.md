@@ -1,3 +1,8 @@
+---
+type: reference
+last_reviewed: 2026-08-27
+---
+
 # VidIngest - Data Model
 
 - **Primary packages**: `com.tradinglabs.vidingest.pipeline.domain`, `com.tradinglabs.vidingest.videos.domain`,
@@ -280,7 +285,7 @@ Migrations create the pgvector extension (`CREATE EXTENSION IF NOT EXISTS vector
 - Deleting a pipeline run sets `pipeline_run_id` to NULL on associated videos (SET NULL)
 - Deleting a pipeline run cascades to its pipeline run items (CASCADE)
 
-## M2–M8 knowledge-extraction entities (changesets `002-transcription.sql`, `003-frames-ocr.sql`, `004-knowledge.sql`)
+## Knowledge-extraction entities (changesets `002-transcription.sql`, `003-frames-ocr.sql`, `004-knowledge.sql`)
 
 The following tables back the multi-modal knowledge-extraction phases. All use the
 `vidingest_` prefix and cascade on `video_id` (or on the parent frame, which itself
