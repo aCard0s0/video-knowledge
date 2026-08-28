@@ -1,6 +1,6 @@
 ---
 type: guide
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest — Web UI app guide

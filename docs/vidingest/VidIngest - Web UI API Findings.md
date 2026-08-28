@@ -1,6 +1,6 @@
 ---
 type: findings
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest — Web UI API findings
@@ -14,8 +14,13 @@ after debugging one.
 
 ## API discovery findings
 
-Measured against the running server on 2026-08-26 (18 runs, 3 videos, 303 audit events),
-not inferred from source. 40 operations, 42 schemas (39 before `deleteChannel`).
+Measured against the running server on **2026-08-26** (18 runs, 3 videos, 303 audit events), not
+inferred from source. The response shapes below have not been re-measured since.
+
+The spec counts *have* been re-checked, against the committed `applications/webapp/openapi/vidingest.json`
+on 2026-08-29: **41 operations, 44 schemas** — up from the 40 and 42 measured on the day (and 39
+schemas before `deleteChannel`). Re-run `npm run api:gen` against a live server before trusting a
+count here.
 
 ### 1. Errors are RFC 9457 ProblemDetail, not `ApiErrorResponse`
 

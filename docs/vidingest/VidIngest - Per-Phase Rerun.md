@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest — Per-Phase Rerun
@@ -85,7 +85,7 @@ Returned on success only:
 
 ## Failures
 
-A phase that fails propagates and is rendered as an RFC 7807 `ProblemDetail`, the same as
+A phase that fails propagates and is rendered as an RFC 9457 `ProblemDetail`, the same as
 every other endpoint — there is no `status:"ERROR"` body and no 200-on-failure:
 
 | Cause | Status | `title` |
