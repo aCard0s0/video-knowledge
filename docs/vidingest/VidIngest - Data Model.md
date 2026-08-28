@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - Data Model
@@ -69,11 +69,15 @@ One row per submitted URL within a batch `PipelineRun`. Tracks per-item status/p
 | `pipeline_run_id` | UUID | FK -> vidingest_pipeline_runs, NOT NULL, ON DELETE CASCADE | Owning pipeline run |
 | `url` | TEXT | NOT NULL | Submitted URL (unique per run) |
 | `status` | VARCHAR(50) | NOT NULL | `PENDING`, `IN_PROGRESS`, `COMPLETED`, `FAILED`, `CANCELLED` |
-| `phase` | VARCHAR(50) | nullable | Pipeline phase (`CREATED`, `METADATA`, `DOWNLOAD`, `PERSIST`, `TRANSCRIBE`, `CONTEXT`, `DONE`) |
-| `phase_updated_at` | TIMESTAMPTZ | nullable | Timestamp of last phase update |
+| `phase` | VARCHAR(50) | nullable | Pipeline phase. The full enum: `CREATED`, `METADATA`, `DOWNLOAD`, `PERSIST`, `TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`, `OCR`, `FUSE`, `KNOWLEDGE`, `CONTEXT`, `DONE` |
+| `failed_phase` | VARCHAR(50) | nullable | Phase the item died in — **`CREATED` for an item reaped while still queued and `DONE` on a clean finish**, so it is not always a phase |
+| `phase_updated_at` | TIMESTAMPTZ | nullable | Moves only on a phase *transition*, which is why it cannot distinguish a slow phase from abandoned work |
 | `error_code` | VARCHAR(80) | nullable | Typed error code (e.g., `DUPLICATE_VIDEO`) |
 | `error` | TEXT | nullable | Error message if the run item failed |
 | `video_id` | UUID | FK -> vidingest_videos, nullable, ON DELETE SET NULL | Produced video (when available) |
+| `attempt` | INT | NOT NULL | Retries reuse the same run id and item id; this counts them |
+| `lease_owner` | VARCHAR(160) | nullable | Instance holding the item. Written only by `RunItemLeaseService`, scoped by owner |
+| `lease_expires_at` | TIMESTAMPTZ | nullable | Lease TTL. With `lease_owner`, one of the **two** independent answers the reaper needs — the other is `PipelineService.isItemOwned` |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Set on persist |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Updated on every save |
 
@@ -222,6 +226,7 @@ Used by `Video` and `Transcription` entities.
 | `PENDING` | Initial state |
 | `DOWNLOADING` | Download in progress |
 | `DOWNLOADED` | Download complete |
+| `EXTRACTING` | Metadata extraction in progress |
 | `TRANSCRIBING` | Transcription in progress |
 | `PROCESSING` | Context/embedding generation in progress |
 | `COMPLETED` | All pipeline phases done |
@@ -254,6 +259,7 @@ being stood up for the first time (consolidated 2026-08-27, replacing seven incr
 | `004-knowledge.sql` | `vidingest_multimodal_segments`, `vidingest_knowledge_units` |
 | `005-search.sql` | `vidingest_context_chunks` |
 | `006-youtube-channels.sql` | `vidingest_youtube_channels`, `vidingest_youtube_channel_videos` |
+| `007-run-created-at-index.sql` | no tables — an index on `vidingest_pipeline_runs (created_at)`, the first file added since the consolidation |
 
 The four pipeline tables share a file because they reference each other in both directions
 (`videos` → `runs`, `run_items` → `runs` + `videos`, `run_item_events` → `items` + `runs` +

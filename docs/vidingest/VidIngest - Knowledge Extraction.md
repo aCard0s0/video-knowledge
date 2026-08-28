@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest — Knowledge Extraction
@@ -31,18 +31,18 @@ standing up sidecars.
 METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE → OCR → FUSE → KNOWLEDGE → CONTEXT
 ```
 
-| Phase | Milestone | Default | Inputs | Outputs | External deps |
-|-------|-----------|---------|--------|---------|---------------|
-| TRANSCRIBE   | (pre-M1) | on  | downloaded video file        | `vidingest_transcriptions` + `vidingest_transcription_segments`   | `whisper` sidecar |
-| DIARIZE      | M2       | off | transcription + audio        | `vidingest_speakers`; `transcription_segments.speaker_id` populated | `diarize-asr` sidecar (HF token) |
-| FRAME_SAMPLE | M3       | off | downloaded video file        | `vidingest_video_frames` + JPGs at `{baseName}/frames/NNNN.jpg`   | ffmpeg (already in image) |
-| OCR          | M4       | off | sampled frames                | `vidingest_ocr_results`                                          | `paddleocr-server` sidecar |
-| FUSE         | M5       | on  | transcript + speakers + OCR  | `vidingest_multimodal_segments` (one row per fusion window)      | — pure Java |
-| KNOWLEDGE    | M6       | off | multimodal segments           | `vidingest_knowledge_units` + embeddings                         | chat LLM — the `llm` service by default, any OpenAI-compatible server otherwise |
-| CONTEXT      | (M7-enhanced) | off (semantic-search-gated) | multimodal segments → transcript fallback | `vidingest_context_chunks` (richer content) | embeddings client |
+| Phase | Default | Inputs | Outputs | External deps |
+|-------|---------|--------|---------|---------------|
+| TRANSCRIBE   | on  | downloaded video file        | `vidingest_transcriptions` + `vidingest_transcription_segments`   | `whisper` sidecar |
+| DIARIZE      | off | transcription + audio        | `vidingest_speakers`; `transcription_segments.speaker_id` populated | `diarize-asr` sidecar (HF token) |
+| FRAME_SAMPLE | off | downloaded video file        | `vidingest_video_frames` + JPGs at `{baseName}/frames/NNNN.jpg`   | ffmpeg (already in image) |
+| OCR          | off | sampled frames                | `vidingest_ocr_results`                                          | `paddleocr-server` sidecar |
+| FUSE         | on  | transcript + speakers + OCR  | `vidingest_multimodal_segments` (one row per fusion window)      | — pure Java |
+| KNOWLEDGE    | off | multimodal segments           | `vidingest_knowledge_units` + embeddings                         | chat LLM — the `llm` service by default, any OpenAI-compatible server otherwise |
+| CONTEXT      | off (semantic-search-gated) | multimodal segments → transcript fallback | `vidingest_context_chunks` (richer content) | embeddings client |
 
 Per-run opt-outs travel as one `skipPhases` list naming the phases to skip, exposed on
-every entry point (REST `CreatePipelineRunRequest`, MCP `createPipelineRuns`, CLI `ingest --skipPhases`). Any optional phase can be named — `TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`,
+every entry point (REST `CreatePipelineRunRequest`, MCP `createPipelineRuns`, CLI `ingest --skip-phases`). Any optional phase can be named — `TRANSCRIBE`, `DIARIZE`, `FRAME_SAMPLE`,
 `OCR`, `FUSE`, `KNOWLEDGE`, `CONTEXT` — and the choices are independent, so operators can
 run any subset (e.g. OCR-only without diarization). Naming a mandatory phase
 (`METADATA`/`DOWNLOAD`/`PERSIST`) is a 400: those consume the source URL, not the video row,
@@ -79,7 +79,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 
 ## Per-phase details
 
-### DIARIZE (M2)
+### DIARIZE
 - **Code**: `core/diarization/` (Client + Service + Phase)
 - **Wire contract**:
   ```
@@ -94,7 +94,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 - **Sidecar**: built from `compose/infra/diarize-asr/` (FastAPI + pyannote.audio 3.x).
   Requires `HUGGINGFACE_TOKEN` — accept the pyannote/speaker-diarization-3.1 EULA on HF.
 
-### FRAME_SAMPLE (M3)
+### FRAME_SAMPLE
 - **Code**: `core/frames/` (Service + Phase + `ShowinfoParser`)
 - **ffmpeg command**:
   ```
@@ -111,7 +111,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   clears the volume), `OCR` fails loudly rather than wiping its own rows and reporting a
   successful zero — re-run `FRAME_SAMPLE` before `OCR` to recover.
 
-### OCR (M4)
+### OCR
 - **Code**: `core/ocr/` (Client + Service + Phase + Mapper)
 - **Wire contract**:
   ```
@@ -127,7 +127,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   CPU-only by default; swap base image + replace `paddlepaddle` with `paddlepaddle-gpu`
   in `requirements.txt` for CUDA.
 
-### FUSE (M5)
+### FUSE
 - **Code**: `core/fusion/SegmentFusionService.java` (pure-Java)
 - **Windowing**: default 30s windows with 5s overlap, configurable via
   `vidingest.fusion.window-seconds` / `window-overlap-seconds`. Empty windows are skipped
@@ -135,7 +135,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 - **Per window**: concatenates overlapping transcript segments (preserving start-time
   order), collects distinct speaker UUIDs, deduplicates OCR lines by trimmed text.
 
-### KNOWLEDGE (M6)
+### KNOWLEDGE
 - **Code**: `core/knowledge/`
 - **Prompt**: pure-function assembly in `KnowledgeExtractionPrompt.java`. System message
   pins a strict JSON output contract (single root key `"units"`, explicit ban-list of
@@ -193,11 +193,11 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   is marked FAILED. A run where every batch succeeded but nothing cleared the salience floor
   *does* clear the table — that is a real answer, not a failure.
 
-### CONTEXT (M7-enhanced)
+### CONTEXT
 - **Code**: `search/service/embedding/ContextChunkGenerationService.java`
 - **Change**: when `vidingest_multimodal_segments` rows exist, chunks are built from
   per-segment fused text (`transcript [VISUAL] ocr`) instead of raw transcript. Falls back
-  to transcript-only when no multimodal segments are present — pre-M7 behaviour preserved
+  to transcript-only when no multimodal segments are present
   byte-identically for videos ingested without fusion.
 
 ## REST API
@@ -208,11 +208,13 @@ All under `/vidingest/api/v1`. Existing endpoints unchanged; new endpoints:
 |--------|------|-------------|
 | `GET`   | `/knowledge/search?query=&type=&limit=`            | Cross-video semantic search over `vidingest_knowledge_units` |
 | `GET`   | `/videos/{videoId}/knowledge?type=`                | All knowledge units for a video, optional type filter |
-| `POST`  | `/videos/{videoId}/knowledge/regenerate`           | Re-run M6 against current multimodal segments |
+| `POST`  | `/videos/{videoId}/knowledge/regenerate`           | Re-run `KnowledgePhase` against current multimodal segments |
 | `GET`   | `/videos/{videoId}/speakers`                       | Speakers + segment counts |
 | `PATCH` | `/speakers/{speakerId}`                            | Rename a speaker (`{"displayName": "..."}` or blank to clear) |
 | `GET`   | `/videos/{videoId}/multimodal-timeline?fromSeconds=&toSeconds=` | Fused timeline rows, optional time clip |
 | `GET`   | `/videos/{videoId}/ocr`                            | OCR detections grouped by frame |
+| `GET`   | `/videos/{videoId}/ocr/frames`                     | The same, paged by frame |
+| `GET`   | `/videos/{videoId}/multimodal-timeline/page`       | Paged variant of the timeline above |
 | `GET`   | `/frames/{frameId}/image`                          | Inline JPG bytes for a sampled frame (UI `<img src>`) |
 | `POST`  | `/videos/{videoId}/phases/{phase}/run`             | Re-run one phase against an existing video. See [Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md) |
 
@@ -384,7 +386,7 @@ WHERE video_id = '<videoId>' GROUP BY type;
 - **`diarize-asr` returns 500 on first call** — `HUGGINGFACE_TOKEN` is unset, or the
   pyannote model EULA hasn't been accepted on the HuggingFace web UI.
 - **Empty `vidingest_knowledge_units` after a run** — check that
-  `vidingest_multimodal_segments` has rows (M5 must run before M6). The `FUSE` phase is
+  `vidingest_multimodal_segments` has rows (FUSE must run before KNOWLEDGE). The `FUSE` phase is
   on by default, but a video with no transcript / no OCR produces an empty fusion which
   in turn produces no knowledge units.
 - **Knowledge extraction failed for N of M batches** — the LLM is unreachable or flaky.

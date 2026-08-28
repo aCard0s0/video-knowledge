@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-26
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - Test Scenarios
@@ -90,22 +90,38 @@ Test scenarios cover all Spring Shell commands and edge cases. Run tests with:
 
 ## Unit test targets
 
-These classes should have dedicated unit tests:
+There are **53** unit tests. This table was written as a wish-list; three of the four now exist.
 
-| Class | Test focus |
-|-------|-----------|
-| `MetadataExtractor` | Field extraction from various yt-dlp JSON shapes, null handling, date parsing |
-| `FileSystemHelper` | Filename sanitization, directory creation, file discovery |
-| `YtDlpCommandBuilder` | Command line construction with various config combinations |
-| `MetadataService` | Entity creation/update from metadata maps |
+| Class | Test focus | Test |
+|-------|-----------|------|
+| `MetadataExtractor` | Field extraction from yt-dlp JSON shapes, null handling, date parsing — asserted from a JVM pinned to `America/Los_Angeles` | `MetadataExtractorTest` |
+| `FileSystemHelper` | Filename sanitization, directory creation, file discovery | `FileSystemHelperTest` |
+| `YtDlpCommandBuilder` | Command-line construction across config combinations | `YtDlpCommandBuilderTest` |
+| `MetadataService` | Entity creation/update from metadata maps | **none** — covered only by `MetadataServiceIntegrationTest` |
 
 ## Integration test targets
 
 | Scope | Test focus |
 |-------|-----------|
-| `IngestionOrchestratorIntegrationTest` | Pipeline with Testcontainers PostgreSQL, duplicate handling, retry flow, semantic search |
-| `MetadataServiceIntegrationTest` | Metadata create/update behavior against PostgreSQL |
-| `RuntimeCoexistenceSmokeTest` | Spring Shell + MVC + MCP transport beans and endpoint wiring |
+There are **27** integration tests, all extending `BaseVidingestIntegrationTest` (random port,
+shared static `PostgreSQLContainer`, tables wiped in `@BeforeEach`, YouTube sync and semantic search
+disabled). Rather than list them, the ones worth knowing by name:
+
+| Class | Test focus |
+|-------|-----------|
+| `AsyncPipelinesApiIntegrationTest` | Async run creation end to end |
+| `PipelinesListAndRetryIntegrationTest` | Listing and the retry contract |
+| `RunAggregationLockIntegrationTest` | Run status derived under the row lock |
+| `RunItemLeaseIntegrationTest` | Lease acquire / renew / release |
+| `StuckItemReconcilerIntegrationTest` | The reaping decision — ownership *and* lease |
+| `SubprocessTransactionBoundaryIntegrationTest` | Asserts no transaction is open across a subprocess call |
+| `ContextChunkRegenerateIntegrationTest` | Same assertion around the embeddings call |
+| `LiquibaseMigrationsIntegrationTest` | Every changeset applies to an empty database |
+| `MetadataServiceIntegrationTest` | Metadata create/update against PostgreSQL |
+
+`SubprocessTransactionBoundaryIntegrationTest` and `ContextChunkRegenerateIntegrationTest` are the
+two that fail if someone re-adds `@Transactional` to a phase driver — they assert from inside the
+stubbed call, so the mistake fails a test rather than production.
 | Liquibase migrations | Schema creation against clean PostgreSQL container |
 
 ## Related pages

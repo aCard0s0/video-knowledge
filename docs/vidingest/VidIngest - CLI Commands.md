@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-26
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - CLI Commands
@@ -41,7 +41,7 @@ ingest --url <VIDEO_URL> [--config <PATH>] [--skip-transcription] [--dry-run]
 |--------|------|---------|-------------|
 | `--url` | String | required | Video URL (YouTube, Vimeo, etc.) |
 | `--config` | String | null | Config file path (reserved for future use) |
-| `--skip-transcription` | boolean | false | Skip Whisper transcription (speech-to-text) |
+| `--skip-phases` | String | `DIARIZE,FRAME_SAMPLE,OCR,KNOWLEDGE` | Comma-separated optional phases to skip: `TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT`. Pass an empty string to run every enabled phase. |
 | `--dry-run` | boolean | false | Validate URL without downloading |
 
 **Examples**
@@ -238,8 +238,7 @@ retry --pipeline-id <UUID> [--skip-transcription] [--skip-context]
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--pipeline-id` | String | required | Failed pipeline run UUID |
-| `--skip-transcription` | boolean | false | Skip transcription phase during retry |
-| `--skip-context` | boolean | false | Skip context generation phase during retry |
+| `--skip-phases` | String | *(omitted)* | Comma-separated optional phases to skip. **Omit to retry with the phases the run itself was created with**; pass an empty string to run every enabled phase. Absent is not empty — see [Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md). |
 
 **Example output**
 
@@ -304,12 +303,12 @@ been run for the target video).
 |---------|-------|--------|
 | `search-knowledge --query <TEXT> [--type ENTITY\|TOPIC\|SUMMARY\|CLAIM\|QUESTION] [--limit N]` | Cross-video semantic search over `vidingest_knowledge_units`. Returns one block per hit with type, title, snippet, parent video. | Requires semantic search enabled. |
 | `knowledge --video-id <UUID> [--type ENTITY\|TOPIC\|SUMMARY\|CLAIM\|QUESTION]` | All knowledge units for one video, optionally filtered by type. | |
-| `regenerate-knowledge --video-id <UUID>` | Re-runs the M6 KnowledgePhase in isolation against the video's current multimodal segments. | Mirrors `POST /videos/{id}/knowledge/regenerate`. |
+| `regenerate-knowledge --video-id <UUID>` | Re-runs `KnowledgePhase` in isolation against the video's current multimodal segments. | Mirrors `POST /videos/{id}/knowledge/regenerate`. |
 | `speakers --video-id <UUID>` | Lists pyannote-identified speakers with per-speaker transcript segment counts. | |
 
 The `ingest` and `retry` commands also gained `--skip-diarize`, `--skip-frames`,
 `--skip-ocr`, `--skip-knowledge` flags (defaulting to `true`) — flip individual ones to
-`false` to opt in to the corresponding M2–M6 phase for that run.
+`false` to opt in to the corresponding enrichment phase for that run.
 
 See [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) for the
 underlying pipeline phases and how to enable them.
