@@ -119,7 +119,7 @@ Stores a user-managed list of YouTube channels to sync and browse over REST.
 | `id` | UUID | PK | Auto-generated |
 | `channel_url` | TEXT | NOT NULL, UNIQUE | User-provided YouTube channel URL (e.g. `https://www.youtube.com/@handle`) |
 | `display_name` | VARCHAR(255) | nullable | Optional UI label |
-| `status` | VARCHAR(50) | NOT NULL | `NEW`, `SYNCING`, `READY`, `ERROR`, `DISABLED` |
+| `status` | VARCHAR(50) | NOT NULL | `NEW`, `SYNCING`, `READY`, `ERROR` |
 | `metadata` | JSONB | nullable | Full yt-dlp channel/playlist JSON payload (bounded by playlistLimit) |
 | `last_sync_attempt_at` | TIMESTAMPTZ | nullable | Last sync attempt time |
 | `last_sync_success_at` | TIMESTAMPTZ | nullable | Last successful sync time |

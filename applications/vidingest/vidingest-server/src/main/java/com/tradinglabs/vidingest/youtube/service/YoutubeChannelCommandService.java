@@ -118,11 +118,10 @@ public class YoutubeChannelCommandService {
     /**
      * Stops tracking a channel.
      *
-     * <p>The only escape hatch a mistyped URL had was the {@code DISABLED} status, which nothing
-     * sets and no endpoint reaches — so a bad channel sat {@code ERROR} forever while
-     * {@link com.tradinglabs.vidingest.youtube.scheduler.YoutubeChannelSyncScheduler} re-ran
-     * yt-dlp against it every half hour, because that sweep takes every channel that is not
-     * {@code DISABLED}.
+     * <p>This is the only escape hatch, and it exists because there was none. A {@code DISABLED}
+     * status was declared but never reachable, so a mistyped URL sat {@code ERROR} forever while
+     * {@link com.tradinglabs.vidingest.youtube.scheduler.YoutubeChannelSyncScheduler} re-ran yt-dlp
+     * against it every half hour. The dead constant is gone; deleting is how tracking stops.
      *
      * <p>The discovered catalog goes with it through the {@code ON DELETE CASCADE} on
      * {@code vidingest_youtube_channel_videos.channel_id}. Videos already ingested from the
@@ -204,12 +203,8 @@ public class YoutubeChannelCommandService {
     }
 
     private YoutubeChannel loadForSync(UUID channelId) {
-        YoutubeChannel ch = youtubeChannelRepository.findById(channelId)
+        return youtubeChannelRepository.findById(channelId)
                 .orElseThrow(() -> new YoutubeChannelNotFoundException(channelId));
-        if (ch.getStatus() == YoutubeChannelStatus.DISABLED) {
-            throw new ConflictException("Channel is disabled: " + channelId);
-        }
-        return ch;
     }
 
     /**

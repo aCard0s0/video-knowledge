@@ -126,14 +126,15 @@ itself.
 
 ### Status lifecycle
 
-`NEW → SYNCING → READY`, or `ERROR` with `lastError` set. There is a fifth constant, `DISABLED`,
-and **nothing sets it and no endpoint reaches it** — the scheduler's sweep takes every channel that
-is *not* `DISABLED` (`YoutubeChannelSyncScheduler`), and `loadForSync` 409s on one, but neither can
-fire because the status is unreachable. Do not implement against it.
+`NEW → SYNCING → READY`, or `ERROR` with `lastError` set. Four constants, and **there is no
+disabled state.** A fifth, `DISABLED`, was declared and never reachable — nothing set it and no
+endpoint produced it — while two guards branched on it: the scheduler swept
+`findAllByStatusNot(DISABLED)` and `loadForSync` 409'd on one. Both were dead, and constant and
+guards were removed together; the sweep is a plain `findAll()`.
 
 ### Deleting a channel
 
-`DISABLED` being unreachable is why `DELETE` exists: a mistyped URL sat `ERROR` forever while the
+Having no disable is why `DELETE` exists: a mistyped URL sat `ERROR` forever while the
 half-hour sweep re-ran yt-dlp against a dead address. Delete drops the discovered catalog through
 the `ON DELETE CASCADE` on `vidingest_youtube_channel_videos.channel_id`; **videos already ingested
 are untouched** — they are `vidingest_videos` rows with no FK back here. Removing a channel undoes a

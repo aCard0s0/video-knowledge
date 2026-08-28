@@ -380,9 +380,8 @@ JSON, `/api/v1/nope` still a 404 ProblemDetail.
   operator noticed the Sync button or the half-hour scheduler ran, which made Add look inert.
 - **A link out to what the channel produced.** `GET /videos` already filters on `channelName` and
   the videos screen already reads `?channel=`; only the link from the channel was missing.
-- **A channel can be removed.** Add was one-way: the only escape hatch a mistyped URL had was the
-  `DISABLED` status, which nothing set and no endpoint reached, so the row stayed `ERROR` while the
-  scheduler re-ran yt-dlp against it forever (finding 16). Remove sits beside Sync on the list,
+- **A channel can be removed.** Add was one-way, and there was no disable, so a mistyped URL stayed
+  `ERROR` while the scheduler re-ran yt-dlp against it forever (finding 16). Remove sits beside Sync on the list,
   behind a confirm that says what goes — the catalog — and what does not: the videos already
   ingested from it.
 - **Starting a channel batch does not dead-end either.** It used to leave `Run started for N

@@ -166,7 +166,6 @@ export function statusVar(status: string | null | undefined): string {
     case 'ERROR':
       return 'var(--st-failed)';
     case 'CANCELLED':
-    case 'DISABLED':
       return 'var(--st-cancelled)';
     case 'READY':
       return 'var(--st-done)';

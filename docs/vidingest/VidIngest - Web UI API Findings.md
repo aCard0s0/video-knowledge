@@ -132,7 +132,7 @@ TS unions and drifts if the server adds a constant:
 - `RunStatus`: PENDING, IN_PROGRESS, COMPLETED, FAILED, CANCELLED
 - `PipelineRunPhase`: CREATED, METADATA, DOWNLOAD, PERSIST, TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT, DONE — **CREATED and DONE are run markers, never rendered as steps**
 - `VideoStatus`: PENDING, DOWNLOADING, DOWNLOADED, EXTRACTING, TRANSCRIBING, PROCESSING, COMPLETED, FAILED
-- `YoutubeChannelStatus`: NEW, SYNCING, READY, ERROR, DISABLED
+- `YoutubeChannelStatus`: NEW, SYNCING, READY, ERROR
 - `TranscriptionStatus`: TRANSCRIBING, COMPLETED, FAILED
 - `PipelineErrorCode`, `PipelineRunItemEventType`: see above
 
@@ -262,11 +262,13 @@ last page — on the screen whose reason to exist is catching new ones.
 The catalog is also capped: `vidingest.youtube.sync.playlistLimit=200` becomes `--playlist-end`,
 so "200 in catalog" on a 700-upload channel is a window, not a count.
 
-### 16. Nothing reached `DISABLED`, so a bad channel was permanent
+### 16. There was no way to stop tracking a channel
 
-`YoutubeChannelSyncScheduler` sweeps `findAllByStatusNot(DISABLED)` every half hour, and no
-endpoint ever set `DISABLED`. A mistyped URL therefore sat `ERROR` forever with yt-dlp re-run
-against it on a cron. `DELETE /youtube/channels/{channelId}` answers 204, or 404 for an id that is
+Measured when a fifth status, `DISABLED`, was still declared: `YoutubeChannelSyncScheduler` swept
+`findAllByStatusNot(DISABLED)` every half hour and no endpoint ever set it, so a mistyped URL sat
+`ERROR` forever with yt-dlp re-run against it on a cron. **That constant has since been deleted**
+along with the two guards that branched on it; the sweep is now a plain `findAll()`. What the
+finding produced is the endpoint: `DELETE /youtube/channels/{channelId}` answers 204, or 404 for an id that is
 already gone; the discovered catalog follows through the `ON DELETE CASCADE` on
 `vidingest_youtube_channel_videos.channel_id`, and videos already ingested from the channel are
 untouched — they are `vidingest_videos` rows with no FK back.

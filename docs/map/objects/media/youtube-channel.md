@@ -21,6 +21,10 @@ A watched channel URL. Syncing it lists videos via yt-dlp and records them as ca
 - **`syncChannel` is deliberately not `@Transactional`** — `discover` is a yt-dlp playlist fetch and
   the pool is 10 connections (`YoutubeChannelCommandService.java:142-151`). Same rule as the phases.
 - **Identity is `UNIQUE (channel_url)`** — `006-youtube-channels.sql:20`.
+- **There is no disabled state**, and the absence is deliberate. A fifth `DISABLED` constant was
+  declared and never reachable — nothing set it, no endpoint produced it — while two guards branched
+  on it, so both were dead. Constant and guards were removed together; the scheduler's sweep is a
+  plain `findAll()`. `DELETE /youtube/channels/{channelId}` is how tracking stops.
 
 ## Shape
 

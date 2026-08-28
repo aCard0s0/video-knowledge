@@ -130,7 +130,7 @@ class YoutubeChannelsApiIntegrationTest extends BaseVidingestIntegrationTest {
     }
 
     /**
-     * A mistyped channel used to be permanent: nothing reaches the DISABLED status, so the
+     * A mistyped channel used to be permanent: there is no disable, so the
      * half-hour scheduler re-ran yt-dlp against a dead URL forever.
      */
     @Test
