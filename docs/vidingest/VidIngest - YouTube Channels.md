@@ -1,12 +1,12 @@
 ---
 type: reference
-last_reviewed: 2026-05-12
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - YouTube channels
 
 **Owner**: TradingLabs Platform  
-**Status**: draft  
+**Status**: shipped (REST + console screen at `/vidingest/channels`)  
 
 **Applies to**:
 - `vidingest-server`
@@ -78,6 +78,9 @@ Request:
 }
 ```
 
+- `GET /api/v1/youtube/channels?page=0&size=50` — `listChannels`
+- `GET /api/v1/youtube/channels/{channelId}` — `getChannel`
+- `DELETE /api/v1/youtube/channels/{channelId}` — `deleteChannel`, **204**. See *Deleting a channel* below.
 - `POST /api/v1/youtube/channels/{channelId}/sync`
 - `GET /api/v1/youtube/channels/{channelId}/videos?page=0&size=50`
 - `POST /api/v1/youtube/channels/{channelId}/pipelines`
@@ -101,13 +104,40 @@ vidingest.youtube.sync.enabled=true
 vidingest.youtube.sync.cron=0 0/30 * * * *
 vidingest.youtube.sync.playlistLimit=200
 vidingest.youtube.sync.timeoutSeconds=120
+vidingest.youtube.sync.concurrency=${VIDINGEST_YOUTUBE_SYNC_CONCURRENCY:4}
 ```
+
+Bound by `YoutubeSyncProperties`. `concurrency` caps how many channels one tick syncs at once — the
+scheduler holds a `Semaphore` of that size plus an `AtomicBoolean` so a slow tick cannot overlap
+itself.
 
 ## Behavior and invariants
 
 - **Bounded discovery**: sync only fetches a bounded number of recent entries (`playlistLimit`) to keep runtime predictable on large channels.
 - **Catalog vs ingestion**: `vidingest_youtube_channel_videos` is a discovery catalog; ingestion dedupe remains `(source, source_video_id)` on `vidingest_videos`.
 - **Idempotency**: per-channel uniqueness is enforced by `(channel_id, youtube_video_id)`.
+- **No FK from a candidate to an ingested video.** A `vidingest_youtube_channel_videos` row that has
+  been ingested looks exactly like one that has not; the only link is the URL string.
+- **`syncChannel` is deliberately not `@Transactional`.** Discovery is a yt-dlp playlist fetch and
+  the pool is 10 connections — the same rule every pipeline phase follows
+  (`YoutubeChannelCommandService`, javadoc above `syncChannel`).
+- **Sync bookkeeping is three fields, not one**: `lastSyncAttemptAt`, `lastSyncSuccessAt` and
+  `lastError`. A single "last synced" cannot answer *is it broken, or just quiet*.
+
+### Status lifecycle
+
+`NEW → SYNCING → READY`, or `ERROR` with `lastError` set. There is a fifth constant, `DISABLED`,
+and **nothing sets it and no endpoint reaches it** — the scheduler's sweep takes every channel that
+is *not* `DISABLED` (`YoutubeChannelSyncScheduler`), and `loadForSync` 409s on one, but neither can
+fire because the status is unreachable. Do not implement against it.
+
+### Deleting a channel
+
+`DISABLED` being unreachable is why `DELETE` exists: a mistyped URL sat `ERROR` forever while the
+half-hour sweep re-ran yt-dlp against a dead address. Delete drops the discovered catalog through
+the `ON DELETE CASCADE` on `vidingest_youtube_channel_videos.channel_id`; **videos already ingested
+are untouched** — they are `vidingest_videos` rows with no FK back here. Removing a channel undoes a
+typo; it does not wipe a corpus. The console arms the row before sending for that reason.
 
 ## Testing and validation
 
@@ -115,4 +145,14 @@ vidingest.youtube.sync.timeoutSeconds=120
   - `YoutubeChannelDiscoveryParserTest` validates yt-dlp JSON parsing.
 - Integration:
   - `YoutubeChannelsApiIntegrationTest` validates create + sync (with discovery mocked) + list videos.
+  - `YoutubeChannelPipelinesApiIntegrationTest` validates starting a run from selected channel videos.
 
+Integration tests disable the scheduler; `BaseVidingestIntegrationTest` turns YouTube sync off.
+
+## Related pages
+
+- What a change here hits: [YoutubeChannel](../map/objects/media/youtube-channel.md),
+  [YoutubeChannelVideo](../map/objects/media/youtube-channel-video.md),
+  [channel-sync](../map/processes/channel-sync.md)
+- Where the run goes next: [VidIngest - Download Pipeline](VidIngest%20-%20Download%20Pipeline.md)
+- Console screen: [VidIngest - Web UI](VidIngest%20-%20Web%20UI.md)

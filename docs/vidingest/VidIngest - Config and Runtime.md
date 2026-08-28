@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - Config and Runtime
@@ -576,6 +576,20 @@ retryable — recovery after a restart is not immediate.
 terminal state for duplicate videos), and not currently claimed. The run itself must still be
 FAILED — that is a separate, run-level gate answered first, and a retry that accepts no items
 leaves the run FAILED rather than moving it out of the only state from which it can be retried.
+
+## Failure modes
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `relation "vidingest_videos" does not exist` | Liquibase migration not run | Check `spring.liquibase.enabled=true` and DB connectivity |
+| `yt-dlp failed with exit code` | yt-dlp not installed or network issue | Install yt-dlp (`pip install yt-dlp`), check network |
+| `yt-dlp timed out after N seconds` | Command exceeded configured timeout | Increase `vidingest.download.timeout-seconds` or disable timeout with `0` |
+| `Whisper request failed` / `TRANSCRIPTION_FAILURE` | Whisper service not running, model still downloading, or ffmpeg missing | Start infra `whisper`, persist cache, verify `http://localhost:9000/docs` |
+| `Connection refused` on startup | PostgreSQL not running | Start PostgreSQL on the configured host/port |
+| `Ingestion failed: Video already ingested` | Duplicate video URL | Expected behavior; the same source+videoId pair cannot be ingested twice |
+| `Semantic search is disabled` | Search feature flag off | Set `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true` and configure embeddings (see Semantic search section above) |
+
+Moved here from the overview page: this is runtime behaviour, and the overview is a routing file.
 
 ## Related pages
 

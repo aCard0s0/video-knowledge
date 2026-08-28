@@ -1,6 +1,6 @@
 ---
 type: overview
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest (server + MCP + CLI)
@@ -130,158 +130,33 @@ Mermaid source: `diagrams/mermaid/vidingest-overview.mmd`
 | File helpers | `FileSystemHelper` | `core.download.util` |
 | Path resolution | `ProjectPathResolver` | `config` |
 
-## MCP server (remote agent access)
+## Where everything else lives
 
-VidIngest exposes its capabilities as MCP tools over SSE from the standalone `vidingest-mcp` server. Remote agents can call these tools without interacting with the Spring Shell CLI.
+This page is the overview: what VidIngest is, what it is not, and how the pieces fit. It carries no
+configuration, no tool tables and no runbook — each of those has a page that owns it, and a copy
+here is a copy that drifts.
 
-**Endpoint**:
+| Ask | Page |
+|---|---|
+| every property, profile, Docker setting, failure mode | [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) |
+| tables, columns, enums, migrations | [Data Model](VidIngest%20-%20Data%20Model.md) |
+| yt-dlp, download modes, storage paths, transcript artifacts | [Download Pipeline](VidIngest%20-%20Download%20Pipeline.md) |
+| the enrichment phases and their sidecars | [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md) |
+| re-running one phase on one video | [Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md) |
+| watching a channel | [YouTube Channels](VidIngest%20-%20YouTube%20Channels.md) |
+| MCP tools and LM Studio setup | [MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md) |
+| shell commands | [CLI Commands](VidIngest%20-%20CLI%20Commands.md) |
+| the operator console | [Web UI](VidIngest%20-%20Web%20UI.md) |
+| what to test | [Test Scenarios](VidIngest%20-%20Test%20Scenarios.md) |
+| **what a change hits** | [docs/map](../map/CLAUDE.md) |
 
-- Local (MCP app running on host): `http://localhost:8055/vidingest/sse`
-- Docker (MCP app exposed via compose): `http://localhost:8055/vidingest/sse`
+The full catalog — including the two Web UI sub-pages — is [docs/Home.md](../Home.md). This page
+deliberately does not keep a second index; the one it used to carry listed five of thirteen pages.
 
-**Available tools**:
+## Change checklist
 
-| Tool | Description |
-|------|-------------|
-| `createPipelineRuns` | Create async pipeline runs for one or more URLs |
-| `downloadToDisk` | Download a video to disk (no database) |
-| `downloadToDatabase` | Download and persist without full pipeline |
-| `listVideos` | List all ingested videos |
-| `getVideoStatus` | Get video details by UUID |
-| `deleteVideo` | Delete a video and cascading records |
-| `listPipelineRuns` | List pipeline runs (paged) |
-| `searchVideos` | Semantic chunk search against pgvector |
-| `retryPipelineRun` | Retry a failed pipeline run by UUID (async) |
-
-**Implementation**: `applications/vidingest/vidingest-mcp/src/main/java/com/tradinglabs/vidingest/mcp/tools/McpIngestTools.java`
-
-See [VidIngest - MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md) for setup details.
-
-## Configuration
-
-Config paths:
-
-- Server:
-  - `applications/vidingest/vidingest-server/src/main/resources/application.properties`
-  - `applications/vidingest/vidingest-server/src/main/resources/application-dev.properties`
-  - `applications/vidingest/vidingest-server/src/main/resources/application-docker.properties`
-- MCP:
-  - `applications/vidingest/vidingest-mcp/src/main/resources/application.properties`
-- CLI:
-  - `applications/vidingest/vidingest-cli/src/main/resources/application.properties`
-
-Property classes:
-
-- `VideoDownloadConfig` (`vidingest.download.*`)
-- `VideoStorageConfig` (`vidingest.storage.*`)
-- `VideoSearchConfig` (`vidingest.search.*`)
-
-See [VidIngest - Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) for details.
-
-## Semantic search (pgvector + embeddings)
-
-VidIngest semantic search requires:
-
-- `vidingest.search.semantic-enabled=true`
-- An embeddings provider configured via `vidingest.search.embeddings.provider`
-
-### Ollama (recommended)
-
-The platform Docker stack runs the `llm` service on the ollama image (see `compose/infra/infra.yml`). VidIngest can use Ollama-native embeddings via `POST /api/embed`.
-
-Key env vars (recommended via repo-root `.env` / `.env.example`):
-
-- `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`
-- `VIDINGEST_EMBEDDINGS_PROVIDER=ollama`
-- `VIDINGEST_LLM_BASE_URL=http://llm:11434`
-- `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL=rjmalagon/gte-qwen2-1.5b-instruct-embed-f16`
-- `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536`
-
-### Backfilling context chunks for existing videos
-
-If videos were ingested while semantic search was disabled, they will have transcriptions but **no** `ContextChunk` records. Regenerate them with:
-
-- `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`
-
-## Operational runbook
-
-### Health check
-
-For Docker: the container health check probes `GET /vidingest/api/v1/health/ready` from inside the container.
-
-For local development:
-
-- Server is ready when `GET http://localhost:8051/vidingest/api/v1/videos` returns 200.
-- CLI is ready when you see the Spring Shell prompt `shell:>`.
-
-### Logs
-
-- Log config: `src/main/resources/logback-spring.xml` (imports `logback-common.xml` from `common-logging`)
-- Log directory: `${user.dir}/../../../package/logs/vidingest`
-- Outputs: CONSOLE, PLAIN_FILE, JSON_FILE, ERROR_FILE
-
-### Transcript files
-
-When the TRANSCRIBE phase runs (it is not named in the run's `skipPhases`), VidIngest writes transcript artifacts to:
-
-The same directory as the downloaded video file under `package/vidingest/videos/` (local dev) or `/data/videos` (container).
-
-Files use the same base name as the video file (without extension):
-
-- `<videoFileBase>.whisper.json`
-- `<videoFileBase>.whisper.txt`
-
-### Failure modes
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `relation "vidingest_videos" does not exist` | Liquibase migration not run | Check `spring.liquibase.enabled=true` and DB connectivity |
-| `yt-dlp failed with exit code` | yt-dlp not installed or network issue | Install yt-dlp (`pip install yt-dlp`), check network |
-| `yt-dlp timed out after N seconds` | Command exceeded configured timeout | Increase `vidingest.download.timeout-seconds` or disable timeout with `0` |
-| `Whisper request failed` / `TRANSCRIPTION_FAILURE` | Whisper service not running, model still downloading, or ffmpeg missing | Start infra `whisper`, persist cache, verify `http://localhost:9000/docs` |
-| `Connection refused` on startup | PostgreSQL not running | Start PostgreSQL on the configured host/port |
-| `Ingestion failed: Video already ingested` | Duplicate video URL | Expected behavior; the same source+videoId pair cannot be ingested twice |
-| `Semantic search is disabled` | Search feature flag off | Set `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true` and configure embeddings (see Semantic search section above) |
-
-## Testing and validation
-
-```bash
-# Server tests
-./mvnw -pl applications/vidingest/vidingest-server test
-
-# Manual validation in shell
-shell:> download --url https://www.youtube.com/watch?v=VIDEO_ID --disk-only true
-shell:> download --url https://www.youtube.com/watch?v=VIDEO_ID --progress true
-shell:> ingest --url https://www.youtube.com/watch?v=VIDEO_ID
-shell:> list
-shell:> status --video-id <UUID>
-shell:> pipelines --status FAILED
-shell:> retry --pipeline-id <FAILED_PIPELINE_UUID>
-shell:> search --query "support zone breakout" --limit 3
-```
-
-See [VidIngest - Test Scenarios](VidIngest%20-%20Test%20Scenarios.md) for full scenarios.
-
-## Change checklist (agent-friendly)
-
-When modifying vidingest-cli:
-
-- [ ] Update this overview if responsibilities or architecture change
-- [ ] Update [CLI Commands](VidIngest%20-%20CLI%20Commands.md) if shell commands change
-- [ ] Update [Download Pipeline](VidIngest%20-%20Download%20Pipeline.md) if yt-dlp integration changes
-- [ ] Update [Data Model](VidIngest%20-%20Data%20Model.md) if entities or schema change
-- [ ] Update [Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md) if properties change
-- [ ] Update diagrams (SVG + Mermaid source) if flow or architecture changes
-- [ ] Add test scenarios for new or changed commands
-
-## Pages
-
-- [VidIngest - CLI Commands](VidIngest%20-%20CLI%20Commands.md)
-- [VidIngest - Download Pipeline](VidIngest%20-%20Download%20Pipeline.md)
-- [VidIngest - Data Model](VidIngest%20-%20Data%20Model.md)
-- [VidIngest - Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)
-- [VidIngest - MCP with LM Studio](VidIngest%20-%20MCP%20with%20LM%20Studio.md)
-- [VidIngest - Test Scenarios](VidIngest%20-%20Test%20Scenarios.md)
-- [VidIngest - Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)
-- [VidIngest - Per-Phase Rerun](VidIngest%20-%20Per-Phase%20Rerun.md)
-- [VidIngest - Web UI](VidIngest%20-%20Web%20UI.md)
+- [ ] Update this page if the architecture or the scope changes — **not** if a property, command or
+      endpoint changes; those belong to the pages above
+- [ ] Update the page that owns whatever you changed, and its `last_reviewed`
+- [ ] Update diagrams (Mermaid source, then `./scripts/regenerate-mermaid-svgs.sh`)
+- [ ] `python3 scripts/check-markdown-links.py`
