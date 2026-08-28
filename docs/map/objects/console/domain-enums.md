@@ -40,7 +40,7 @@ Tracks **eight** server enums; **six** as exported lists.
 | `EVENT_TYPES` | `PipelineRunItemEventType` (8) | `pipeline/domain/` |
 | `VIDEO_STATUSES` | `VideoStatus` (8) | `videos/domain/` |
 | `KNOWLEDGE_TYPES` | `KnowledgeUnitType` (5) | **`vidingest-api`**, not the server |
-| *(none — `statusVar` cases)* | `YoutubeChannelStatus` (5) | `youtube/domain/` |
+| *(none — `statusVar` cases)* | `YoutubeChannelStatus` (4) | `youtube/domain/` |
 | *(none — `statusVar` cases)* | `TranscriptionStatus` (3) | `core/transcription/domain/` |
 
 `KnowledgeUnitType` living in the API module is exactly how it stayed off the enum list in

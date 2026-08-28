@@ -1,7 +1,6 @@
 package com.tradinglabs.vidingest.youtube.scheduler;
 
 import com.tradinglabs.vidingest.youtube.config.YoutubeSyncProperties;
-import com.tradinglabs.vidingest.youtube.domain.YoutubeChannelStatus;
 import com.tradinglabs.vidingest.youtube.repo.YoutubeChannelRepository;
 import com.tradinglabs.vidingest.youtube.service.YoutubeChannelCommandService;
 import lombok.extern.slf4j.Slf4j;
@@ -58,7 +57,7 @@ public class YoutubeChannelSyncScheduler {
         }
 
         try {
-            var channels = youtubeChannelRepository.findAllByStatusNot(YoutubeChannelStatus.DISABLED);
+            var channels = youtubeChannelRepository.findAll();
             if (channels.isEmpty()) {
                 return;
             }

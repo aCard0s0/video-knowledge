@@ -162,9 +162,8 @@ export class Channels {
   /**
    * Stop tracking a channel. First press arms the row, second sends it.
    *
-   * Without this a mistyped URL was permanent: nothing in the API reached the `DISABLED` status,
-   * so the row sat `ERROR` while the server's half-hour sweep re-ran yt-dlp against a dead URL
-   * forever. It needs confirming because it drops the discovered catalog — but not the videos
+   * Without this a mistyped URL was permanent: the server has no disable, so the row sat `ERROR`
+   * while its half-hour sweep re-ran yt-dlp against a dead URL forever. It needs confirming because it drops the discovered catalog — but not the videos
    * already ingested from it, which is what the armed line says.
    *
    * The same arm-then-confirm shape the videos list and the video screen's rerun chips use, rather
