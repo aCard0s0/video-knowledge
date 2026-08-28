@@ -4,7 +4,7 @@ cluster: derived
 universe: live
 status: verified
 verified: 2026-08-28
-commit: 0a40fa2
+commit: 69f9110
 entity: applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/core/knowledge/domain/KnowledgeUnit.java
 ---
 
@@ -21,9 +21,11 @@ a time span and a 1536-dim embedding.
 - **Its transaction covers only the wipe and the repopulate**, taken after the loop, for the same
   reason as OCR: never hold a connection across an LLM call.
 - **`KnowledgeUnitType` lives in `vidingest-api`, not the server** —
-  `.../api/knowledge/KnowledgeUnitType.java`. That is why it is absent from the "seven server
-  enums" list in [root CLAUDE.md](../../../../CLAUDE.md), even though the console mirrors it as
-  `KNOWLEDGE_TYPES` (`core/domain.ts:119`). It is the **eighth** enum that file must track.
+  `.../api/knowledge/KnowledgeUnitType.java`. The console mirrors it as `KNOWLEDGE_TYPES`
+  (`core/domain.ts:130`), and living in the API module is exactly how it stayed off the enum list
+  in [root CLAUDE.md](../../../../CLAUDE.md) — a list that said "server enums". That list now names
+  it; see [domain.ts enums](../console/domain-enums.md) for which of the eight are arrays and which
+  are only `statusVar` cases.
 - **The LLM caller is not Ollama-only.** `vidingest.knowledge.provider` picks `ollama` or
   `openai-compatible`, so LM Studio, llama.cpp, mlx-lm or vLLM is a property change.
 
