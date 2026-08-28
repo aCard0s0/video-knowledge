@@ -1,7 +1,11 @@
+---
+type: reference
+last_reviewed: 2026-05-12
+---
+
 # VidIngest - YouTube channels
 
 **Owner**: TradingLabs Platform  
-**Last reviewed**: 2026-05-12  
 **Status**: draft  
 
 **Applies to**:

@@ -1,3 +1,8 @@
+---
+type: reference
+last_reviewed: 2026-08-27
+---
+
 # VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
@@ -311,7 +316,7 @@ Adds verbose SQL/transaction tracing on top of defaults:
 | `org.springframework.transaction` | DEBUG |
 | `liquibase` | DEBUG |
 
-## Knowledge-extraction properties (M2–M8)
+## Knowledge-extraction properties
 
 All disabled by default (fusion is the exception — pure-Java, defaults on). Full
 description and operational notes in

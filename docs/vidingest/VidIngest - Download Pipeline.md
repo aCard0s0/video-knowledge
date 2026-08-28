@@ -1,3 +1,8 @@
+---
+type: reference
+last_reviewed: 2026-08-27
+---
+
 # VidIngest - Download Pipeline
 
 - **Primary packages**: `com.tradinglabs.vidingest.download.service`, `com.tradinglabs.vidingest.download.util`
@@ -124,11 +129,11 @@ Resolved in order of priority:
 3. Environment variables (Spring relaxed binding): `VIDEO_KNOWLEDGE_ROOT`, `VIDINGEST_STORAGE_VIDEO_PATH`
 4. Fallback: current working directory
 
-## Beyond DOWNLOAD: the full ingestion pipeline (M2–M8)
+## Beyond DOWNLOAD: the full ingestion pipeline
 
 The phases described above (`METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → CONTEXT`) are
-the download-and-transcribe core. The M2–M8 expansion inserts five additional phases
-between `TRANSCRIBE` and `CONTEXT`:
+the download-and-transcribe core, and what a default local run does. Five further phases sit
+between `TRANSCRIBE` and `CONTEXT`, each off unless its `vidingest.<phase>.enabled` says otherwise:
 
 ```
 METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE → OCR → FUSE → KNOWLEDGE → CONTEXT

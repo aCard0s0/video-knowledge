@@ -1,3 +1,8 @@
+---
+type: reference
+last_reviewed: 2026-08-26
+---
+
 # VidIngest - CLI Commands
 
 - **Primary package**: `com.tradinglabs.vidingest.cli`
@@ -289,9 +294,9 @@ Displays the download tool, format, storage paths, and quick examples for common
 - `retry` only accepts pipeline runs currently in `FAILED` status and uses the stored source URL from the original pipeline run.
 - `search` is explicit when semantic search is disabled or no embedding provider is configured.
 
-## M2–M8 knowledge-extraction commands
+## Knowledge-extraction commands
 
-Four new commands ride on top of the M2–M8 server expansion. They require the matching
+Four commands ride on top of the enrichment phases. They require the matching
 master switch to be enabled on the server side (and the matching pipeline phases to have
 been run for the target video).
 

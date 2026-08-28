@@ -8,6 +8,8 @@ update those pointers when you move/rename code.
 
 ## VidIngest
 
+How to read this shelf, and what its frontmatter means: [vidingest/CONTEXT.md](vidingest/CONTEXT.md).
+
 - Overview: [VidIngest](vidingest/VidIngest.md)
 - Config and runtime: [VidIngest - Config and Runtime](vidingest/VidIngest%20-%20Config%20and%20Runtime.md)
 - Data model: [VidIngest - Data Model](vidingest/VidIngest%20-%20Data%20Model.md)
@@ -15,6 +17,8 @@ update those pointers when you move/rename code.
 - Knowledge extraction: [VidIngest - Knowledge Extraction](vidingest/VidIngest%20-%20Knowledge%20Extraction.md)
 - Per-phase rerun: [VidIngest - Per-Phase Rerun](vidingest/VidIngest%20-%20Per-Phase%20Rerun.md)
 - Web UI: [VidIngest - Web UI](vidingest/VidIngest%20-%20Web%20UI.md)
+  - measured API behaviour: [VidIngest - Web UI API Findings](vidingest/VidIngest%20-%20Web%20UI%20API%20Findings.md)
+  - how the app is built: [VidIngest - Web UI App Guide](vidingest/VidIngest%20-%20Web%20UI%20App%20Guide.md)
 - YouTube channels: [VidIngest - YouTube Channels](vidingest/VidIngest%20-%20YouTube%20Channels.md)
 - CLI commands: [VidIngest - CLI Commands](vidingest/VidIngest%20-%20CLI%20Commands.md)
 - MCP with LM Studio: [VidIngest - MCP with LM Studio](vidingest/VidIngest%20-%20MCP%20with%20LM%20Studio.md)
