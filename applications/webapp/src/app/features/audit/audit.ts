@@ -8,6 +8,7 @@ import { absoluteTime, clockTime, dayLabel } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
 import { firstFailure, valueOf } from '../../core/problem';
 import { clampPage } from '../../core/paging';
+import { debouncedWrite } from '../../core/debounce';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
@@ -33,6 +34,8 @@ export class Audit {
   protected readonly errorCodes = ERROR_CODES;
 
   protected readonly runId = signal('');
+  /** The box filters as it is typed; the write waits for a pause. See `core/debounce.ts`. */
+  protected readonly setRunId = debouncedWrite((value: string) => this.set('runId', value));
   protected readonly eventType = signal('');
   protected readonly status = signal('');
   protected readonly phase = signal('');
@@ -132,6 +135,7 @@ export class Audit {
     this[which].set(value);
     this.page.set(0);
   }
+
 
   protected clear(): void {
     for (const key of FILTER_KEYS) this[key].set('');

@@ -42,5 +42,10 @@ export const routes: Routes = [
     title: 'Audit · VidIngest',
     loadComponent: () => import('./features/audit/audit').then((m) => m.Audit),
   },
+  {
+    path: 'settings',
+    title: 'Settings · VidIngest',
+    loadComponent: () => import('./features/settings/settings').then((m) => m.Settings),
+  },
   { path: '**', redirectTo: 'ingest' },
 ];

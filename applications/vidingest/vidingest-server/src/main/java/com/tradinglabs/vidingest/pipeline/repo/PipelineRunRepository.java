@@ -60,6 +60,34 @@ public interface PipelineRunRepository extends JpaRepository<PipelineRun, UUID> 
 
     Page<PipelineRun> findByStatus(RunStatus status, Pageable pageable);
 
+    /**
+     * The listing behind {@code GET /pipelines}: a status and a lower bound on {@code createdAt},
+     * either of which may be absent.
+     *
+     * One query rather than the four that two nullable filters would need as derived methods.
+     * {@code createdAfter} exists because the console's "today" and "this week" ranges were a
+     * client-side cut of whatever one page happened to hold — correct only while every run fits in
+     * a page, and silently a *window* rather than a range past that. It takes an instant, not a
+     * named range: the server cannot know which midnight the caller means, and the caller does.
+     *
+     * <p>{@code coalesce}, not {@code :createdAfter is null}: a parameter whose only appearance is
+     * inside {@code is null} reaches Postgres with no type to infer from, and the driver answers
+     * <em>could not determine data type of parameter $3</em> — for <b>every</b> listing, filtered
+     * or not, since this one query now serves them all. Coalescing against the column itself gives
+     * the bind a type, and an absent bound becomes {@code created_at >= created_at}, which is true
+     * for a NOT NULL column. {@code :status} needs no such help: Hibernate types that bind from the
+     * enum comparison beside it.
+     */
+    @Query("""
+            select r from PipelineRun r
+            where (:status is null or r.status = :status)
+              and r.createdAt >= coalesce(:createdAfter, r.createdAt)
+            """)
+    Page<PipelineRun> findPage(
+            @Param("status") RunStatus status,
+            @Param("createdAfter") OffsetDateTime createdAfter,
+            Pageable pageable);
+
     @Query("""
             select
               r.id as id,

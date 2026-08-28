@@ -32,23 +32,6 @@
   min-height: 100%;
 }
 
-// Every inline icon in the shell: stroke geometry from CSS so the markup carries only the path.
-svg.icon {
-  width: 15px;
-  height: 15px;
-  flex: none;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-
-  &.solid {
-    fill: currentcolor;
-    stroke: none;
-  }
-}
-
 .frame {
   --nav-now: var(--nav-w);
 
@@ -160,19 +143,6 @@ nav {
       background: color-mix(in srgb, var(--accent) 12%, transparent);
     }
   }
-
-  // Ordinals, in the muted weight: the rail reads as the menu it is, and the numbers never
-  // compete with the labels.
-  .idx {
-    flex: none;
-    width: 2ch;
-    color: var(--fg-muted);
-    font-variant-numeric: tabular-nums;
-  }
-
-  a.on .idx {
-    color: var(--accent);
-  }
 }
 
 // Where you are inside the active section, indented to line up with the labels above it:
@@ -253,18 +223,6 @@ nav {
   }
 }
 
-.tick button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 6px;
-  font-size: var(--fs-xs);
-
-  svg.icon {
-    width: 10px;
-    height: 10px;
-  }
-}
 
 // Opens flush against the rail, whatever width it currently has, and upward from the foot that
 // owns it. Overriding `inset` is what stops the UA centring it in the viewport.
@@ -341,22 +299,6 @@ nav {
   }
 }
 
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  padding: 6px;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--fg-muted);
-
-  &:hover:not(:disabled) {
-    color: var(--fg);
-    background: var(--muted);
-  }
-}
-
 // The last row, and the only one that is neither status nor ambient.
 .nav-toggle {
   margin-top: var(--space-xs);
@@ -410,14 +352,9 @@ nav {
   .brand-text,
   nav a span,
   .leaf,
-  .tick .label,
   .deps-btn .unit,
   .nav-btn span {
     @include visually-hidden;
-  }
-
-  nav .idx {
-    display: none;
   }
 
   .clock {

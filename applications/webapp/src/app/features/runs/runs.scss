@@ -81,3 +81,16 @@
 th[aria-sort='descending'] .sort {
   color: var(--fg);
 }
+
+// The code's own column. `width: 1%` is the table idiom for "as narrow as the content allows":
+// without it the auto layout hands this column a share of the free width and the codes drift away
+// from the statuses they qualify.
+.err-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+// FAILED keeps the failure ramp; the other four are counts, not alarms.
+.count.quietcount {
+  color: var(--fg-muted);
+}

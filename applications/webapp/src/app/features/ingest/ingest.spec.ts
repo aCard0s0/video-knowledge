@@ -364,11 +364,15 @@ describe('Ingest', () => {
               error: 'yt-dlp failed',
               videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
               videoTitle: '',
-              createdAt: '2026-08-27T15:43:56.094678Z',
+              channelName: 'Rick TV',
+              videoId: 'vid-9',
+              // The list opens on `today`, so a fixture with a fixed date would rot into a run the
+              // default range filters out — which is the range test below, not this one.
+              createdAt: new Date().toISOString(),
             },
           ],
           page: 0,
-          size: 5,
+          size: 200,
           total: 1,
         }),
     });
@@ -376,10 +380,69 @@ describe('Ingest', () => {
 
     const row = el.querySelector('.recent li')!;
     expect(row.querySelector('vk-status')!.textContent).toContain('FAILED');
-    // errorCode and error are on every RunSummary and neither used to be rendered.
-    expect(row.querySelector('vk-fault')!.textContent).toContain('UPSTREAM_TOOL_FAILURE');
+    // The code rides the row and is the control that opens the message under it. Nothing else in
+    // the row toggles: a click anywhere else opens the run.
+    const code = row.querySelector<HTMLButtonElement>('vk-error-code button')!;
+    expect(code.textContent).toContain('UPSTREAM_TOOL_FAILURE');
+    expect(row.querySelector('.msg')).toBeNull();
+
+    code.click();
+    TestBed.tick();
+    expect(row.querySelector('.msg')!.textContent).toContain('yt-dlp failed');
+    // A column each, and a different destination each: the channel to the rest of its videos, the
+    // title to the video itself.
+    const channel = row.querySelector('.channel a')! as HTMLAnchorElement;
+    expect(channel.textContent).toContain('Rick TV');
+    expect(channel.getAttribute('href')).toBe('/videos?channel=Rick%20TV');
+    const title = row.querySelector('.url a')! as HTMLAnchorElement;
+    expect(title.getAttribute('href')).toBe('/videos/vid-9');
     // …and the label keeps the video id a 34ch tail-clip was eating.
     expect(row.querySelector('.url')!.textContent).toContain('dQw4w9WgXcQ');
+  });
+
+  /**
+   * The range is the server's, so what the chips have to get right is the bound they *send*. It is
+   * local midnight and it carries an offset: the client is the only side that knows which midnight
+   * "today" means, and cutting the page client-side was a range only while every run fit in it.
+   */
+  it('asks the server for the range, from local midnight, and for nothing when it is `all`', async () => {
+    const sent: (string | undefined)[] = [];
+    const pipelines = stubPipelines({
+      listRuns: (
+        _status?: string,
+        _page?: number,
+        _size?: number,
+        _ids?: string[],
+        _live?: boolean,
+        _sortBy?: string,
+        createdAfter?: string,
+      ) => {
+        sent.push(createdAfter);
+        return of({ items: [], page: 0, size: 50, total: 0 });
+      },
+    });
+    const { el } = await screen(pipelines);
+
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    expect(sent.at(-1)).toBe(midnight.toISOString());
+
+    const chip = (label: string) =>
+      [...el.querySelectorAll<HTMLButtonElement>('.chips .chip')].find(
+        (b) => b.textContent!.trim() === label,
+      )!;
+
+    chip('week').click();
+    TestBed.tick();
+    const weekAgo = new Date(midnight);
+    weekAgo.setDate(weekAgo.getDate() - 6);
+    expect(sent.at(-1)).toBe(weekAgo.toISOString());
+
+    // `all` is the absence of the bound, not a bound far in the past — the server drops the
+    // predicate, and a date chosen here would be a floor nobody asked for.
+    chip('all').click();
+    TestBed.tick();
+    expect(sent.at(-1)).toBeUndefined();
   });
 
   it('sends a lane segment to the run screen with the trail filtered to that phase', async () => {

@@ -5,21 +5,23 @@ import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 
 import { YoutubeChannelSummary, YoutubeService } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge } from '../../core/time';
+import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
+import { Icon } from '../../ui/icon';
 import { Problem } from '../../ui/problem';
 import { syncQueryParams } from '../../core/url-state';
 import { clampPage } from '../../core/paging';
+import { rowDisclosure } from '../../core/disclosure';
 
 const PAGE_SIZE = 25;
 
 @Component({
   selector: 'vk-channels',
-  imports: [ReactiveFormsModule, RouterLink, StatusBadge, Pager, Empty, Problem],
+  imports: [ReactiveFormsModule, RouterLink, StatusBadge, Pager, Empty, Problem, Icon],
   templateUrl: './channels.html',
   styleUrl: './channels.scss',
 })
@@ -70,6 +72,33 @@ export class Channels {
 
   protected age(value: string | undefined): string {
     return humanAge(value, this.poller.now());
+  }
+
+  /** The sync column: a half-hourly schedule has no second hand, and the tooltip has the instant. */
+  protected syncAge(value: string | undefined): string {
+    return humanAgeCoarse(value, this.poller.now());
+  }
+
+  /** Which row has its sync failure open. See `core/disclosure.ts`. */
+  private readonly disclosure = rowDisclosure();
+
+  protected isOpen(channel: YoutubeChannelSummary): boolean {
+    return this.disclosure.isOpen(channel.id);
+  }
+
+  protected toggleFault(channel: YoutubeChannelSummary): void {
+    if (blank(channel.lastError)) return;
+    this.disclosure.toggle(channel.id);
+  }
+
+  /**
+   * The row is the shortcut, the chevron is the control. Anything inside the row that is already a
+   * control keeps its own click — the channel link and the three actions all live in this row, and
+   * a handler that did not ask would toggle the panel on the way to every one of them.
+   */
+  protected rowClick(channel: YoutubeChannelSummary, event: Event): void {
+    if ((event.target as HTMLElement).closest('a, button')) return;
+    this.toggleFault(channel);
   }
 
   /**

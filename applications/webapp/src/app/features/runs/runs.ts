@@ -15,6 +15,9 @@ import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
+import { Icon } from '../../ui/icon';
+import { ErrorCode } from '../../ui/error-code';
+import { rowDisclosure } from '../../core/disclosure';
 import { Problem } from '../../ui/problem';
 import { Rejects } from '../../ui/rejects';
 import { Fault } from '../../ui/fault';
@@ -32,8 +35,13 @@ const PAGE_SIZE = 25;
  * queued behind the ingestion semaphore, which is where it actually is.
  */
 export function marker(run: RunSummary): string {
-  if (!isLive(run.status)) return '—';
-  return isLanePhase(run.phase) ? run.phase : 'queued';
+  if (isLive(run.status)) return isLanePhase(run.phase) ? run.phase : 'queued';
+  // A FAILED run reports `phase: "DONE"` — the one value that is known to be a lie, and the phase
+  // it actually died in lives on the item (`failedPhase`), which no `RunSummary` carries. Every
+  // other terminal run's marker is true, and dashing all of them was what left this column empty
+  // down the whole page.
+  if (run.status === 'FAILED') return '—';
+  return blank(run.phase) ? '—' : run.phase!;
 }
 
 /**
@@ -60,7 +68,7 @@ export function hasFault(run: RunSummary): boolean {
 
 @Component({
   selector: 'vk-runs',
-  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, Rejects, Fault],
+  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, Rejects, Fault, Icon, ErrorCode],
   templateUrl: './runs.html',
   styleUrl: './runs.scss',
 })
@@ -94,8 +102,21 @@ export class Runs {
    * One extra one-row query so the FAILED chip can carry a count: that number is the whole reason
    * this screen gets opened, and a select hides it behind a click.
    */
-  protected readonly failedCount = rxResource({
-    stream: () => this.pipelines.listRuns('FAILED', 0, 1),
+  /**
+   * A count behind every chip, not only FAILED.
+   *
+   * `GET /pipelines` has no group-by, so this is one one-row query per status — five `count(*)`s
+   * against the index on `status`, forked together so they land as one value. The alternative was
+   * counting the page in hand, which is wrong the moment there are more than 25 runs, and wrong in
+   * the way that looks right.
+   */
+  protected readonly counts = rxResource({
+    stream: () =>
+      forkJoin(
+        Object.fromEntries(
+          RUN_STATUSES.map((s) => [s, this.pipelines.listRuns(s, 0, 1)] as const),
+        ),
+      ),
   });
 
   protected readonly history = rxResource({
@@ -119,7 +140,7 @@ export class Runs {
         this.running.reload();
         this.pending.reload();
         this.history.reload();
-        this.failedCount.reload();
+        this.counts.reload();
       },
     );
   }
@@ -163,7 +184,18 @@ export class Runs {
     return blank(run.videoUrl) ? '—' : shortUrl(run.videoUrl!);
   }
 
-  protected readonly failed = computed(() => valueOf(this.failedCount)?.total ?? 0);
+  private readonly countByStatus = computed(() => valueOf(this.counts) ?? {});
+  protected readonly failed = computed(() => this.countByStatus()['FAILED']?.total ?? 0);
+
+  /** `0` reads as `undefined` to the template's `@if … as`, which is what keeps an empty chip bare. */
+  protected countOf(status: string): number | undefined {
+    if (status === 'ALL') {
+      // The chip's own filter is "no filter", so its count is the five totals — one more addition
+      // rather than a sixth query for a number the other five already carry.
+      return Object.values(this.countByStatus()).reduce((n, page) => n + (page?.total ?? 0), 0) || undefined;
+    }
+    return this.countByStatus()[status]?.total || undefined;
+  }
   /**
    * What "retry all" would actually take: the FAILED runs on the page in front of the operator, not
    * the `failed()` total behind the chip. The two differ past 25 rows, and a button that silently
@@ -181,6 +213,24 @@ export class Runs {
     this.status.set(value);
     this.page.set(0);
   }
+
+  /** The one age column carries whichever clock orders the list, so the header is also the switch. */
+  protected toggleSort(): void {
+    this.setSort(this.sortBy() === 'createdAt' ? 'updatedAt' : 'createdAt');
+  }
+
+  protected sortedAt(run: RunSummary): string | undefined {
+    return this.sortBy() === 'createdAt' ? run.createdAt : run.updatedAt;
+  }
+
+  protected readonly sortHint = computed(() =>
+    this.sortBy() === 'createdAt' ? 'Order by when each run last moved' : 'Order by when each run was created',
+  );
+
+  /** Which row has its failure open. See `core/disclosure.ts`. */
+  private readonly disclosure = rowDisclosure();
+  protected readonly isOpen = (id: string | undefined) => this.disclosure.isOpen(id);
+  protected readonly toggleFault = (id: string | undefined) => this.disclosure.toggle(id);
 
   /** Re-ordering the whole list invalidates the page you were on, the same as changing the filter. */
   protected setSort(value: string): void {
@@ -258,7 +308,7 @@ export class Runs {
       this.running.reload();
       this.pending.reload();
       this.history.reload();
-      this.failedCount.reload();
+      this.counts.reload();
     });
   }
 }

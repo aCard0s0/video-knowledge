@@ -239,6 +239,13 @@ exists to show.
   `runLiveSummaryService.listLiveSummariesInOrder(ids)` only when both are present, and otherwise
   falls through to the plain paged list — so `?live=true` alone returns everything, COMPLETED runs
   included. The runs board asks for `status=IN_PROGRESS` and `status=PENDING` instead.
+- **`createdAfter` bounds the listing server-side, and takes an instant rather than a named range**
+  (added 2026-08-28). The ingest panel's today/week/all chips send local midnight with its offset:
+  the server cannot know which midnight the caller means, and the caller already does. It replaced
+  a client-side cut of one 200-row page, which is a *range* only while every run fits in that page
+  and silently a *window* past it — `total` now counts the range, so the panel's "showing the
+  newest N" line is one comparison rather than an inference from the oldest row in hand. The other
+  list endpoints (`/videos`, `/youtube/channels`, `/audit`) still have no date bound.
 
 ### 12. `uniqueItems` generates `Set<string>`, which cannot be serialized
 

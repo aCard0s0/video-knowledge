@@ -1,13 +1,26 @@
+// One row: eight chips and a search box were wrapping onto two lines and pushing the table down by
+// a control's height. `nowrap` above the phone breakpoint, with the box shrinking rather than the
+// chips — below it the row has to wrap, and does.
 .filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-sm);
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .filters {
+    flex-wrap: wrap;
+  }
 }
 
 .filters input {
   font-size: var(--fs-sm);
   padding: 4px 8px;
+  // Transparent like the audit bar: the border is what says "control", and the fill was only ever
+  // repeating the panel behind it.
+  background: transparent;
   /*
     28ch, not 22ch: the placeholder is "Channel name, e.g. LuxAlgo…" and 22ch cut it to
     "Channel name, e.g. Lu" — losing the example, which is the half that teaches what this box

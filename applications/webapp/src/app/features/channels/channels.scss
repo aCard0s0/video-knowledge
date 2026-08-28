@@ -1,6 +1,10 @@
+// Not a panel any more: a bare row of controls above the list it feeds, so the screen carries one
+// framed box rather than two stacked ones. The `.panel` class stays on the element for its padding
+// rhythm; what goes is the box it drew. The gap below comes from the global `.panel + .panel`.
 .add {
-  padding: var(--space-md);
-  margin-bottom: var(--space-lg);
+  padding: var(--space-md) 0;
+  background: none;
+  border: 0;
 }
 
 .fields {
@@ -17,6 +21,13 @@
 .field input {
   width: 34ch;
   max-width: 100%;
+  // Transparent like the filter bars: the border is what says "control", and the fill was only
+  // ever repeating the panel behind it. The URL box carries its own label now, so it needs the room.
+  background: transparent;
+}
+
+.field input[type='url'] {
+  width: 46ch;
 }
 
 .field-error {
@@ -31,3 +42,29 @@
   keyboard can reach, which is the arrangement the readiness checks were moved out of. Wrapped in
   place it became a twenty-line tower in a 14ch column at 390px.
 */
+
+// The row is the shortcut to its sync error; the chevron beside the actions is the control, so the
+// pointer only claims what the row will actually do.
+.expandable {
+  cursor: pointer;
+}
+
+.chev {
+  transition: transform var(--t-fast) ease;
+}
+
+.chev.open {
+  transform: rotate(180deg);
+}
+
+// In the console's voice — lowercase mono, the same height as the fields beside it, and the icon it
+// spins while the catalog is being fetched. It was the one control on the screen shouting in sans.
+.add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 34px;
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+}

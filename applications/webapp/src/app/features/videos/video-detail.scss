@@ -24,17 +24,14 @@
   gap: var(--space-md);
 }
 
+// One column at every width: the player above the artifacts, not beside them. Two columns gave the
+// transcript, the frames and the knowledge units — the things being read — a little over half the
+// screen, while a 460px video sat next to whitespace for the length of the page.
 .split {
   display: grid;
-  grid-template-columns: minmax(320px, 460px) 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-md);
   align-items: start;
-}
-
-.player-panel {
-  position: sticky;
-  top: var(--space-md);
-  padding: var(--space-md);
 }
 
 .player {
@@ -299,55 +296,49 @@
   }
 }
 
-@media (max-width: 1100px) {
-  .split {
-    grid-template-columns: 1fr;
-  }
+// One column, so the panel cannot ride beside the list any more — but the *player* still has to.
+// Every artifact row is a seek, and with the whole panel static the transcript became a ~6000px
+// page whose taps moved a player a full screen above the viewport: audio started and nothing on
+// screen said where it had gone.
+//
+// `display: contents` is what makes it work. A sticky element is bounded by its containing
+// block, so `position: sticky` on the video inside the panel sticks only until the *panel*
+// scrolls past — measured at -701px with the list still going. Dropping the panel's own box
+// promotes its children to grid items of `.split`, which spans the artifacts too, and the video
+// sticks against that instead.
+//
+// Deliberately no `order` on the children. Moving the rerun row and the dossier below the list
+// reads better, but `order` moves only the paint: tab order stays in DOM order, so focus would
+// leave the player, skip the whole list, land on a rerun chip painted underneath it, and come
+// back up. A screen that looks reordered and tabs unreordered is worse than one extra scroll.
+.player-panel {
+  display: contents;
+}
 
-  // One column, so the panel cannot ride beside the list any more — but the *player* still has to.
-  // Every artifact row is a seek, and with the whole panel static the transcript became a ~6000px
-  // page whose taps moved a player a full screen above the viewport: audio started and nothing on
-  // screen said where it had gone.
-  //
-  // `display: contents` is what makes it work. A sticky element is bounded by its containing
-  // block, so `position: sticky` on the video inside the panel sticks only until the *panel*
-  // scrolls past — measured at -701px with the list still going. Dropping the panel's own box
-  // promotes its children to grid items of `.split`, which spans the artifacts too, and the video
-  // sticks against that instead.
-  //
-  // Deliberately no `order` on the children. Moving the rerun row and the dossier below the list
-  // reads better, but `order` moves only the paint: tab order stays in DOM order, so focus would
-  // leave the player, skip the whole list, land on a rerun chip painted underneath it, and come
-  // back up. A screen that looks reordered and tabs unreordered is worse than one extra scroll.
-  .player-panel {
-    display: contents;
-  }
+.player {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-radius: 0;
+}
 
-  .player {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    border-radius: 0;
-  }
+// Out of the panel's box, so the gutter it used to inherit has to be restated.
+.cursor,
+.reruns,
+.dossier {
+  padding-inline: var(--space-md);
+}
 
-  // Out of the panel's box, so the gutter it used to inherit has to be restated.
-  .cursor,
-  .reruns,
-  .dossier {
-    padding-inline: var(--space-md);
-  }
+.rows,
+.units,
+.frames-list {
+  max-height: none;
+}
 
-  .rows,
-  .units,
-  .frames-list {
-    max-height: none;
-  }
-
-  // A sticky element must not cover the thing focus just moved to. Every control in this panel is
-  // a `<button>`, which `styles.scss` already gives a `scroll-margin-top`; only the value changes
-  // here. `56.25vw` is the player's own height at `aspect-ratio: 16 / 9` across the one-column
-  // width, plus a gap.
-  .artifacts button {
-    scroll-margin-top: calc(56.25vw + var(--space-md));
-  }
+// A sticky element must not cover the thing focus just moved to. Every control in this panel is
+// a `<button>`, which `styles.scss` already gives a `scroll-margin-top`; only the value changes
+// here. `56.25vw` is the player's own height at `aspect-ratio: 16 / 9` across the one-column
+// width, plus a gap.
+.artifacts button {
+  scroll-margin-top: calc(56.25vw + var(--space-md));
 }

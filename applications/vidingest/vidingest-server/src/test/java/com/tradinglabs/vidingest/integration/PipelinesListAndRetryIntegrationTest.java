@@ -8,13 +8,18 @@ import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
 import com.tradinglabs.vidingest.core.transcription.service.TranscriptionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,11 +38,70 @@ class PipelinesListAndRetryIntegrationTest extends BaseVidingestIntegrationTest 
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @MockitoBean
     private VideoDownloadService videoDownloadService;
 
     @MockitoBean
     private TranscriptionService transcriptionService;
+
+    /**
+     * `?createdAfter` against real Postgres, because the two things that could break it only break
+     * there: a JPQL {@code :status is null} on an enum parameter, and a timestamptz comparison
+     * against an instant carrying an offset that is not UTC.
+     */
+    @Test
+    void createdAfterBoundsTheListingAndCombinesWithStatus() throws Exception {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        PipelineRun old = pipelineRunRepository.saveAndFlush(PipelineRun.builder()
+                .status(RunStatus.COMPLETED)
+                .videoUrl("https://example.com/old")
+                .build());
+        PipelineRun recent = pipelineRunRepository.saveAndFlush(PipelineRun.builder()
+                .status(RunStatus.FAILED)
+                .videoUrl("https://example.com/recent")
+                .build());
+        // `@PrePersist` stamps created_at and the column is `updatable = false`, so backdating a
+        // run is a native update or nothing — both rows are otherwise created in the same second.
+        backdate(old.getId(), now.minusDays(3));
+        backdate(recent.getId(), now.minusHours(1));
+
+        HttpClient client = HttpClient.newHttpClient();
+        // An offset that is not the server's, which is the whole point: the caller's midnight.
+        String since = now.minusHours(6).withOffsetSameInstant(ZoneOffset.ofHours(1)).toString();
+        String base = "http://localhost:" + port + "/vidingest/api/v1/pipelines";
+
+        JsonNode bounded = get(client, base + "?status=ALL&size=50&createdAfter="
+                + URLEncoder.encode(since, StandardCharsets.UTF_8));
+        assertThat(bounded.get("total").asLong()).isEqualTo(1);
+        assertThat(bounded.get("items").get(0).get("id").asText()).isEqualTo(recent.getId().toString());
+
+        // `total` is the count of the *range*, not of the page — which is what makes it pageable.
+        JsonNode unbounded = get(client, base + "?status=ALL&size=50");
+        assertThat(unbounded.get("total").asLong()).isEqualTo(2);
+        assertThat(unbounded.get("items").size()).isEqualTo(2);
+        assertThat(old.getId()).isNotNull();
+
+        // Both filters at once: the status narrows the range, not the whole table.
+        JsonNode both = get(client, base + "?status=COMPLETED&size=50&createdAfter="
+                + URLEncoder.encode(since, StandardCharsets.UTF_8));
+        assertThat(both.get("total").asLong()).isZero();
+    }
+
+    private void backdate(UUID runId, OffsetDateTime createdAt) {
+        jdbcTemplate.update("UPDATE vidingest_pipeline_runs SET created_at = ? WHERE id = ?", createdAt, runId);
+    }
+
+    private JsonNode get(HttpClient client, String uri) throws Exception {
+        HttpResponse<String> res = client.send(
+                HttpRequest.newBuilder(URI.create(uri)).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(res.statusCode()).isEqualTo(200);
+        return objectMapper.readTree(res.body());
+    }
 
     @Test
     void listReturnsAllRunsAndCanFilterByFailed() throws Exception {

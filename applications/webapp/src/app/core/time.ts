@@ -45,6 +45,25 @@ export function humanAge(value: string | null | undefined, nowMs: number): strin
   return `${humanDuration(diff)} ago`;
 }
 
+/**
+ * Age without seconds, for a reading that does not change by the second.
+ *
+ * A channel syncs on a half-hour schedule, so "46.2s ago" ticking to "47.3s ago" is precision the
+ * number does not have — and a column of them re-renders every poll for no information. The
+ * tooltip beside it still carries the exact instant, which is where precision belongs.
+ */
+export function humanAgeCoarse(value: string | null | undefined, nowMs: number): string {
+  const d = parseServerTime(value);
+  if (!d) return '—';
+  const minutes = Math.floor((nowMs - d.getTime()) / 60_000);
+  // Covers a clock a little ahead of the server as well as the first minute.
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${String(minutes % 60).padStart(2, '0')}m ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 /** Absolute local wall-clock, for the tooltip behind every relative age. */
 export function absoluteTime(value: string | null | undefined): string {
   const d = parseServerTime(value);

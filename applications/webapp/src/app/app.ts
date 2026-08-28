@@ -63,6 +63,14 @@ export const SECTIONS = [
     ],
   },
   { path: 'audit', label: 'Audit', d: ['M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'] },
+  {
+    path: 'settings',
+    label: 'Settings',
+    d: [
+      'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+      'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+    ],
+  },
 ] as const;
 
 /**
@@ -151,7 +159,7 @@ export class App {
   }
 
   /**
-   * `Alt+1`…`Alt+5`, which is what the ordinals in the rail are for. Keyed on `event.code`, not
+   * `Alt+1`…`Alt+6`, in rail order — the `title` on each item names its own. Keyed on `event.code`, not
    * `event.key`: macOS turns Alt+1 into `¡` and Alt+2 into `™`, so the character is not the digit
    * that was pressed. A focused text field keeps the combination — the ingest screen is a large
    * textarea, and stealing a keystroke someone is typing into it is worse than a missing shortcut.
@@ -255,9 +263,6 @@ export class App {
 
   /** What `<time datetime>` wants: the same instant, machine-readable. */
   protected readonly utcIso = computed(() => this.instant().toISOString());
-
-  /** `01`, `02`, … beside each section: the rail reads as the menu it is. */
-  protected readonly ordinal = (i: number) => String(i + 1).padStart(2, '0');
 
   /** Just the duration: the rail spells out "updated … ago" only when it is wide enough to. */
   protected readonly tickAge = computed(() =>

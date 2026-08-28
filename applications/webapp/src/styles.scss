@@ -381,6 +381,80 @@ table.grid th.sp {
   padding: 0;
 }
 
+// Every inline icon in the console: stroke geometry from CSS, so the markup carries only the path.
+// Global rather than the shell's own stylesheet — the channels list draws the same buttons, and two
+// copies of shared furniture is how the row actions drifted apart the first time.
+/*
+  The pipeline error code, as a chip. Global because five places draw it: the fault under a row, the
+  clickable one that opens that fault on the runs board, the run trail, and the ingest panel. It was
+  `vk-fault`'s own scoped rule, which is where the second copy would have started.
+*/
+.code-chip {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  color: var(--st-failed);
+  border: 1px solid var(--st-failed-fill);
+  border-radius: var(--radius);
+  padding: 2px 6px;
+  white-space: nowrap;
+  background: transparent;
+}
+
+/* A CANCELLED item carries an errorCode like any other (`DUPLICATE_VIDEO`), but it is a decision
+   the pipeline made on purpose, and the failure ramp says an operator has something to fix. */
+.code-chip.calm {
+  color: var(--fg-muted);
+  border-color: var(--st-cancelled);
+}
+
+svg.icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  &.solid {
+    fill: currentcolor;
+    stroke: none;
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+
+  &:hover:not(:disabled) {
+    color: var(--fg);
+    background: var(--muted);
+  }
+}
+
+// An icon-only button loses the "Syncing…" its label used to carry, so the icon says it instead.
+@media (prefers-reduced-motion: no-preference) {
+  .icon.spin {
+    animation: vk-spin 900ms linear infinite;
+    transform-origin: 50% 50%;
+  }
+}
+
+@keyframes vk-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 .row-actions {
   display: flex;
   gap: var(--space-sm);
@@ -576,22 +650,17 @@ table.grid tr:has(+ .fault-row) td {
   border-bottom: 0;
 }
 
-// The cell spans a table wider than a phone, so a message left to wrap at the cell width runs its
-// tail off the right edge. Wrap it to the viewport instead: 7rem clears the collapsed 56px rail
-// plus the panel's padding on both sides, which is all the chrome there is below 900px.
-.fault-row vk-fault {
-  display: block;
-  max-width: calc(100vw - 7rem);
-}
-
 /*
-  `vk-fault` caps its own text at 92ch; a bare message does not, and takes the viewport width as a
-  *width* — a table cell that wide pushes the grid past its panel, which is how adding a second row
-  action put Sync and Remove off the right edge of a 1440px screen. Same measure, both fault rows.
+  Uncapped, on purpose. The measure used to be 92ch against the viewport, which is a readable line
+  for prose and the wrong shape for a yt-dlp failure: they open identically and differ at the tail,
+  so a cap moves the part being read further down the wrap. `table.grid` is `width: 100%` and the
+  cell carries `overflow-wrap: anywhere`, so the message cannot widen the grid the way an uncapped
+  message once put Sync and Remove off the right edge of a 1440px screen — that was `break-word`,
+  which does not shrink min-content, and `anywhere` does.
 */
+.fault-row vk-fault,
 .fault-row .err {
   display: block;
-  max-width: min(92ch, calc(100vw - 7rem));
 }
 
 // --- route transitions ----------------------------------------------------

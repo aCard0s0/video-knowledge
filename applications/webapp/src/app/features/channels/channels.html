@@ -1,9 +1,3 @@
-<h1 class="mono">channels</h1>
-<p class="sub prose">
-  Adding a channel fetches its upload catalog now, and the server refreshes it every half hour
-  after that. Nothing is downloaded until you pick videos to ingest.
-</p>
-
 <vk-problem [failure]="failure()" />
 <!-- Present even when empty, so it is a region a screen reader can announce into rather than one
      that appears with its text already in place. A removed row leaves the table, and a row silently
@@ -13,14 +7,16 @@
 <form class="panel add" [formGroup]="form" (ngSubmit)="add()">
   <div class="fields">
     <div class="field">
-      <label for="url">Channel URL</label>
+      <!-- The label rides in the placeholder, the way the audit filters do. It stays in the DOM as
+           `sr-only`: a placeholder is not an accessible name, and it leaves once there is a value. -->
+      <label class="sr-only" for="url">Channel URL</label>
       <input
         #urlField
         id="url"
         type="url"
         name="url"
         formControlName="url"
-        placeholder="https://www.youtube.com/@channel…"
+        placeholder="channel URL — https://www.youtube.com/@channel…"
         autocomplete="off"
         spellcheck="false"
         [attr.aria-invalid]="urlInvalid() || null"
@@ -32,11 +28,20 @@
       }
     </div>
     <div class="field">
-      <label for="displayName">Name (optional)</label>
-      <input id="displayName" type="text" name="displayName" formControlName="displayName" maxlength="255" autocomplete="off" />
+      <label class="sr-only" for="displayName">Name (optional)</label>
+      <input
+        id="displayName"
+        type="text"
+        name="displayName"
+        formControlName="displayName"
+        placeholder="name (optional)"
+        maxlength="255"
+        autocomplete="off"
+      />
     </div>
-    <button class="btn-primary" type="submit" [disabled]="busy() === 'add'">
-      {{ busy() === 'add' ? 'Adding…' : 'Add & sync' }}
+    <button class="btn-primary mono add-btn" type="submit" [disabled]="busy() === 'add'">
+      <vk-icon name="refresh" [spin]="busy() === 'add'" />
+      {{ busy() === 'add' ? 'adding…' : 'add & sync' }}
     </button>
   </div>
 </form>
@@ -76,7 +81,8 @@
         </thead>
         <tbody>
           @for (channel of rows(); track channel.id) {
-            <tr>
+            <!-- The row opens the sync failure, the way an ingest row opens its error message. -->
+            <tr [class.expandable]="!blank(channel.lastError)" (click)="rowClick(channel, $event)">
               <td class="spine" [style.--spine]="statusVar(channel.status)"></td>
               <td><vk-status [status]="channel.status" /></td>
               <td>
@@ -89,30 +95,69 @@
               </td>
               <td class="num">{{ channel.videoCount ?? 0 }}</td>
               <td class="num sm" [title]="absoluteTime(channel.lastSyncSuccessAt)">
-                {{ channel.lastSyncSuccessAt ? age(channel.lastSyncSuccessAt) : 'never' }}
+                {{ channel.lastSyncSuccessAt ? syncAge(channel.lastSyncSuccessAt) : 'never' }}
               </td>
+            <!--
+              Icons, not labels. Every one carries its name in `title` *and* in a visually hidden
+              span: `title` alone is a tooltip no touch device and no screen reader is obliged to
+              read, which is the arrangement the readiness checks were moved out of.
+            -->
               <td class="stick">
                 <span class="row-actions">
-                  <button class="btn-sm" type="button" [disabled]="busy() === channel.id" (click)="sync(channel)">
-                    {{ busy() === channel.id ? 'Syncing…' : 'Sync now' }}
+                  @if (!blank(channel.lastError)) {
+                    <button
+                      class="btn-sm icon-btn"
+                      type="button"
+                      [attr.aria-expanded]="isOpen(channel)"
+                      [attr.aria-controls]="'fault-' + channel.id"
+                      [title]="isOpen(channel) ? 'Hide the sync error' : 'Show the sync error'"
+                      (click)="toggleFault(channel)"
+                    >
+                      <vk-icon class="chev" [class.open]="isOpen(channel)" name="chevron" />
+                      <span class="sr-only">{{ isOpen(channel) ? 'Hide' : 'Show' }} the sync error</span>
+                    </button>
+                  }
+                  <button
+                    class="btn-sm icon-btn"
+                    type="button"
+                    [disabled]="busy() === channel.id"
+                    [title]="busy() === channel.id ? 'Syncing…' : 'Sync now'"
+                    (click)="sync(channel)"
+                  >
+                    <!-- The label used to say "Syncing…"; with it gone the icon has to. -->
+                    <vk-icon name="refresh" [spin]="busy() === channel.id" />
+                    <span class="sr-only">{{ busy() === channel.id ? 'Syncing…' : 'Sync now' }}</span>
                   </button>
                   <!--
-                    One button that changes its label, not two swapped by an `@if`: Angular destroys
+                    One button that changes its icon, not two swapped by an `@if`: Angular destroys
                     the element it replaces, so arming a row from the keyboard would drop focus to
-                    `<body>` and put the confirm a whole tab cycle away. It stays enabled while the
-                    request is in flight for the same reason — `disabled` takes an element out of
-                    the tab order — and `remove()` ignores the repeat press instead.
+                    `<body>` and put the confirm a whole tab cycle away. Swapping the `<svg>` inside
+                    it is free — the button itself, which is what holds focus, survives. It stays
+                    enabled while the request is in flight for the same reason — `disabled` takes an
+                    element out of the tab order — and `remove()` ignores the repeat press instead.
                   -->
                   <button
-                    class="btn-sm btn-danger"
+                    class="btn-sm icon-btn btn-danger"
                     type="button"
                     [attr.aria-disabled]="busy() === channel.id ? 'true' : null"
+                    [title]="armed() === channel.id ? 'Confirm remove' : busy() === channel.id ? 'Removing…' : 'Remove'"
                     (click)="remove(channel)"
                   >
-                    {{ armed() === channel.id ? 'Confirm remove' : busy() === channel.id ? 'Removing…' : 'Remove' }}
+                    <vk-icon [name]="armed() === channel.id ? 'check' : 'trash'" />
+                    <span class="sr-only">
+                      {{ armed() === channel.id ? 'Confirm remove' : busy() === channel.id ? 'Removing…' : 'Remove' }}
+                    </span>
                   </button>
                   @if (armed() === channel.id) {
-                    <button class="btn-sm" type="button" (click)="armed.set(null); said.set('')">Keep</button>
+                    <button
+                      class="btn-sm icon-btn"
+                      type="button"
+                      title="Keep the channel"
+                      (click)="armed.set(null); said.set('')"
+                    >
+                      <vk-icon name="close" />
+                      <span class="sr-only">Keep the channel</span>
+                    </button>
                   }
                 </span>
               </td>
@@ -124,8 +169,8 @@
               wrapped it became a twenty-line tower in a 14ch column at 390px. Every yt-dlp
               failure opens identically and differs at the end, so the tail needs the width.
             -->
-            @if (!blank(channel.lastError)) {
-              <tr class="fault-row">
+            @if (!blank(channel.lastError) && isOpen(channel)) {
+              <tr class="fault-row" [id]="'fault-' + channel.id">
                 <td class="spine" [style.--spine]="statusVar(channel.status)"></td>
                 <!-- The message is a child, not the cell: `display: block` on a `td` drops it out
                      of the table layout, and the row below is drawn over it. -->

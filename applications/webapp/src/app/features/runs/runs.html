@@ -1,9 +1,3 @@
-<h1 class="mono">runs</h1>
-<p class="sub prose">
-  Every pipeline run, newest first. Retrying a FAILED run re-runs the phases its items never
-  completed, keeping the phase set it was created with.
-</p>
-
 <vk-problem [failure]="failure()" />
 <vk-rejects [items]="retryRejects()" />
 <!-- Always in the DOM, so a screen reader has a live region to announce into rather than one that
@@ -80,8 +74,8 @@
           (click)="setStatus(option)"
         >
           {{ option }}
-          @if (option === 'FAILED' && failed() > 0) {
-            <span class="count">{{ failed() }}</span>
+          @if (countOf(option); as n) {
+            <span class="count" [class.quietcount]="option !== 'FAILED'">{{ n }}</span>
           }
         </button>
       }
@@ -111,18 +105,20 @@
           <tr>
             <th scope="col" class="sp"><span class="sr-only">Status colour</span></th>
             <th scope="col">Status</th>
+            <th scope="col" class="err-col"><span class="sr-only">Error</span></th>
             <th scope="col" class="hide-sm">Phase</th>
-            <th scope="col">Run</th>
             <th scope="col" class="hide-sm">Channel</th>
+            <th scope="col">Run</th>
             <th scope="col" class="num hide-sm">Videos</th>
-            <th scope="col" class="num hide-sm" [attr.aria-sort]="sortBy() === 'createdAt' ? 'descending' : 'none'">
-              <button class="sort mono" type="button" (click)="setSort('createdAt')">
-                Created<span aria-hidden="true">{{ sortBy() === 'createdAt' ? ' ↓' : '' }}</span>
-              </button>
-            </th>
-            <th scope="col" class="num" [attr.aria-sort]="sortBy() === 'updatedAt' ? 'descending' : 'none'">
-              <button class="sort mono" type="button" (click)="setSort('updatedAt')">
-                Updated<span aria-hidden="true">{{ sortBy() === 'updatedAt' ? ' ↓' : '' }}</span>
+            <!--
+              One age column carrying whichever clock orders the list, rather than two with a sort
+              button each. The header says which one it is showing, so the column and the ordering
+              can never disagree — and it is the *server* that orders it either way: sorting the 25
+              rows in hand would answer "of the 25 oldest-created, which moved last".
+            -->
+            <th scope="col" class="num" aria-sort="descending">
+              <button class="sort mono" type="button" (click)="toggleSort()" [title]="sortHint()">
+                {{ sortBy() === 'createdAt' ? 'Created' : 'Last moved' }}<span aria-hidden="true"> ↓</span>
               </button>
             </th>
             <th scope="col" class="stick"><span class="sr-only">Actions</span></th>
@@ -133,22 +129,44 @@
             <tr>
               <td class="spine" [style.--spine]="statusVar(run.status)"></td>
               <td><vk-status [status]="run.status" /></td>
+              <!-- A column of its own beside the status it qualifies, so the codes line up down the
+                   page instead of starting wherever each status badge ended. It is also the control
+                   that opens the message: as a row under every failed run that message said nothing
+                   the chip does not, and it is what needs the width once it *is* wanted. -->
+              <td class="err-col">
+                @if (hasFault(run)) {
+                  <vk-error-code
+                    [code]="run.errorCode || 'no code'"
+                    [cancelled]="run.status === 'CANCELLED'"
+                    [open]="isOpen(run.id)"
+                    [controls]="'fault-' + run.id"
+                    (toggled)="toggleFault(run.id)"
+                  />
+                }
+              </td>
               <td class="mono sm hide-sm">{{ marker(run) }}</td>
+              <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
               <td>
                 <a class="run-link" [routerLink]="['/runs', run.id]">
                   <span class="id mono">{{ run.id?.slice(0, 8) }}</span>
                   <span class="title truncate" [title]="label(run)">{{ label(run) }}</span>
                 </a>
               </td>
-              <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
               <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
-              <td class="num sm hide-sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
-              <td class="num sm" [title]="absoluteTime(run.updatedAt)">{{ age(run.updatedAt) }}</td>
+              <td class="num sm" [title]="absoluteTime(sortedAt(run))">{{ age(sortedAt(run)) }}</td>
               <td class="stick">
                 <span class="row-actions">
                   @if (run.status === 'FAILED') {
-                    <button class="btn-sm" type="button" [disabled]="retrying().size > 0" (click)="retry(run)">
-                      {{ retrying().has(run.id!) ? 'Retrying…' : 'Retry' }}
+                    <button
+                      class="btn-sm icon-btn"
+                      type="button"
+                      [disabled]="retrying().size > 0"
+                      [title]="retrying().has(run.id!) ? 'Retrying…' : 'Retry run'"
+                      (click)="retry(run)"
+                    >
+                      <!-- The label used to say "Retrying…"; with it gone the icon has to. -->
+                      <vk-icon name="refresh" [spin]="retrying().has(run.id!)" />
+                      <span class="sr-only">{{ retrying().has(run.id!) ? 'Retrying…' : 'Retry run' }}</span>
                     </button>
                   }
                 </span>
@@ -157,11 +175,12 @@
             <!-- The reason, in its own full-width row rather than a ninth column: `error` is free
                  text from the phase that died and the useful part is its tail, so it gets the width
                  to be read rather than a clip that makes eleven UPSTREAM_TOOL_FAILUREs identical. -->
-            @if (hasFault(run)) {
-              <tr class="fault-row">
+            @if (hasFault(run) && isOpen(run.id)) {
+              <tr class="fault-row" [id]="'fault-' + run.id">
                 <td class="spine" [style.--spine]="statusVar(run.status)"></td>
                 <td colspan="8">
                   <vk-fault
+                    [hideCode]="true"
                     [errorCode]="run.errorCode"
                     [error]="run.error"
                     [cancelled]="run.status === 'CANCELLED'"

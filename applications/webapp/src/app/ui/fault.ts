@@ -6,15 +6,16 @@ import { blank } from '../core/domain';
  * `errorCode` is a PipelineErrorCode enum (DUPLICATE_VIDEO, UPSTREAM_TOOL_FAILURE,
  * TRANSCRIPTION_FAILURE, INVALID_METADATA, UNEXPECTED); the message beside it is free text from
  * the phase that died. It is shown in full: selectable, wrapping, never truncated, because the
- * useful part is usually the tail ("sidecar unreachable, or the frames were removed from disk").
+ * useful part is usually the tail ("sidecar unreachable, or the frames were removed from disk") —
+ * which is also why it carries no measure: a 92ch cap only pushed that tail further down the wrap.
  */
 @Component({
   selector: 'vk-fault',
   template: `
     @if (shown()) {
       <div class="wrap">
-        @if (!blankCode()) {
-          <span class="code mono" [class.calm]="cancelled()">{{ errorCode() }}</span>
+        @if (!blankCode() && !hideCode()) {
+          <span class="code-chip" [class.calm]="cancelled()">{{ errorCode() }}</span>
         }
         <span class="msg">{{ error() || 'No message recorded.' }}</span>
       </div>
@@ -28,22 +29,6 @@ import { blank } from '../core/domain';
       padding: var(--space-sm) 0 0;
     }
 
-    .code {
-      flex: 0 0 auto;
-      font-size: var(--fs-xs);
-      letter-spacing: 0.06em;
-      color: var(--st-failed);
-      border: 1px solid var(--st-failed-fill);
-      border-radius: var(--radius);
-      padding: 2px 6px;
-      white-space: nowrap;
-    }
-
-    .code.calm {
-      color: var(--fg-muted);
-      border-color: var(--st-cancelled);
-    }
-
     .msg {
       font-family: var(--font-mono);
       font-size: var(--fs-sm);
@@ -52,7 +37,6 @@ import { blank } from '../core/domain';
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       user-select: text;
-      max-width: 92ch;
     }
 
     /* Side by side the badge is a nowrap chip, so on a phone it takes half the row and squeezes
@@ -74,6 +58,12 @@ export class Fault {
    * something to fix.
    */
   readonly cancelled = input(false);
+  /**
+   * Drops the chip, not the message. The runs board and the run trail put the code on the row
+   * itself — it is what opens this — so drawing it again here says the same word twice. The code
+   * is still passed in: it is what decides "No message recorded." is worth saying.
+   */
+  readonly hideCode = input(false);
 
   protected readonly blankCode = computed(() => blank(this.errorCode()));
   protected readonly shown = computed(() => !this.blankCode() || !blank(this.error()));

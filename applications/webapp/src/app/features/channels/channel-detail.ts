@@ -10,7 +10,7 @@ import {
 } from '../../api/generated';
 import { blank, isUuid, statusVar } from '../../core/domain';
 import { shortUrl } from '../../core/url';
-import { absoluteTime, humanAge } from '../../core/time';
+import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { watchRun } from '../../core/watch-run';
@@ -168,6 +168,11 @@ export class ChannelDetail {
   protected readonly valueOf = valueOf;
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
+
+  /** The channel's own last sync, which moves on a half-hour schedule. The run below it does not. */
+  protected syncAge(value: string | undefined): string {
+    return humanAgeCoarse(value, this.poller.now());
+  }
 
   protected age(value: string | undefined): string {
     return humanAge(value, this.poller.now());
