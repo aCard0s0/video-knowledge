@@ -1,6 +1,6 @@
 ---
 type: guide
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-29
 ---
 
 # VidIngest - MCP with LM Studio
@@ -238,7 +238,7 @@ as the original nine — no separate tool group.
 |------|------------|-------|
 | `searchKnowledge`      | `query` (text), `type` (ENTITY/TOPIC/SUMMARY/CLAIM/QUESTION, optional), `limit` (1–50) | pgvector similarity across all videos; returns title/snippet/timing. |
 | `getKnowledgeUnits`    | `videoId` (UUID), `type` (optional) | All units for one video, ordered by creation. |
-| `regenerateKnowledge`  | `videoId` (UUID) | Re-runs M6 KnowledgePhase in isolation; idempotent. |
+| `regenerateKnowledge`  | `videoId` (UUID) | Re-runs `KnowledgePhase` in isolation; idempotent. |
 | `getSpeakers`          | `videoId` (UUID) | Speakers + per-speaker transcript-segment counts. |
 | `renameSpeaker`        | `speakerId` (UUID), `displayName` (string, empty clears) | Operator-supplied friendly name; pyannote label is immutable. |
 | `getMultimodalTimeline`| `videoId`, `fromSeconds` (optional), `toSeconds` (optional) | Fused per-window rows; both bounds null = whole video. |

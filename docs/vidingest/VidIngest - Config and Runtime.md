@@ -322,7 +322,7 @@ All disabled by default (fusion is the exception — pure-Java, defaults on). Fu
 description and operational notes in
 [Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md).
 
-### Speaker diarization (M2)
+### Speaker diarization
 ```properties
 vidingest.diarization.enabled=${VIDINGEST_DIARIZATION_ENABLED:false}
 vidingest.diarization.base-url=${VIDINGEST_DIARIZATION_BASE_URL:http://localhost:9001}
@@ -342,7 +342,7 @@ the same workload. Every invocation goes through `FfmpegRunner`, which drains th
 on a separate thread — draining on the waiting thread makes the timeout unreachable, since the
 output stream only reaches EOF when the process exits.
 
-### Frame sampling (M3)
+### Frame sampling
 ```properties
 vidingest.frames.enabled=${VIDINGEST_FRAMES_ENABLED:false}
 vidingest.frames.interval-seconds=${VIDINGEST_FRAMES_INTERVAL_SECONDS:10}
@@ -354,7 +354,7 @@ vidingest.frames.ffmpeg-timeout=${VIDINGEST_FRAMES_FFMPEG_TIMEOUT:PT20M}
 ```
 Pure-Java + ffmpeg — no sidecar.
 
-### OCR (M4)
+### OCR
 ```properties
 vidingest.ocr.enabled=${VIDINGEST_OCR_ENABLED:false}
 vidingest.ocr.base-url=${VIDINGEST_OCR_BASE_URL:http://localhost:8002}
@@ -363,7 +363,7 @@ vidingest.ocr.min-confidence=${VIDINGEST_OCR_MIN_CONFIDENCE:0.5}
 vidingest.ocr.max-results-per-video=${VIDINGEST_OCR_MAX_RESULTS_PER_VIDEO:10000}
 ```
 
-### Multimodal fusion (M5)
+### Multimodal fusion
 ```properties
 vidingest.fusion.enabled=${VIDINGEST_FUSION_ENABLED:true}
 vidingest.fusion.window-seconds=${VIDINGEST_FUSION_WINDOW_SECONDS:30.0}
@@ -371,7 +371,7 @@ vidingest.fusion.window-overlap-seconds=${VIDINGEST_FUSION_WINDOW_OVERLAP_SECOND
 vidingest.fusion.max-segments-per-video=${VIDINGEST_FUSION_MAX_SEGMENTS_PER_VIDEO:2000}
 ```
 
-### Knowledge extraction (M6)
+### Knowledge extraction
 ```properties
 vidingest.knowledge.enabled=${VIDINGEST_KNOWLEDGE_ENABLED:false}
 vidingest.knowledge.provider=${VIDINGEST_KNOWLEDGE_PROVIDER:ollama}

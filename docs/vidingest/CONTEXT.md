@@ -33,18 +33,19 @@ the form's own warning is to cut fields nobody reads.
 
 **Where the dates came from — two kinds, and they are not equal.**
 
-- **Verified against source.** `VidIngest.md`, `Config and Runtime`, `Download Pipeline` and
-  `YouTube Channels` read **2026-08-29** because their claims were re-checked against the code that
-  day. `Per-Phase Rerun` and the three Web UI pages carry dates their authors set.
-- **Seeded from the last commit date.** The rest. That is when the content last *changed*, not when
-  anyone checked it — an upper bound on freshness, not a promise. Re-date a page only when you have
-  actually verified it, and prefer an honest old date to a confident wrong one.
+- **Verified against source.** Nine pages read **2026-08-29**: `VidIngest.md`, `Config and Runtime`,
+  `Download Pipeline`, `YouTube Channels`, `CLI Commands`, `Test Scenarios`, `Data Model`,
+  `Knowledge Extraction` and `MCP with LM Studio`. Their claims were re-checked against the code —
+  every command, endpoint, property, column, enum constant and named test class.
+- **Author-set.** `Per-Phase Rerun` and the three Web UI pages carry dates their authors set. Nobody
+  has re-verified them since.
+
+No page is seeded from a commit date any more. If you add one, seed it that way and say so here —
+that is when content last *changed*, not when anyone checked it. Re-date only when you have actually
+verified, and prefer an honest old date to a confident wrong one.
 
 `last_reviewed` lives in frontmatter and nowhere else. The three pages that had it in the body had
 it removed there — one home per fact.
-
-The oldest pages are `VidIngest - CLI Commands.md` and `VidIngest - Test Scenarios.md`, both
-**2026-08-26**, and both seeded rather than verified.
 
 ## Naming
 
