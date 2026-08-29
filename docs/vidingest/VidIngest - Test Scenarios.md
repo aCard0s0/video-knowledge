@@ -90,14 +90,20 @@ Test scenarios cover all Spring Shell commands and edge cases. Run tests with:
 
 ## Unit test targets
 
-There are **53** unit tests. This table was written as a wish-list; three of the four now exist.
+There are **54** unit tests. This table was written as a wish-list; all four now exist.
 
 | Class | Test focus | Test |
 |-------|-----------|------|
 | `MetadataExtractor` | Field extraction from yt-dlp JSON shapes, null handling, date parsing — asserted from a JVM pinned to `America/Los_Angeles` | `MetadataExtractorTest` |
 | `FileSystemHelper` | Filename sanitization, directory creation, file discovery | `FileSystemHelperTest` |
 | `YtDlpCommandBuilder` | Command-line construction across config combinations | `YtDlpCommandBuilderTest` |
-| `MetadataService` | Entity creation/update from metadata maps | **none** — covered only by `MetadataServiceIntegrationTest` |
+| `MetadataService` | The unique-constraint violation translating to `DuplicateVideoException`, and *only* that exception doing so | `MetadataServiceTest` |
+
+`MetadataServiceTest` deliberately does not re-test create/update — `MetadataServiceIntegrationTest`
+drives both against a real schema. It covers the one branch that integration cannot reach without
+racing two writers on the same `(source, source_video_id)` pair, and that branch is load-bearing:
+`PipelineErrorClassifier` maps the typed exception to `DUPLICATE_VIDEO`, `VidingestApiExceptionHandler`
+has a handler for it, and `PipelineService` catches it by type.
 
 ## Integration test targets
 
