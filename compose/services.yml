@@ -54,9 +54,14 @@ services:
       VIDINGEST_EMBEDDINGS_PROVIDER: ${VIDINGEST_EMBEDDINGS_PROVIDER:-openai-compatible}
       VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS: ${VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS:-1536}
       VIDINGEST_EMBEDDINGS_BASE_URL: ${VIDINGEST_EMBEDDINGS_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
-      # Must name a model the host serves *as an embedding model*, and its dimension must match
-      # EXPECTED_DIMENSIONS above — the pgvector column is VECTOR(1536).
-      VIDINGEST_EMBEDDINGS_MODEL: ${VIDINGEST_EMBEDDINGS_MODEL:-text-embedding-3-small}
+      # Must name a model the host serves *as an embedding model*. oMLX classifies a causal-LM
+      # embedder by looking for "embed" in the directory name, so gte-Qwen2 is filed as an LLM and
+      # rejected on /v1/embeddings whatever its width.
+      VIDINGEST_EMBEDDINGS_MODEL: ${VIDINGEST_EMBEDDINGS_MODEL:-Qwen3-Embedding-4B-4bit-DWQ}
+      # Qwen3-Embedding-4B is natively 2560-wide; the pgvector column is VECTOR(1536). The model is
+      # Matryoshka-trained, so the server truncates on request. Only ever downward — asking a
+      # 1024-wide model for 1536 fails at the server.
+      VIDINGEST_EMBEDDINGS_DIMENSIONS: ${VIDINGEST_EMBEDDINGS_DIMENSIONS:-1536}
       VIDINGEST_EMBEDDINGS_API_KEY: ${VIDINGEST_EMBEDDINGS_API_KEY:-}
       VIDINGEST_EMBEDDINGS_TIMEOUT: ${VIDINGEST_EMBEDDINGS_TIMEOUT:-180s}
       # Used only when the EMBEDDINGS connection is switched back to provider=ollama, which is

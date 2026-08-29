@@ -270,6 +270,16 @@ wire protocol — while every neutral surface is named for the role (`/api/v1/he
 `LlmStatus`, `VIDINGEST_LLM_BASE_URL`, `vidingest.transcription.*`). Embeddings additionally has a
 `Disabled*` floor; integration tests use `vidingest.search.embeddings.provider=disabled`.
 
+**Embedding width is a column type, not a preference.** `VECTOR(1536)` is what the schema declares
+and `expectedDimensions` is checked on every response. No oMLX-supported embedding architecture is
+natively 1536, so `vidingest.search.embeddings.dimensions` sends the OpenAI `dimensions` field
+(Matryoshka truncation) and `Qwen3-Embedding-4B` is cut from 2560 down to it. Sent only when set —
+some OpenAI-compatible servers reject an unknown field — and it only ever truncates, so a model
+narrower than the column cannot be padded up to it. Two oMLX traps behind that: it decides a
+causal-LM embedder by looking for `embed` in the **directory name** (so `gte-Qwen2-1.5B-instruct-...`
+is filed as an LLM despite being 1536-wide), and its embedding engine has no `qwen2` support at all,
+so overriding the type does not rescue it.
+
 **Five connections are editable at runtime**: `GET/PUT/DELETE /api/v1/connections/{name}` and
 `POST .../test`, over `EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `OCR`
 (`connections/`, table `vidingest_connections`, console screen `features/settings/`). A row is an

@@ -1,5 +1,6 @@
 package com.tradinglabs.vidingest.search.service.embedding.openai;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tradinglabs.vidingest.config.VideoSearchConfig;
 import com.tradinglabs.vidingest.search.service.embedding.EmbeddingsClient;
 import lombok.RequiredArgsConstructor;
@@ -52,7 +53,7 @@ public class OpenAiCompatibleEmbeddingsClient implements EmbeddingsClient {
             int end = Math.min(inputs.size(), i + DEFAULT_MAX_BATCH);
             List<String> batch = inputs.subList(i, end);
 
-            EmbeddingsResponse response = postEmbeddings(client, cfg.getApiKey(), new EmbeddingsRequest(model, batch, "float"));
+            EmbeddingsResponse response = postEmbeddings(client, cfg.getApiKey(), new EmbeddingsRequest(model, batch, "float", cfg.getDimensions()));
             if (response == null || response.data == null) {
                 throw new IOException("Embeddings endpoint returned an empty response.");
             }
@@ -120,15 +121,24 @@ public class OpenAiCompatibleEmbeddingsClient implements EmbeddingsClient {
         }
     }
 
+    /**
+     * {@code dimensions} is {@code @JsonInclude(NON_NULL)} rather than always present: the field is
+     * optional in the OpenAI spec and not every compatible server tolerates it, so an unset
+     * {@code vidingest.search.embeddings.dimensions} must leave the body byte-identical to what it
+     * was before this field existed.
+     */
     public static final class EmbeddingsRequest {
         public final String model;
         public final Object input;
         public final String encoding_format;
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public final Integer dimensions;
 
-        public EmbeddingsRequest(String model, Object input, String encoding_format) {
+        public EmbeddingsRequest(String model, Object input, String encoding_format, Integer dimensions) {
             this.model = model;
             this.input = input;
             this.encoding_format = encoding_format;
+            this.dimensions = dimensions;
         }
     }
 

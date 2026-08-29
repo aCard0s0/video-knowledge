@@ -193,9 +193,13 @@ on the host or on another machine, since there is no ollama container any more.
 - `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`
 - `VIDINGEST_EMBEDDINGS_PROVIDER=openai-compatible`
 - `VIDINGEST_EMBEDDINGS_BASE_URL=${VK_HOST_LLM_URL}` → `http://host.docker.internal:8000/v1`
-- `VIDINGEST_EMBEDDINGS_MODEL=text-embedding-3-small` — must name a model the host serves **as an
-  embedding model**, whose dimension matches the next line
-- `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536` — the pgvector column is `VECTOR(1536)`
+- `VIDINGEST_EMBEDDINGS_MODEL=Qwen3-Embedding-4B-4bit-DWQ` — must name a model the host serves
+  **as an embedding model**; see the oMLX note below, which is not obvious
+- `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536` — the pgvector column is `VECTOR(1536)`, checked
+  on every response
+- `VIDINGEST_EMBEDDINGS_DIMENSIONS=1536` — the OpenAI `dimensions` request field (Matryoshka
+  truncation). Sent only when set; leave it unset for a model that is natively the right width,
+  because not every OpenAI-compatible server tolerates the field
 - `VIDINGEST_EMBEDDINGS_TIMEOUT=180s` — one var; the old `VIDINGEST_OLLAMA_TIMEOUT` used to
   shadow it even when the provider was `openai-compatible`
 - `VIDINGEST_OLLAMA_BASE_URL=http://host.docker.internal:11434` and
@@ -210,6 +214,18 @@ Notes:
   "connection refused" after the move off the `llm` container.
 - Every one of these is a *starting* value. All five connections are editable at runtime — see
   [Connections API](#connections-api-runtime-editable) below.
+- **oMLX decides a model is an embedding model by its directory name.** `_is_causal_lm_embedding`
+  looks for `embed`/`embedding` in the name, because a causal-LM embedder's `config.json` is
+  identical to a plain LLM's. So `gte-Qwen2-1.5B-instruct-MLX-Q8` — natively 1536-wide, exactly the
+  column's width — is filed as an `llm` and answers `/v1/embeddings` with
+  *"Model ... is not an embedding model"*. Forcing it with `model_type_override: "embedding"` does
+  not help either: oMLX's embedding engine supports `bert`, `modernbert`, `xlm_roberta`, `qwen3`
+  and `gemma3_text`, **not `qwen2`**, so the load fails with *"Model type qwen2 not supported"*.
+- **No oMLX-supported embedding architecture is natively 1536-wide**, which is why
+  `VIDINGEST_EMBEDDINGS_DIMENSIONS` exists. `Qwen3-Embedding-4B` is 2560 and Matryoshka-trained, so
+  the server truncates to 1536 on request. Truncation only ever goes **down** — asking the 1024-wide
+  `Qwen3-Embedding-0.6B` or `bge-m3` for 1536 fails at the server. Measured on this box: 2560
+  native, 1536 with the field, unit-normalised, cosine 0.49 between two distinct inputs.
 - Semantic search results depend on context-chunk generation during ingestion; ingest without `TRANSCRIBE` or `CONTEXT` in `skipPhases`.
 - For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`.
 
