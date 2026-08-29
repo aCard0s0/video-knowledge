@@ -426,6 +426,17 @@ Production serving is one jar: the Dockerfile builds the console in a node stage
 `config/SpaStaticResourceConfig` forwards client routes to `index.html` while leaving `api/`,
 `actuator`, `v3/` and `swagger-ui` to 404 as JSON.
 
+**There is also a `webapp` container** ([applications/webapp/Dockerfile](applications/webapp/Dockerfile),
+nginx on `WEBAPP_PORT` 8052) serving the same bundle and proxying the API, so the console can be
+rebuilt without the server. The jar keeps its copy — that is what makes it deployable alone — so the
+console has two homes, built from the same source at the same commit. The nginx proxy list in
+[nginx.conf](applications/webapp/nginx.conf) **must mirror `SERVER_PREFIXES`**: a server path that
+matches none of them falls into the SPA branch and returns `index.html` with a 200, which looks like
+a blank screen, not a 404. Two things that bit on the way in and are commented where they live:
+`return 302` needs `absolute_redirect off` or it sends the browser to the container's internal port,
+and the healthcheck must use `127.0.0.1` because `localhost` resolves to `::1` first while nginx
+listens on IPv4 only.
+
 Design tokens are [applications/webapp/src/styles/_tokens.scss](applications/webapp/src/styles/_tokens.scss).
 **Two themes live there**, dark and a separately measured light ramp — not an inversion, since the
 green that reads 11.6:1 on near-black is 1.6:1 on near-white. The OS preference applies with no

@@ -128,3 +128,33 @@ services:
     mem_limit: 1G
     mem_reservation: 256M
     restart: "no"
+
+  # The operator console as its own container. The same bundle is also baked into the vidingest jar
+  # (that is what makes the jar deployable alone), so with this service running the console is
+  # reachable two ways: here on WEBAPP_PORT, and from the server itself on VIDINGEST_PORT. This one
+  # can be rebuilt and restarted without touching the server, which is the reason it exists.
+  #
+  # nginx proxies the API rather than the app being told where the server is: every request the
+  # console makes is relative and there is no CORS config on the server, so the two must stay
+  # same-origin. See applications/webapp/nginx.conf.
+  webapp:
+    build:
+      context: applications/webapp
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
+    image: video-knowledge/webapp:${VK_IMAGE_TAG:-latest}
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${WEBAPP_PORT:-8052}:8080'
+    depends_on:
+      # Only for start order — nginx proxies lazily, so the console still loads and reports the
+      # failure itself if the server goes away later.
+      vidingest:
+        condition: service_healthy
+    networks:
+      - video-knowledge
+    mem_limit: 128M
+    mem_reservation: 32M
+    restart: unless-stopped
+

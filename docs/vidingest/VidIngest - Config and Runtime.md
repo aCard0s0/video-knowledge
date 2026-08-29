@@ -364,7 +364,7 @@ the named volumes; services live in split files layered on top of it:
 | File | Services |
 |------|----------|
 | `compose/infra/infra.yml` | `postgres`, `paddleocr-server`, `diarize-asr` |
-| `compose/services.yml` | `vidingest` (REST server) |
+| `compose/services.yml` | `vidingest` (REST server), `webapp` (console behind nginx) |
 | `compose/cli.yml` | `vidingest-cli` |
 | `compose/mcp.yml` | `vidingest-mcp` |
 
@@ -372,6 +372,21 @@ the named volumes; services live in split files layered on top of it:
 `docker compose` from the repo root sees only the empty base file. Host ports come from
 `compose/ports.env` and everything publishes to `127.0.0.1` unless `VK_BIND_ADDR` says
 otherwise.
+
+**The console is served twice, on purpose.** The vidingest image bakes the Angular bundle into the
+jar (`classpath:/static`, served by `SpaStaticResourceConfig`), which is what makes the jar
+deployable on its own — that has not changed. The `webapp` service is an nginx container serving the
+same bundle on `WEBAPP_PORT` (8052) and proxying the API to `vidingest:8051`, so the console can be
+rebuilt and restarted without touching the server. Both are built from the same source at the same
+commit; they can only diverge if you rebuild one and not the other. Drop the `web` stage from the
+vidingest Dockerfile if you want exactly one.
+
+nginx proxies rather than the app being told where the server is, because **every request the
+console makes is relative** and the server has no CORS configuration — the two must stay
+same-origin. The proxied prefixes in `applications/webapp/nginx.conf` mirror
+`SpaStaticResourceConfig.SERVER_PREFIXES` (`api/`, `actuator`, `v3/`, `swagger-ui`) exactly; a path
+that should reach the server but matches none of them falls into the SPA branch and returns
+`index.html` with a **200**, which reads as a blank screen rather than a 404.
 
 **The `llm` and `whisper` services are gone** (Aug 2026). Both ran CPU-only inside the Docker VM,
 which cannot reach the GPU; inference now runs as a host process and compose points at it via

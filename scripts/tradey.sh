@@ -53,11 +53,13 @@ COMPOSE=(docker compose -p video-knowledge
   -f "${BASE_DIR}/compose/mcp.yml")
 
 # ── service catalogue + groups ──────────────────────────────────────────────
-ALL_SERVICES="postgres paddleocr-server diarize-asr vidingest vidingest-cli vidingest-mcp"
+ALL_SERVICES="postgres paddleocr-server diarize-asr vidingest webapp vidingest-cli vidingest-mcp"
 # Just the database now: the model runtimes moved to the host, and the two sidecars stay opt-in.
 GROUP_INFRA="postgres"
 GROUP_SIDECARS="paddleocr-server diarize-asr"
-GROUP_BACKEND="vidingest"
+# The console ships in the jar too, so `vidingest` alone still serves it; webapp is here because
+# the default footprint should give you the one that can be rebuilt on its own.
+GROUP_BACKEND="vidingest webapp"
 # Default footprint for 'start'/'build all': infra + backend (no opt-in sidecars/cli/mcp)
 GROUP_ALL="${GROUP_INFRA} ${GROUP_BACKEND}"
 
@@ -80,6 +82,7 @@ resolve() {
     backend|be)        echo "${GROUP_BACKEND}" ;;
     db)                echo "postgres" ;;
     vi|vidingest)      echo "vidingest" ;;
+    web|ui|console)    echo "webapp" ;;
     cli)               echo "vidingest-cli" ;;
     mcp)               echo "vidingest-mcp" ;;
     *)
@@ -118,6 +121,7 @@ cmd_start() {
   # shellcheck disable=SC2086
   "${COMPOSE[@]}" up -d ${services}
   ok "up — vidingest: http://localhost:${VIDINGEST_PORT:-8051}/vidingest"
+  ok "     console:   http://localhost:${WEBAPP_PORT:-8052}/vidingest  (also served by the jar above)"
 }
 
 cmd_build() {
@@ -224,7 +228,7 @@ Commands:
 
 Targets:
   groups:   all  infra  sidecars  backend(be)
-  services: postgres(db) paddleocr-server diarize-asr
+  services: postgres(db) paddleocr-server diarize-asr webapp(web|ui|console)
             vidingest(vi) vidingest-cli(cli) vidingest-mcp(mcp)
 
 Env overrides: VK_IMAGE_TAG (default latest)  VK_BIND_ADDR (default 127.0.0.1)
