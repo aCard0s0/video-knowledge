@@ -37,7 +37,7 @@ export class VideoPhasesService extends BaseService {
 
     /**
      * Re-run one pipeline phase for an existing video
-     * Synchronous. Allowed phase values (case-insensitive, \&#39;-\&#39; or \&#39;_\&#39; separated): TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT. Each phase wipes its prior rows for the video before re-populating, so the call is idempotent. A phase that fails returns an RFC 7807 ProblemDetail (502 when an upstream tool did not deliver), not a 200 with an error body.
+     * Synchronous. Allowed phase values (case-insensitive, \&#39;-\&#39; or \&#39;_\&#39; separated): TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE, KNOWLEDGE, CONTEXT. Each phase wipes its prior rows for the video before re-populating, so the call is idempotent. A phase that fails returns an RFC 9457 ProblemDetail (502 when an upstream tool did not deliver), not a 200 with an error body.
      * @endpoint post /api/v1/videos/{videoId}/phases/{phase}/run
      * @param videoId 
      * @param phase 

@@ -14,13 +14,31 @@ after debugging one.
 
 ## API discovery findings
 
-Measured against the running server on **2026-08-26** (18 runs, 3 videos, 303 audit events), not
-inferred from source. The response shapes below have not been re-measured since.
+Measured against the running server, not inferred from source.
 
-The spec counts *have* been re-checked, against the committed `applications/webapp/openapi/vidingest.json`
-on 2026-08-29: **41 operations, 44 schemas** — up from the 40 and 42 measured on the day (and 39
-schemas before `deleteChannel`). Re-run `npm run api:gen` against a live server before trusting a
-count here.
+**Re-measured 2026-08-29** against a rebuilt image on an **empty** database (0 runs, 0 videos,
+0 audit events). The original pass was 2026-08-26 against 18 runs, 3 videos and 303 audit events —
+so the shape-of-a-populated-response findings below (3, 4, 6, 15, 18) still rest on that day's data
+and are marked where they do.
+
+Spec, re-measured: **41 operations, 44 schemas, 37 paths**, OpenAPI 3.1.0 — up from the 40 and 42
+of the original pass (and 39 schemas before `deleteChannel`). The committed
+`applications/webapp/openapi/vidingest.json` matches exactly.
+
+What was re-confirmed live rather than re-read:
+
+| | |
+|---|---|
+| 404 answers `application/problem+json` with `detail`/`instance`/`status`/`title` | finding 1 |
+| `POST /pipelines` with a bad URL answers **400 carrying a `CreatePipelineRunResponse`** — `runId: null`, one `REJECTED` item with a reason | finding 13 |
+| `skipPhases` as a JSON object answers 400 *"Cannot deserialize … `HashSet<String>` from Object value"* — the `Set<string>` trap, still live | finding 12 |
+| **41 operationIds, zero duplicates** | finding 8 |
+| only three schemas carry an enum (`ItemResult`, `KnowledgeUnitDto`, `SearchKnowledgeHit`) | finding 7 |
+| `uniqueItems` still on three request schemas, so `--type-mappings=set=Array` is still load-bearing | finding 12 |
+| **10 of 28 GETs are paged**; the spec documents only `200`, `202` and `204` — no 4xx or 5xx anywhere, which is why every error body generates as `any` | findings 10, 11 |
+
+Not re-measurable on an empty box: the readiness 503 body (needs a broken dependency) and anything
+needing rows. Re-run this page's checks after an ingest if those matter.
 
 ### 1. Errors are RFC 9457 ProblemDetail, not `ApiErrorResponse`
 

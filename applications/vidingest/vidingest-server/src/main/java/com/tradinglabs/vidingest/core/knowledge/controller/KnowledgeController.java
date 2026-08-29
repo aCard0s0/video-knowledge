@@ -35,7 +35,7 @@ import java.util.UUID;
 @RequestMapping(produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "knowledge", description = "Knowledge-extraction APIs (M6/M8)")
+@Tag(name = "knowledge", description = "Knowledge-extraction APIs")
 public class KnowledgeController {
 
     private final SemanticKnowledgeSearchService searchService;
