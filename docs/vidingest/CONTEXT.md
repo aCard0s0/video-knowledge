@@ -31,21 +31,20 @@ the form's own warning is to cut fields nobody reads.
 | `type` | `overview` \| `reference` \| `guide` \| `findings` |
 | `last_reviewed` | ISO date |
 
-**Where the dates came from — two kinds, and they are not equal.**
+**Where the dates came from.** All thirteen pages read **2026-08-29**: every one has been checked
+against source — commands, endpoints, properties, columns, enum constants, named test classes, and
+every file path each page cites.
 
-- **Verified against source.** Nine pages read **2026-08-29**: `VidIngest.md`, `Config and Runtime`,
-  `Download Pipeline`, `YouTube Channels`, `CLI Commands`, `Test Scenarios`, `Data Model`,
-  `Knowledge Extraction` and `MCP with LM Studio`. Their claims were re-checked against the code —
-  every command, endpoint, property, column, enum constant and named test class.
-- **Author-set.** `Per-Phase Rerun` and the three Web UI pages carry dates their authors set. Nobody
-  has re-verified them since.
+Two caveats worth carrying:
 
-No page is seeded from a commit date any more. If you add one, seed it that way and say so here —
-that is when content last *changed*, not when anyone checked it. Re-date only when you have actually
-verified, and prefer an honest old date to a confident wrong one.
+- **`Web UI API Findings` is a measured page.** Its response shapes were measured against a running
+  server on 2026-08-26 and have *not* been re-measured; only its spec counts were re-checked, against
+  the committed `openapi/vidingest.json`. The page states both dates itself.
+- **No page is seeded from a commit date any more.** If you add one that way, say so here — that is
+  when content last *changed*, not when anyone checked it.
 
-`last_reviewed` lives in frontmatter and nowhere else. The three pages that had it in the body had
-it removed there — one home per fact.
+Re-date only when you have actually verified, and prefer an honest old date to a confident wrong
+one. `last_reviewed` lives in frontmatter and nowhere else — one home per fact.
 
 ## Naming
 
