@@ -55,8 +55,9 @@ class OpenAiAudioTranscriptionClientTest extends TranscriptionClientTestBase {
         String body = lastRequestBody.get();
         assertThat(body).contains("name=\"file\"");
         assertThat(body).contains("name=\"model\"").contains("whisper-large-v3");
-        // Not cosmetic: the default response_format=json carries no segments at all, and the phase
-        // persists one row per segment.
+        // Not cosmetic: the OpenAI spec only promises segments for verbose_json, and the phase
+        // persists one row per segment. Some servers return them anyway; the request cannot rely
+        // on which one is answering.
         assertThat(body).contains("name=\"response_format\"").contains("verbose_json");
         assertThat(body).doesNotContain("name=\"audio_file\"");
     }

@@ -74,7 +74,7 @@ services:
       # openai-compatible posts /audio/transcriptions and needs a base URL ending in /v1.
       VIDINGEST_TRANSCRIPTION_PROVIDER: ${VIDINGEST_TRANSCRIPTION_PROVIDER:-openai-compatible}
       VIDINGEST_TRANSCRIPTION_BASE_URL: ${VIDINGEST_TRANSCRIPTION_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
-      VIDINGEST_TRANSCRIPTION_MODEL: ${VIDINGEST_TRANSCRIPTION_MODEL:-whisper-1}
+      VIDINGEST_TRANSCRIPTION_MODEL: ${VIDINGEST_TRANSCRIPTION_MODEL:-whisper-large-v3-turbo}
       VIDINGEST_TRANSCRIPTION_API_KEY: ${VIDINGEST_TRANSCRIPTION_API_KEY:-}
       # Speaker diarization (optional). Flip enabled + start the diarize-asr sidecar (needs
       # HUGGINGFACE_TOKEN) to opt in. Intentionally NOT a depends_on so vidingest starts without it.

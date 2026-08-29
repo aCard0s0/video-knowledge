@@ -17,10 +17,12 @@ import java.net.URI;
  * LM Studio, and the OpenAI API itself. {@code base-url} must include the API prefix, usually
  * {@code /v1}.
  *
- * <p>{@code response_format=verbose_json} is not optional. The default {@code json} returns the
- * transcript text and nothing else, and {@code TranscriptionService} persists one row per segment
- * — without timestamps the phase would store a single blob and FUSE would have nothing to align
- * OCR and diarization against.
+ * <p>{@code response_format=verbose_json} is sent because the OpenAI spec only promises segments
+ * for that format — plain {@code json} is defined as the transcript text alone, and
+ * {@code TranscriptionService} persists one row per segment, so without timestamps the phase would
+ * store a single blob and FUSE would have nothing to align OCR and diarization against. Individual
+ * servers are looser than the spec (oMLX populates segments either way), which is exactly why this
+ * asks explicitly rather than relying on what one of them happens to do.
  */
 @Component
 public class OpenAiAudioTranscriptionClient extends AbstractTranscriptionClient {

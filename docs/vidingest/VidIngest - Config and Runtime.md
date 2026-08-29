@@ -139,14 +139,45 @@ openai-whisper-asr-webservice. Code pointers:
 | `vidingest.transcription.connect-timeout` | `5s` | Startup-bound — not editable through the connections API |
 | `vidingest.transcription.read-timeout` | `30m` | Startup-bound |
 
-`response_format=verbose_json` is not optional on the OpenAI path: the default `json` returns the
-transcript text with no segments, and the phase persists one row per segment. Both providers return
-the same envelope shape (`{text, language, segments[{start,end,text}]}`), which is why one parser in
+The client always sends `response_format=verbose_json` on the OpenAI path: the spec only promises
+segments for that format, and the phase persists one row per segment. Individual servers are looser
+— oMLX returns segments for plain `json` too — which is why the request asks explicitly instead of
+depending on which server is answering. Both providers return the same envelope shape
+(`{text, language, segments[{start,end,text}]}`), which is why one parser in
 `AbstractTranscriptionClient` serves both.
 
 The docker profile used to hardcode `http://whisper:9000` with no `${...}` indirection, so
 `VIDINGEST_WHISPER_BASE_URL` had never had any effect under compose. The replacement
 `VIDINGEST_TRANSCRIPTION_BASE_URL` does.
+
+#### Getting an ASR model into oMLX
+
+Two traps, both hit while setting this up. Neither is guessable from the error alone.
+
+- **`mlx-community/whisper-*` repos ship only `config.json` + `weights.safetensors`** — the older
+  mlx-whisper layout. oMLX refuses to load them:
+  *"missing the HuggingFace processor / feature-extractor configuration"*. The weights are fine; only
+  the tokenizer/processor JSON is absent. Copy it from the upstream OpenAI repo into the model
+  directory and `POST /admin/api/reload`:
+
+  ```bash
+  D=~/.omlx/models/mlx-community/whisper-large-v3-turbo
+  for f in preprocessor_config.json tokenizer.json special_tokens_map.json \
+           tokenizer_config.json added_tokens.json normalizer.json generation_config.json; do
+    curl -sL -o "$D/$f" "https://huggingface.co/openai/whisper-large-v3-turbo/resolve/main/$f"
+  done
+  ```
+
+- **Do not reach for Parakeet.** oMLX detects `mlx-community/parakeet-tdt-0.6b-v3` and loads it, but
+  mlx-audio's Parakeet returns `AlignedResult.sentences` while oMLX's STT engine reads
+  `getattr(result, "segments")` — so every transcription comes back with an **empty** segment list.
+  TRANSCRIBE persists one row per segment, so the phase would store a bare blob and FUSE would have
+  nothing to align against. Whisper is the only supported family that emits
+  `{"start", "end", "text"}`.
+
+Measured on this box with `whisper-large-v3-turbo` (1.6 GB): 27.7 s for the first call including the
+model load, then **1.65 s for 5.3 s of audio** warm — roughly 3× realtime on the GPU, against a
+CPU-only `ASR_MODEL=small` container before.
 
 ### Download (`vidingest.download.*`)
 
