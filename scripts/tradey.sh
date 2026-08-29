@@ -121,7 +121,7 @@ cmd_start() {
   # shellcheck disable=SC2086
   "${COMPOSE[@]}" up -d ${services}
   ok "up — vidingest: http://localhost:${VIDINGEST_PORT:-8051}/vidingest"
-  ok "     console:   http://localhost:${WEBAPP_PORT:-8052}/vidingest  (also served by the jar above)"
+  ok "     console:   http://localhost:${WEBAPP_PORT:-8052}/vidingest"
 }
 
 cmd_build() {

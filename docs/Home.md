@@ -48,8 +48,8 @@ plus `compose/{infra/infra,services,cli,mcp}.yml`. Host ports come from
 
 ## Quick links
 
-- Operator console: <http://localhost:8051/vidingest> (from the jar) or
-  <http://localhost:8052/vidingest> (the `webapp` nginx container — same bundle, proxies the API)
+- Operator console: <http://localhost:8052/vidingest> (the `webapp` nginx container; it proxies the
+  API, so it is same-origin with it)
 - REST base URL: <http://localhost:8051/vidingest/api/v1>
 - MCP (SSE): <http://localhost:8055/vidingest/sse>
 - Ports (defaults): postgres 3030, diarize-asr 9001, paddleocr 8002, vidingest 8051, webapp 8052,

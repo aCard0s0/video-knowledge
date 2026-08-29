@@ -373,20 +373,18 @@ the named volumes; services live in split files layered on top of it:
 `compose/ports.env` and everything publishes to `127.0.0.1` unless `VK_BIND_ADDR` says
 otherwise.
 
-**The console is served twice, on purpose.** The vidingest image bakes the Angular bundle into the
-jar (`classpath:/static`, served by `SpaStaticResourceConfig`), which is what makes the jar
-deployable on its own — that has not changed. The `webapp` service is an nginx container serving the
-same bundle on `WEBAPP_PORT` (8052) and proxying the API to `vidingest:8051`, so the console can be
-rebuilt and restarted without touching the server. Both are built from the same source at the same
-commit; they can only diverge if you rebuild one and not the other. Drop the `web` stage from the
-vidingest Dockerfile if you want exactly one.
+**The console is a separate image.** `webapp` (nginx, `WEBAPP_PORT` 8052) serves the Angular
+bundle and proxies the API to `vidingest:8051`. The server image used to build the bundle in a node
+stage and bake it into `classpath:/static`, served by a `SpaStaticResourceConfig`; both were removed
+once the container existed, so the vidingest image is the API alone and `http://localhost:8051/vidingest/`
+no longer serves a page. One console, one place.
 
 nginx proxies rather than the app being told where the server is, because **every request the
 console makes is relative** and the server has no CORS configuration — the two must stay
-same-origin. The proxied prefixes in `applications/webapp/nginx.conf` mirror
-`SpaStaticResourceConfig.SERVER_PREFIXES` (`api/`, `actuator`, `v3/`, `swagger-ui`) exactly; a path
-that should reach the server but matches none of them falls into the SPA branch and returns
-`index.html` with a **200**, which reads as a blank screen rather than a 404.
+same-origin. The four proxied prefixes in `applications/webapp/nginx.conf` (`api/`, `actuator`,
+`v3/`, `swagger-ui`) are the server's whole surface and now live only there; a path that should
+reach the server but matches none of them falls into the SPA branch and returns `index.html` with a
+**200**, which reads as a blank screen rather than a 404.
 
 **The `llm` and `whisper` services are gone** (Aug 2026). Both ran CPU-only inside the Docker VM,
 which cannot reach the GPU; inference now runs as a host process and compose points at it via

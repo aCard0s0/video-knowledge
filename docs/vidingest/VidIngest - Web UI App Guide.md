@@ -67,20 +67,39 @@ npm run api:gen           # re-fetch the live spec, then regenerate the client
 
 ### Deployment
 
-`applications/vidingest/vidingest-server/Dockerfile` builds the console in a `node:24-alpine`
-stage, copies `dist/webapp/browser/` into the server module's `resources/static/` before
-`mvn package`, and ships one jar. Two details make it work:
+`applications/webapp/Dockerfile` builds the bundle in a `node:24-alpine` stage and serves it from
+nginx (`nginxinc/nginx-unprivileged`), published as the `webapp` compose service on `WEBAPP_PORT`
+(8052). The build context is `applications/webapp` rather than the repo root, so the image cache
+invalidates only when the console changes — which needs its own `.dockerignore`, since the root one
+does not apply to a narrower context.
 
-- The web stage builds with `--base-href=/vidingest/`, because the server's context path is
-  `/vidingest` and a build with the default `/` resolves every asset to a 404. Dev keeps `/`.
-- `config/SpaStaticResourceConfig` forwards unmatched paths to `index.html`, so
-  `/vidingest/runs?status=FAILED` survives a refresh or a shared link. It excludes `api/`,
-  `actuator`, `v3/` and `swagger-ui` so a mistyped endpoint still 404s as JSON, and it does
-  nothing at all when a build did not place `static/index.html` in the jar (a plain
-  `mvn package` does not).
+Until 2026-08-29 the console was instead built inside the server image and baked into the jar's
+`classpath:/static`, served by a `SpaStaticResourceConfig`. Both are gone: there is one console in
+one place, and `http://localhost:8051/vidingest/` no longer serves a page.
 
-Verified from the jar with the dev server stopped: deep link 200s, assets 200, `/api/v1/**` still
-JSON, `/api/v1/nope` still a 404 ProblemDetail.
+Four details make it work:
+
+- The build uses `--base-href=/vidingest/`, because the app is served under that path and a build
+  with the default `/` resolves every asset to a 404. Dev keeps `/`, since `ng serve` serves at the
+  root and proxies `/vidingest` to the API.
+- **nginx proxies the API rather than the app knowing where the server is.** Every request the
+  console makes is relative and the server has no CORS configuration, so the bundle and the API
+  have to be same-origin. The proxied prefixes — `api/`, `actuator`, `v3/`, `swagger-ui` — are the
+  server's whole surface, and now live only in `nginx.conf`: a path that should reach the server
+  but matches none of them falls into the SPA branch and returns `index.html` with a **200**, which
+  reads as a blank screen rather than a 404.
+- `try_files $uri $uri/ /vidingest/index.html` is what makes `/vidingest/runs?status=FAILED` survive
+  a refresh or a shared link. `root` plus a `/vidingest` subdirectory rather than `alias`, because
+  `alias` combined with `try_files` resolves `$uri` against the wrong prefix.
+- `absolute_redirect off`, or the bare-root `return 302` is expanded with the *listen* port and
+  sends the browser to the container's internal 8080. The healthcheck likewise uses `127.0.0.1`,
+  not `localhost`: inside the container that resolves to `::1` first while nginx listens on IPv4
+  only, which left the container permanently unhealthy against a working server.
+
+Verified through the container: deep links (`/vidingest/settings`, `/vidingest/runs/abc`) 200,
+hashed assets 200 and `immutable` with gzip 350 KB → 116 KB, `index.html` `no-store`, the API
+returning real data, and `/vidingest/api/v1/nope` still a 404 `application/problem+json` rather
+than the SPA shell.
 
 ### Flow decisions
 
