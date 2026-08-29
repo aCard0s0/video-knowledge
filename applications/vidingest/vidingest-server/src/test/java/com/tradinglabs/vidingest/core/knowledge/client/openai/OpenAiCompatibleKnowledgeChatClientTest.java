@@ -58,7 +58,7 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
                 """);
 
         OpenAiCompatibleKnowledgeChatClient client =
-                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         List<KnowledgeUnitDraft> drafts = client.extract("system prompt", "user prompt");
 
@@ -89,7 +89,7 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
                 """);
 
         OpenAiCompatibleKnowledgeChatClient client =
-                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         List<KnowledgeUnitDraft> drafts = client.extract("sys", "user");
 
@@ -103,10 +103,10 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
         AtomicReference<String> captured = new AtomicReference<>();
         startServerWithCapture(200, EMPTY_UNITS, captured);
 
-        KnowledgeExtractionConfig cfg = config();
+        KnowledgeExtractionConfig cfg = config(baseUrl());
         cfg.setMaxOutputTokens(2048);
         cfg.setApiKey("sk-test-key");
-        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), cfg, restClient(baseUrl()))
+        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), cfg, restClient())
                 .extract("sys", "user");
 
         String body = captured.get();
@@ -130,14 +130,14 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
         });
         server.start();
 
-        KnowledgeExtractionConfig withKey = config();
+        KnowledgeExtractionConfig withKey = config(baseUrl());
         withKey.setApiKey("sk-abc");
-        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), withKey, restClient(baseUrl()))
+        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), withKey, restClient())
                 .extract("sys", "user");
         assertThat(auth.get()).isEqualTo("Bearer sk-abc");
 
         auth.set(null);
-        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()))
+        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient())
                 .extract("sys", "user");
         assertThat(auth.get()).isNull();
     }
@@ -149,7 +149,7 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
                 """);
 
         OpenAiCompatibleKnowledgeChatClient client =
-                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         assertThatThrownBy(() -> client.extract("sys", "user"))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)
@@ -161,7 +161,7 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
         startServer(404, "{\"error\": {\"message\": \"model not found\"}}");
 
         OpenAiCompatibleKnowledgeChatClient client =
-                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         assertThatThrownBy(() -> client.extract("sys", "user"))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)
@@ -177,10 +177,10 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
     void readTimeoutSaysSoAndNamesTheProperty() throws Exception {
         startStallingServer();
 
-        KnowledgeExtractionConfig cfg = config();
+        KnowledgeExtractionConfig cfg = config(baseUrl());
         cfg.setReadTimeout(Duration.ofMillis(600));
         OpenAiCompatibleKnowledgeChatClient client =
-                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), cfg, shortReadRestClient(baseUrl()));
+                new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), cfg, shortReadRestClient());
 
         assertThatThrownBy(() -> client.extract("sys", "user"))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)
@@ -192,7 +192,7 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
     void extractReturnsEmptyForBlankUserPromptWithoutCallingServer() {
         // No server started: a call would fail with connection refused.
         OpenAiCompatibleKnowledgeChatClient client = new OpenAiCompatibleKnowledgeChatClient(
-                new ObjectMapper(), config(), restClient("http://localhost:1"));
+                new ObjectMapper(), config("http://localhost:1"), restClient());
 
         assertThat(client.extract("sys", "   ")).isEmpty();
         assertThat(client.extract("sys", null)).isEmpty();

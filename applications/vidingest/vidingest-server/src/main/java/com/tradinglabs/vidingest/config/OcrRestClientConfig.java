@@ -7,9 +7,15 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
- * RestClient bean for the {@code paddleocr-server} sidecar. Third {@code RestClient} in the
- * server (alongside {@code whisperRestClient} and {@code diarizationRestClient}) — clients
- * disambiguate via {@code @Qualifier} on their constructor parameters.
+ * Transport for the {@code paddleocr-server} sidecar.
+ *
+ * <p>Note the absence of {@code .baseUrl(...)}: the client resolves an absolute URI per call from
+ * the live {@link OcrConfig}, so repointing the connection through
+ * {@code PUT /api/v1/connections/{name}} takes effect without recreating this bean. What the bean
+ * still contributes is the request factory, and therefore the timeouts — those stay startup-bound.
+ *
+ * <p>One of four {@code RestClient} beans in the server; clients disambiguate with
+ * {@code @Qualifier} on their constructor parameters.
  */
 @Configuration
 public class OcrRestClientConfig {
@@ -22,7 +28,6 @@ public class OcrRestClientConfig {
         requestFactory.setReadTimeout(Math.toIntExact(properties.getReadTimeout().toMillis()));
 
         return RestClient.builder()
-                .baseUrl(properties.getBaseUrl())
                 .requestFactory(requestFactory)
                 .build();
     }

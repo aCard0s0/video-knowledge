@@ -1,5 +1,7 @@
 export * from './audit.service';
 import { AuditService } from './audit.service';
+export * from './connections.service';
+import { ConnectionsService } from './connections.service';
 export * from './frame-artifacts.service';
 import { FrameArtifactsService } from './frame-artifacts.service';
 export * from './health.service';
@@ -22,4 +24,4 @@ export * from './videos.service';
 import { VideosService } from './videos.service';
 export * from './youtube.service';
 import { YoutubeService } from './youtube.service';
-export const APIS = [AuditService, FrameArtifactsService, HealthService, KnowledgeService, PipelinesService, SearchService, SpeakersService, VideoArtifactsService, VideoMultimodalService, VideoPhasesService, VideosService, YoutubeService];
+export const APIS = [AuditService, ConnectionsService, FrameArtifactsService, HealthService, KnowledgeService, PipelinesService, SearchService, SpeakersService, VideoArtifactsService, VideoMultimodalService, VideoPhasesService, VideosService, YoutubeService];

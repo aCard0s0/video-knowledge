@@ -2,7 +2,7 @@
 #
 # Defines the shared network and named volumes. The actual services live in
 # split files, layered on top of this base by scripts/tradey.sh:
-#   - compose/infra/infra.yml   postgres, llm, whisper, diarize-asr, paddleocr-server
+#   - compose/infra/infra.yml   postgres, diarize-asr, paddleocr-server
 #   - compose/services.yml      vidingest       (REST server)
 #   - compose/cli.yml           vidingest-cli   (Spring Shell console)
 #   - compose/mcp.yml           vidingest-mcp   (MCP SSE server)
@@ -14,9 +14,10 @@ networks:
 
 volumes:
   postgres_data:
-  # Deliberately still ollama_data while the llm service runs the ollama image: the volume
-  # holds ollama's own /root/.ollama layout, and renaming it orphans multi-GB of pulled models.
-  ollama_data:
+  # ollama_data is gone with the llm service: inference now runs on the host, which keeps its own
+  # models. `down --volumes` will not remove it, so reclaim the old one by hand once you are sure:
+  #   docker volume rm video-knowledge_ollama_data
+  # ai_models still backs the two sidecars' model caches.
   ai_models:
   vidingest_data:
   app_logs:

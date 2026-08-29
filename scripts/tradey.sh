@@ -6,8 +6,12 @@
 #   - vidingest  (Spring Boot REST, Java 26)                       → :8051
 #   - vidingest-mcp (MCP SSE server, opt-in)                       → :8055
 #   - vidingest-cli (Spring Shell console, opt-in)
-# plus the infra vidingest needs: postgres, llm, whisper, and two
-# optional sidecars (paddleocr-server, diarize-asr).
+# plus the infra vidingest needs: postgres, and two optional sidecars
+# (paddleocr-server, diarize-asr).
+#
+# The LLM and transcription runtimes are NOT containers: they run on the host so that
+# inference reaches the GPU. Point them anywhere with `PUT /api/v1/connections/{name}`
+# or the console's Settings screen.
 #
 # Compose layout: compose.yml (base) + compose/{infra/infra,services,cli,mcp}.yml
 #
@@ -19,12 +23,11 @@
 #   ./scripts/tradey.sh start mcp             # MCP server only
 #   ./scripts/tradey.sh cli                   # open the VidIngest CLI
 #   ./scripts/tradey.sh logs -f vidingest     # follow backend logs
-#   ./scripts/tradey.sh llm pull qwen2.5:14b-instruct
 #   ./scripts/tradey.sh status
 #   ./scripts/tradey.sh down --volumes
 #
 # Image tag: built images are video-knowledge/*:TAG (default latest). Set
-# VK_IMAGE_TAG or pass --tag/-t. Infra images (postgres, llm, whisper) are unchanged.
+# VK_IMAGE_TAG or pass --tag/-t. The postgres image is unchanged.
 # ============================================================================
 set -euo pipefail
 
@@ -50,8 +53,9 @@ COMPOSE=(docker compose -p video-knowledge
   -f "${BASE_DIR}/compose/mcp.yml")
 
 # ── service catalogue + groups ──────────────────────────────────────────────
-ALL_SERVICES="postgres llm whisper paddleocr-server diarize-asr vidingest vidingest-cli vidingest-mcp"
-GROUP_INFRA="postgres llm whisper"
+ALL_SERVICES="postgres paddleocr-server diarize-asr vidingest vidingest-cli vidingest-mcp"
+# Just the database now: the model runtimes moved to the host, and the two sidecars stay opt-in.
+GROUP_INFRA="postgres"
 GROUP_SIDECARS="paddleocr-server diarize-asr"
 GROUP_BACKEND="vidingest"
 # Default footprint for 'start'/'build all': infra + backend (no opt-in sidecars/cli/mcp)
@@ -75,7 +79,6 @@ resolve() {
     sidecars)          echo "${GROUP_SIDECARS}" ;;
     backend|be)        echo "${GROUP_BACKEND}" ;;
     db)                echo "postgres" ;;
-    ollama)            echo "llm" ;;
     vi|vidingest)      echo "vidingest" ;;
     cli)               echo "vidingest-cli" ;;
     mcp)               echo "vidingest-mcp" ;;
@@ -183,25 +186,13 @@ cmd_cli() {
     "${COMPOSE[@]}" exec vidingest-cli sh
 }
 
-# Run the model-runtime CLI inside the llm container (e.g. pull/list models). The inner
-# `ollama` is the binary in the image; swap it if the image ever stops being ollama.
-cmd_llm() {
-  require_docker
-  "${COMPOSE[@]}" up -d llm >/dev/null
-  if [ $# -eq 0 ]; then
-    "${COMPOSE[@]}" exec llm ollama list
-  else
-    "${COMPOSE[@]}" exec llm ollama "$@"
-  fi
-}
-
 cmd_down() {
   require_docker
   local wipe=""
   for a in "$@"; do case "$a" in --volumes|-v) wipe=1 ;; *) die "unknown down flag: $a" ;; esac; done
   if [ -n "${wipe}" ]; then
     [ -t 0 ] || die "'down --volumes' needs an interactive terminal to confirm"
-    printf "remove ALL named volumes (db, llm models, video data, logs)? irreversible [y/N] "
+    printf "remove ALL named volumes (db, sidecar models, video data, logs)? irreversible [y/N] "
     read -r ans; case "${ans}" in y|Y|yes|YES) ;; *) info "aborted"; exit 1 ;; esac
     info "taking everything down (incl. volumes)"
     "${COMPOSE[@]}" down --volumes
@@ -228,13 +219,12 @@ Commands:
   logs [-f] [-n N] [svc]     container logs
   shell <service>            sh inside a running container
   cli                        open the VidIngest CLI (vidingest-cli)
-  llm [args...]              model CLI in the llm container (no args: list models)
   down [--volumes]           stop + remove everything; --volumes also wipes data
   help                       this text
 
 Targets:
   groups:   all  infra  sidecars  backend(be)
-  services: postgres(db) llm(ollama) whisper paddleocr-server diarize-asr
+  services: postgres(db) paddleocr-server diarize-asr
             vidingest(vi) vidingest-cli(cli) vidingest-mcp(mcp)
 
 Env overrides: VK_IMAGE_TAG (default latest)  VK_BIND_ADDR (default 127.0.0.1)
@@ -252,7 +242,6 @@ case "${cmd}" in
   logs)             cmd_logs "$@" ;;
   shell)            cmd_shell "$@" ;;
   cli|console)      cmd_cli ;;
-  llm|ollama)       cmd_llm "$@" ;;
   down)             cmd_down "$@" ;;
   help|-h|--help)   usage ;;
   *)                die "unknown command: ${cmd}$(printf '\n'; usage)" ;;

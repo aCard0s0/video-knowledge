@@ -7,9 +7,15 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
- * RestClient bean for the knowledge-extraction LLM (M6). Fourth {@code RestClient} in the
- * server alongside whisper/diarize/ocr — clients disambiguate via {@code @Qualifier} on
- * their constructor parameters.
+ * Transport for the knowledge-extraction chat LLM (M6).
+ *
+ * <p>Note the absence of {@code .baseUrl(...)}: the client resolves an absolute URI per call from
+ * the live {@link KnowledgeExtractionConfig}, so repointing the connection through
+ * {@code PUT /api/v1/connections/{name}} takes effect without recreating this bean. What the bean
+ * still contributes is the request factory, and therefore the timeouts — those stay startup-bound.
+ *
+ * <p>One of four {@code RestClient} beans in the server; clients disambiguate with
+ * {@code @Qualifier} on their constructor parameters.
  */
 @Configuration
 public class KnowledgeChatRestClientConfig {
@@ -22,7 +28,6 @@ public class KnowledgeChatRestClientConfig {
         requestFactory.setReadTimeout(Math.toIntExact(properties.getReadTimeout().toMillis()));
 
         return RestClient.builder()
-                .baseUrl(properties.getBaseUrl())
                 .requestFactory(requestFactory)
                 .build();
     }

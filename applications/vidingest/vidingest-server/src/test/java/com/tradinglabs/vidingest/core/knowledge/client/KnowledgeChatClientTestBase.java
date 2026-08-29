@@ -87,27 +87,32 @@ public abstract class KnowledgeChatClientTestBase {
         return "http://localhost:" + server.getAddress().getPort();
     }
 
-    protected static KnowledgeExtractionConfig config() {
+    /**
+     * The base URL now rides on the config, not the {@code RestClient}: the client resolves an
+     * absolute URI per call so a settings change takes effect without recreating the transport.
+     */
+    protected static KnowledgeExtractionConfig config(String baseUrl) {
         KnowledgeExtractionConfig cfg = new KnowledgeExtractionConfig();
+        cfg.setBaseUrl(baseUrl);
         cfg.setChatModel("qwen2.5:14b-instruct");
         cfg.setTemperature(0.2);
         cfg.setMaxOutputTokens(4096);
         return cfg;
     }
 
-    protected static RestClient restClient(String baseUrl) {
-        return client(baseUrl, Duration.ofSeconds(5));
+    protected static RestClient restClient() {
+        return client(Duration.ofSeconds(5));
     }
 
     /** Read timeout short enough that {@link #startStallingServer()} trips it inside a test. */
-    protected static RestClient shortReadRestClient(String baseUrl) {
-        return client(baseUrl, Duration.ofMillis(600));
+    protected static RestClient shortReadRestClient() {
+        return client(Duration.ofMillis(600));
     }
 
-    private static RestClient client(String baseUrl, Duration readTimeout) {
+    private static RestClient client(Duration readTimeout) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(2000);
         rf.setReadTimeout(Math.toIntExact(readTimeout.toMillis()));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
+        return RestClient.builder().requestFactory(rf).build();
     }
 }

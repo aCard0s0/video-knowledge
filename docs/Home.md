@@ -51,7 +51,8 @@ plus `compose/{infra/infra,services,cli,mcp}.yml`. Host ports come from
 - Operator console: <http://localhost:8051/vidingest>
 - REST base URL: <http://localhost:8051/vidingest/api/v1>
 - MCP (SSE): <http://localhost:8055/vidingest/sse>
-- Ports (defaults): postgres 3030, whisper 9000, diarize-asr 9001, paddleocr 8002,
-  llm 11434, vidingest 8051, vidingest-mcp 8055
+- Ports (defaults): postgres 3030, diarize-asr 9001, paddleocr 8002, vidingest 8051,
+  vidingest-mcp 8055. The model runtime is **not** a container — `VK_HOST_LLM_URL`, default
+  `http://host.docker.internal:8000/v1` (oMLX on the host)
 - Health and status checks: `./scripts/tradey.sh status` and `logs`
 - Link check: `python3 scripts/check-markdown-links.py`

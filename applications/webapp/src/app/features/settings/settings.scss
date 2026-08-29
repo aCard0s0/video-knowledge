@@ -1,0 +1,89 @@
+// The intro panel carries prose, not a table, so it keeps the panel box; the cards below draw
+// their own.
+.intro .quiet {
+  max-width: 78ch;
+  margin: var(--space-sm) 0 0;
+}
+
+.cards {
+  display: grid;
+  // Five cards, each holding ~40ch of URL. `auto-fill` rather than `auto-fit` so a single card on
+  // a wide screen stays card-width instead of stretching across the viewport.
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 32ch), 1fr));
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-width: 0;
+  // Transparent like every other control in the console: the border is what says "control".
+  background: transparent;
+}
+
+.lbl {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.badge {
+  font-size: var(--fs-xs);
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--st-running);
+  border-radius: var(--radius-panel);
+  color: var(--st-running);
+  // Over the token, never a raw hex — a wash has to follow the theme like everything else.
+  background: color-mix(in srgb, var(--st-running) 14%, transparent);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--fs-sm);
+}
+
+.toggle input {
+  // The checkbox is the one control that keeps its native look: it is the only binary here, and
+  // the browser's own is both accessible and instantly readable.
+  margin: 0;
+}
+
+.probe {
+  margin: 0;
+  // A probe result can be a full exception message; let it wrap rather than clip the reason.
+  overflow-wrap: anywhere;
+}
+
+.probe.ok {
+  color: var(--st-done);
+}
+
+.probe.bad {
+  // --st-failed, not --st-failed-fill: the ramp reserves the -fill variant for fills and borders
+  // because it does not carry a text contrast ratio.
+  color: var(--st-failed);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: auto;
+  padding-top: var(--space-xs);
+}

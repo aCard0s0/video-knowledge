@@ -7,8 +7,6 @@ import com.tradinglabs.vidingest.core.knowledge.client.AbstractKnowledgeChatClie
 import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeChatClient;
 import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeUnitJson;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -22,12 +20,13 @@ import java.util.Map;
  * {@code POST {base-url}/chat/completions} and reads the units out of
  * {@code choices[0].message.content}.
  *
- * <p>Active when {@code vidingest.knowledge.provider=openai-compatible}. This is the client for
- * every local runtime that is not Ollama — LM Studio, {@code llama-server}, mlx-lm, vLLM,
+ * <p>Selected by {@code KnowledgeChatClientRouter} when {@code vidingest.knowledge.provider} is
+ * {@code openai-compatible}, which is the default in compose. This is the client for every local
+ * runtime that is not Ollama — oMLX, LM Studio, {@code llama-server}, mlx-lm, vLLM,
  * text-generation-webui — as well as remote hosted APIs, because they all serve the same wire
  * format. {@code vidingest.knowledge.base-url} is expected to end in {@code /v1}, matching the
  * convention {@code OpenAiCompatibleEmbeddingsClient} already uses
- * ({@code http://localhost:1234/v1} is LM Studio's default).
+ * ({@code http://host.docker.internal:8000/v1} is the compose default for a host oMLX).
  *
  * <p>Three differences from the Ollama sibling, all in the request: {@code temperature} sits at
  * the top level rather than under {@code options}, the output cap is {@code max_tokens} rather
@@ -39,8 +38,6 @@ import java.util.Map;
  * alternate-root-key fallbacks rather than trusting the constraint.
  */
 @Component
-@Primary
-@ConditionalOnProperty(prefix = "vidingest.knowledge", name = "provider", havingValue = "openai-compatible")
 public class OpenAiCompatibleKnowledgeChatClient extends AbstractKnowledgeChatClient {
 
     // Explicit constructor with @Qualifier on the parameter — see OllamaKnowledgeChatClient for

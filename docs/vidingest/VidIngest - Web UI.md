@@ -66,6 +66,18 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
 | **Video detail** | `/detail`, `/file`, `/transcription/segments`, `/ocr/frames`, `/frames/{frameId}/image`, `/multimodal-timeline/page`, `/knowledge`, `/speakers`, `PATCH /speakers/{speakerId}`, `POST /phases/{phase}/run`, `/context/regenerate`, `/knowledge/regenerate` |
 | **Audit feed** | `GET /audit/events?runId&eventType&status&phase&errorCode&fromDate&toDate&page&size` |
+| **Settings** | `GET /connections`, `PUT /connections/{name}`, `DELETE /connections/{name}`, `POST /connections/{name}/test` |
+
+**Settings** stopped being a placeholder in Aug 2026. It is a card per connection — EMBEDDINGS,
+KNOWLEDGE, TRANSCRIPTION, DIARIZATION, OCR — each with the provider, base URL, model and API key,
+plus save / test / reset. Cards rather than a table because every row carries five fields and three
+actions, which is a horizontal scroll at any width where the card grid still reads.
+
+Three things the screen deliberately does not decide for itself: the provider dropdown, whether a
+model field appears, and whether an enable toggle appears all come from the row
+(`supportedProviders`, `supportsModel`, `supportsEnabled`). Mirroring those client-side is how a
+console drifts from what the server will accept. The API key box is write-only — the server never
+returns a key, so it starts empty even when one is stored and staying empty means "keep it".
 
 ## Design direction
 

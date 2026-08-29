@@ -25,8 +25,10 @@ import java.util.List;
  * is a property change and nothing else.
  *
  * <p>Defaults to {@code enabled = false} because the LLM call is the most expensive thing
- * in the pipeline — operators opt in once Ollama (or a cloud provider) is wired up and
- * has the configured chat model available.
+ * in the pipeline — operators opt in once the runtime is wired up and has the configured chat
+ * model available. {@code provider}, {@code base-url}, {@code chat-model}, {@code api-key} and
+ * {@code enabled} are all editable at runtime via {@code PUT /api/v1/connections/KNOWLEDGE};
+ * the timeouts are not, because the request factory consumes them once.
  */
 @Getter
 @Setter
@@ -47,8 +49,10 @@ public class KnowledgeExtractionConfig {
      *   <li>{@code openai-compatible} — {@code POST {base-url}/chat/completions}; point
      *       {@code base-url} at any server speaking that format, including a remote host</li>
      * </ul>
-     * An unrecognised value leaves no {@code KnowledgeChatClient} bean and fails the context at
-     * startup, which beats discovering the typo ten minutes into a run.
+     * Read per call by {@code KnowledgeChatClientRouter}, because this value is editable at
+     * runtime through {@code PUT /api/v1/connections/KNOWLEDGE}. An unrecognised value therefore
+     * fails the KNOWLEDGE phase rather than the context at startup — the API validates it against
+     * the router's supported set on the way in, so the typo is still caught before any run.
      */
     private String provider = "ollama";
 

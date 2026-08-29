@@ -7,8 +7,6 @@ import com.tradinglabs.vidingest.core.knowledge.client.AbstractKnowledgeChatClie
 import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeChatClient;
 import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeUnitJson;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -21,10 +19,11 @@ import java.util.Map;
  * Ollama-native implementation of {@link KnowledgeChatClient}. Calls
  * {@code POST {base-url}/api/chat} and reads the units out of {@code message.content}.
  *
- * <p>Active when {@code vidingest.knowledge.provider=ollama}, which is also the default —
- * {@code matchIfMissing = true}, so an absent property selects this one. The sibling
- * {@code OpenAiCompatibleKnowledgeChatClient} covers every runtime that speaks the OpenAI wire
- * format instead (LM Studio, llama.cpp, mlx-lm, vLLM, hosted APIs).
+ * <p>Selected by {@code KnowledgeChatClientRouter} when {@code vidingest.knowledge.provider} is
+ * {@code ollama} (or absent). The sibling {@code OpenAiCompatibleKnowledgeChatClient} covers every
+ * runtime that speaks the OpenAI wire format instead (oMLX, LM Studio, llama.cpp, mlx-lm, vLLM,
+ * hosted APIs). Both are always registered as beans; the router chooses per call so the provider
+ * can be changed at runtime.
  *
  * <p>The class keeps its provider-specific name on purpose: the endpoint path, the
  * {@code options.num_predict} nesting and the {@code format} field are Ollama's own shape, not a
@@ -32,8 +31,6 @@ import java.util.Map;
  * {@link KnowledgeUnitJson}.
  */
 @Component
-@Primary
-@ConditionalOnProperty(prefix = "vidingest.knowledge", name = "provider", havingValue = "ollama", matchIfMissing = true)
 public class OllamaKnowledgeChatClient extends AbstractKnowledgeChatClient {
 
     // Explicit constructor with @Qualifier on the parameter (same pattern as

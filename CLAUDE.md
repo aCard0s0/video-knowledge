@@ -56,7 +56,8 @@ automatically as a dependency of the server):
 ./scripts/tradey.sh cli
 ```
 
-Optional footprints: `start sidecars` (paddleocr-server, diarize-asr), `start mcp`.
+Infra is postgres and nothing else — the model runtimes run on the host, see below. Optional
+footprints: `start sidecars` (paddleocr-server, diarize-asr), `start mcp`.
 `down --volumes` wipes data. Host ports live in [compose/ports.env](compose/ports.env);
 everything binds `127.0.0.1` (`VK_BIND_ADDR`). `scripts/compose.sh` is the raw
 `docker compose` escape hatch with the same file layering.
@@ -245,16 +246,46 @@ volume major-version-specific.
 
 Feature packages under `core/` follow `client → service → domain/repo → mapper → dto`
 (MapStruct mappers, Lombok everywhere). External dependencies, all HTTP or process calls:
-yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), whisper (:9000),
-diarize-asr (:9001), and the `llm` compose service (:11434, the ollama image) for both
-embeddings and knowledge-extraction chat. **Neither LLM caller is Ollama-only**: embeddings
-and knowledge chat each have an `ollama` and an `openai-compatible` implementation, picked by
-`vidingest.search.embeddings.provider` / `vidingest.knowledge.provider`, so LM Studio,
-llama.cpp, mlx-lm, vLLM or a remote host is a property change. The provider-named classes and
-packages (`OllamaEmbeddingsClient`, `core/knowledge/client/ollama/`) are honest — they speak
-that wire protocol — while every neutral surface is named `llm` (`/api/v1/health/llm`,
-`LlmStatus`, `VIDINGEST_LLM_BASE_URL`). Embeddings additionally has a `Disabled*` floor;
-integration tests use `vidingest.search.embeddings.provider=disabled`.
+yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), the two optional sidecars
+diarize-asr (:9001) and paddleocr-server (:8002), and **a model runtime on the host** for
+embeddings, knowledge chat and transcription.
+
+**There is no `llm` container and no `whisper` container** (removed Aug 2026). Both ran on CPU
+inside the Docker VM, which is the one thing an Apple-Silicon host is good at and a Linux VM on it
+is not; compose now defaults all three model connections to `${VK_HOST_LLM_URL}`
+(`http://host.docker.internal:8000/v1`, an oMLX server). The host process must bind `0.0.0.0` — a
+container arrives on the bridge address, so a loopback-only listener refuses it. Don't reintroduce
+the containers to "make the stack self-contained": the reason they went is measured, not tidiness.
+
+**No LLM caller is single-protocol.** Embeddings, knowledge chat and transcription each have two
+implementations — `ollama`/`openai-compatible` for the first two, `whisper-asr`/`openai-compatible`
+for the third — and **a router picks per call**, not `@ConditionalOnProperty` at startup
+(`EmbeddingsClientRouter`, `QueryEmbeddingProviderRouter`, `KnowledgeChatClientRouter`,
+`TranscriptionClientRouter`). Per call because the provider is runtime-editable (below); a bean
+chosen at startup cannot follow a property that changes afterwards. The cost is that a bad provider
+value fails the *phase* rather than the context — the connections API validates it on the way in
+instead. The provider-named classes and packages (`OllamaEmbeddingsClient`,
+`core/knowledge/client/ollama/`, `core/transcription/client/whisper/`) are honest — they speak that
+wire protocol — while every neutral surface is named for the role (`/api/v1/health/llm`,
+`LlmStatus`, `VIDINGEST_LLM_BASE_URL`, `vidingest.transcription.*`). Embeddings additionally has a
+`Disabled*` floor; integration tests use `vidingest.search.embeddings.provider=disabled`.
+
+**Five connections are editable at runtime**: `GET/PUT/DELETE /api/v1/connections/{name}` and
+`POST .../test`, over `EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `OCR`
+(`connections/`, table `vidingest_connections`, console screen `features/settings/`). A row is an
+**override**, not the configuration: absent, the environment value applies. `ConnectionSettingsService`
+snapshots the environment values before applying rows, which is the only reason `DELETE` can mean
+"back to what `.env` said". It applies on `ApplicationReadyEvent`, **not** `@PostConstruct` — the
+table does not exist yet at bean-init time.
+
+The mechanism is that `@ConfigurationProperties` beans are mutable singletons and **every client
+reads its base URL per call**. So the four transports (`transcriptionRestClient`,
+`diarizationRestClient`, `ocrRestClient`, `knowledgeChatRestClient`) deliberately have **no
+`.baseUrl(...)`** — they contribute only the request factory. Adding one back silently pins the URL
+to startup and the settings API goes quiet. Timeouts *are* still startup-bound for that reason, and
+are deliberately absent from the API rather than shown as a value the client is not using.
+API keys are stored plaintext and **never returned** — `ConnectionSummary` carries `hasApiKey`, and
+an absent `apiKey` on update keeps the stored one while `""` clears it.
 
 ### Tests
 
@@ -319,6 +350,10 @@ What the generator cannot give us, and therefore lives by hand in `src/app/core/
   all: their values reach the UI only as cases in `statusVar()`, so a new constant there needs a
   new `case`, not a new array. **Update this file when any of the eight gains a constant** — nothing
   fails if you don't, the console just renders the value as unknown.
+  `ConnectionName` is deliberately **not** here: springdoc emits it as a real enum schema, so the
+  generated client already types it as a literal union. Nor is the provider list — the connections
+  API serves `supportedProviders`, `supportsModel` and `supportsEnabled` per row precisely so the
+  settings screen cannot drift from what the server accepts. Mirror only what the spec loses.
 - `problem.ts` — the RFC 9457 `ProblemDetail` envelope. No operation in the spec documents a
   4xx/5xx, so error bodies generate as `any`. `errorCode` is a *pipeline* field, never an HTTP one;
   the two are rendered by different components and never merged.

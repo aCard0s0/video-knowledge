@@ -59,7 +59,7 @@ class DiarizationClientTest {
                 }
                 """);
 
-        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path wav = Files.createTempFile("vidingest-diarize-test", ".wav");
         Files.write(wav, "fake".getBytes(StandardCharsets.UTF_8));
 
@@ -81,7 +81,7 @@ class DiarizationClientTest {
     void diarizeThrowsTypedExceptionOnHttp500() throws Exception {
         startServer(500, "{\"detail\":\"hf token missing\"}");
 
-        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path wav = Files.createTempFile("vidingest-diarize-test", ".wav");
         Files.write(wav, "fake".getBytes(StandardCharsets.UTF_8));
 
@@ -95,7 +95,7 @@ class DiarizationClientTest {
     void diarizeThrowsTypedExceptionOnInvalidResponseBody() throws Exception {
         startServer(200, "not-json{");
 
-        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path wav = Files.createTempFile("vidingest-diarize-test", ".wav");
         Files.write(wav, "fake".getBytes(StandardCharsets.UTF_8));
 
@@ -106,7 +106,7 @@ class DiarizationClientTest {
 
     @Test
     void diarizeRejectsMissingAudioFile() {
-        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config(), restClient("http://localhost:1"));
+        DiarizationClient client = new DiarizationClient(new ObjectMapper(), config("http://localhost:1"), restClient());
         Path nonExistent = Path.of("/tmp/vidingest/this-file-does-not-exist.wav");
 
         assertThatThrownBy(() -> client.diarize(nonExistent))
@@ -142,17 +142,22 @@ class DiarizationClientTest {
         return "http://localhost:" + server.getAddress().getPort();
     }
 
-    private static DiarizationConfig config() {
+    /**
+     * The base URL now rides on the config, not the {@code RestClient}: the client resolves an
+     * absolute URI per call so a settings change takes effect without recreating the transport.
+     */
+    private static DiarizationConfig config(String baseUrl) {
         DiarizationConfig cfg = new DiarizationConfig();
+        cfg.setBaseUrl(baseUrl);
         cfg.setMinSpeakers(null);
         cfg.setMaxSpeakers(6);
         return cfg;
     }
 
-    private static RestClient restClient(String baseUrl) {
+    private static RestClient restClient() {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(Math.toIntExact(Duration.ofSeconds(2).toMillis()));
         rf.setReadTimeout(Math.toIntExact(Duration.ofSeconds(5).toMillis()));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
+        return RestClient.builder().requestFactory(rf).build();
     }
 }

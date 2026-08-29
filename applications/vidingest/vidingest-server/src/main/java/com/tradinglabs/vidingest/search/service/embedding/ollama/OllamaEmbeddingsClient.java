@@ -6,8 +6,6 @@ import com.tradinglabs.vidingest.config.VideoSearchConfig;
 import com.tradinglabs.vidingest.search.service.embedding.EmbeddingsClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -26,8 +24,6 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@Primary
-@ConditionalOnProperty(prefix = "vidingest.search.embeddings", name = "provider", havingValue = "ollama")
 public class OllamaEmbeddingsClient implements EmbeddingsClient {
 
     private static final int DEFAULT_MAX_BATCH = 64;

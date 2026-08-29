@@ -8,10 +8,10 @@ import java.util.List;
  * Strategy interface for the LLM call that turns multimodal-segment text into typed
  * {@link KnowledgeUnitDraft} records.
  *
- * <p>Two impls, picked by {@code vidingest.knowledge.provider}:
- * {@code OllamaKnowledgeChatClient} (Ollama's native {@code /api/chat}, the default) and
- * {@code OpenAiCompatibleKnowledgeChatClient} ({@code /chat/completions}, which is what LM Studio,
- * llama.cpp, mlx-lm, vLLM and hosted APIs all serve). They differ only in the request body and
+ * <p>Two impls, picked per call by {@code KnowledgeChatClientRouter} from
+ * {@code vidingest.knowledge.provider}: {@code OllamaKnowledgeChatClient} (Ollama's native
+ * {@code /api/chat}) and {@code OpenAiCompatibleKnowledgeChatClient} ({@code /chat/completions},
+ * which is what oMLX, LM Studio, llama.cpp, mlx-lm, vLLM and hosted APIs all serve). They differ only in the request body and
  * the response envelope — the schema and the unit parsing are shared in {@code KnowledgeUnitJson},
  * so neither can drift into recovering a malformed response the other cannot.
  */

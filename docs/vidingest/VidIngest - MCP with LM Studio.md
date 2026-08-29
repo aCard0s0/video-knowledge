@@ -198,15 +198,19 @@ Returns:
 | Tool call timeout | yt-dlp download taking too long | Configure `vidingest.download.timeout-seconds` and increase client timeout for long files |
 | `Video already ingested` error | Duplicate source+videoId pair | Expected behavior; use `listVideos` to check before ingesting |
 | `Semantic search is disabled` error | `vidingest.search.semantic-enabled=false` | Set it to `true` and wire a query embedding provider |
-| `TRANSCRIPTION_FAILURE` / `Whisper request failed` | Whisper not running or model still downloading | Start `whisper` and verify `http://localhost:9000/docs` |
+| `TRANSCRIPTION_FAILURE` / `... transcription request failed` | Transcription runtime unreachable, or the wrong provider for the URL | `POST /api/v1/connections/TRANSCRIPTION/test`. `whisper-asr` expects `{base}/asr`; `openai-compatible` expects a `/v1` base URL |
 
 ## semantic search defaults (local runs)
 
-By default, `vidingest-server` enables semantic search and uses the **Ollama-native embeddings**
-client on `http://localhost:11434`. If LM Studio is already serving an embedding model, point
-the server at it instead: `VIDINGEST_EMBEDDINGS_PROVIDER=openai-compatible` plus
-`VIDINGEST_EMBEDDINGS_BASE_URL=http://localhost:1234/v1`. The same applies to knowledge
-extraction — `VIDINGEST_KNOWLEDGE_PROVIDER=openai-compatible` and a `/v1` base URL.
+By default, `vidingest-server` enables semantic search and uses the **OpenAI-compatible embeddings**
+client against the model runtime on the host (`http://localhost:8000/v1` in the dev profile,
+`http://host.docker.internal:8000/v1` under compose). LM Studio serves the same wire format, so
+pointing at it is only a base URL: `VIDINGEST_EMBEDDINGS_BASE_URL=http://localhost:1234/v1`. The
+same applies to knowledge extraction and transcription.
+
+Since Aug 2026 none of that needs a restart — `PUT /api/v1/connections/EMBEDDINGS` (or the
+console's Settings screen) changes it live, and `POST .../test` says whether the new host answers.
+See [Connections API](VidIngest%20-%20Config%20and%20Runtime.md#connections-api-runtime-editable).
 
 - To disable semantic search (and therefore skip context generation during ingestion): set `vidingest.search.semantic-enabled=false` or include `CONTEXT` in `skipPhases`.
 - To switch embedding providers (e.g., LM Studio OpenAI-compatible): set `vidingest.search.embeddings.provider=openai-compatible` and configure `vidingest.search.embeddings.base-url`.

@@ -75,9 +75,10 @@ public class VideoSearchConfig {
         @Setter
         public static class Ollama {
             /**
-             * Base URL of an Ollama server.
-             * Example (docker): http://ollama:11434
+             * Base URL of an Ollama server. There is no ollama container any more — this points
+             * at one on the host or on another machine.
              * Example (host): http://localhost:11434
+             * Example (from a container): http://host.docker.internal:11434
              */
             private String baseUrl = "";
 

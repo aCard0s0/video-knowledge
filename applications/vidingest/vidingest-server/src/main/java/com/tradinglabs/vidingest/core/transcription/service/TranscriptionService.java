@@ -11,7 +11,7 @@ import com.tradinglabs.vidingest.core.transcription.domain.TranscriptionStatus;
 import com.tradinglabs.vidingest.core.transcription.dto.WhisperAsrResult;
 import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionRepository;
 import com.tradinglabs.vidingest.core.transcription.repo.TranscriptionSegmentRepository;
-import com.tradinglabs.vidingest.core.transcription.whisper.WhisperAsrClient;
+import com.tradinglabs.vidingest.core.transcription.client.TranscriptionClient;
 import com.tradinglabs.vidingest.videos.domain.Video;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +33,7 @@ import java.util.UUID;
 public class TranscriptionService {
 
     private final VideoStorageConfig storageConfig;
-    private final WhisperAsrClient whisperAsrClient;
+    private final TranscriptionClient transcriptionClient;
     private final TranscriptionRepository transcriptionRepository;
     private final TranscriptionSegmentRepository transcriptionSegmentRepository;
     private final ObjectMapper objectMapper;
@@ -51,10 +51,10 @@ public class TranscriptionService {
 
     // Explicit constructor rather than @RequiredArgsConstructor: Lombok does not reliably copy a
     // field-level @Value onto the generated constructor parameter, which is where Spring looks.
-    // Same reason WhisperAsrClient hand-writes its own.
+    // Same reason the transcription clients hand-write theirs.
     public TranscriptionService(
             VideoStorageConfig storageConfig,
-            WhisperAsrClient whisperAsrClient,
+            TranscriptionClient transcriptionClient,
             TranscriptionRepository transcriptionRepository,
             TranscriptionSegmentRepository transcriptionSegmentRepository,
             ObjectMapper objectMapper,
@@ -62,7 +62,7 @@ public class TranscriptionService {
             @Value("${vidingest.ffmpeg.timeout:PT20M}") Duration ffmpegTimeout
     ) {
         this.storageConfig = storageConfig;
-        this.whisperAsrClient = whisperAsrClient;
+        this.transcriptionClient = transcriptionClient;
         this.transcriptionRepository = transcriptionRepository;
         this.transcriptionSegmentRepository = transcriptionSegmentRepository;
         this.objectMapper = objectMapper;
@@ -139,7 +139,7 @@ public class TranscriptionService {
 
             log.info("Sending audio to Whisper ASR: videoId={}, wavFile={}", video.getId(), audioFile.getFileName());
 
-            WhisperAsrResult result = whisperAsrClient.transcribeToJson(audioFile);
+            WhisperAsrResult result = transcriptionClient.transcribeToJson(audioFile);
             log.info(
                     "Whisper transcription complete: videoId={}, language={}, segments={}, textChars={}",
                     video.getId(),

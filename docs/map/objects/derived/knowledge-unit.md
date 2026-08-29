@@ -46,7 +46,7 @@ a time span and a 1536-dim embedding.
 ## If you change this
 
 - **Hits:** `KnowledgePhase` (batching + failure policy), the knowledge chat client under
-  `core/knowledge/client/ollama/`, `KnowledgeController` (`/knowledge/search`,
+  `core/knowledge/client/` and its two provider packages, `KnowledgeController` (`/knowledge/search`,
   `/videos/{id}/knowledge`, `/regenerate`), `KNOWLEDGE_TYPES` in `core/domain.ts`.
 - **Does not hit:** search over chunks. `/search` is [ContextChunk](context-chunk.md); knowledge
   search is its own endpoint over its own HNSW index.
