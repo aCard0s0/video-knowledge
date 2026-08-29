@@ -179,6 +179,27 @@ Measured on this box with `whisper-large-v3-turbo` (1.6 GB): 27.7 s for the firs
 model load, then **1.65 s for 5.3 s of audio** warm — roughly 3× realtime on the GPU, against a
 CPU-only `ASR_MODEL=small` container before.
 
+#### End-to-end, all ten phases (2026-08-29)
+
+One ingest of a 19 s video through the compose stack, every optional phase on, the three model
+connections pointed at the host and the two sidecars in containers. **73 s wall clock**, run
+`COMPLETED`, all ten phases entered and completed in the audit trail.
+
+| Phase | Result |
+|---|---|
+| TRANSCRIBE | 5 segments, `language=en`, **2.3 s** for 19 s of audio via `host.docker.internal:8000/v1/audio/transcriptions` |
+| DIARIZE | 2 speakers, assigned to 5/5 segments |
+| FRAME_SAMPLE | 2 frames |
+| OCR | ran on both frames, 0 results — correct, the source has no on-screen text |
+| FUSE | 1 multimodal segment |
+| KNOWLEDGE | 1 unit, **24 s** on `Qwen2.5-14B-Instruct-4bit` |
+| CONTEXT | 1 chunk, embedding non-null |
+
+The KNOWLEDGE number is the point of the whole move: the same 14B model in the CPU-only container
+took 384 s just to load and then **timed out at 600 s on one batch**. Semantic search over the
+result returns the chunk for *"what animal has a long trunk"* against a transcript that says
+*"long fronts"* — no shared keyword, so the 1536-wide vector really is doing the work.
+
 ### Download (`vidingest.download.*`)
 
 | Property | Default | Description |
