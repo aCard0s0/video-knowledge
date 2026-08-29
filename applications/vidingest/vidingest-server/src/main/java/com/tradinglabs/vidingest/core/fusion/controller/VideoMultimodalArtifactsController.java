@@ -34,7 +34,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping(produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
-@Tag(name = "video-multimodal", description = "Multi-modal artifact APIs (M5–M8): fused timeline and OCR")
+@Tag(name = "video-multimodal", description = "Multi-modal artifact APIs: fused timeline and OCR")
 public class VideoMultimodalArtifactsController {
 
     private final MultimodalTimelineQueryService multimodalTimelineQueryService;

@@ -34,7 +34,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping(produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
-@Tag(name = "speakers", description = "Speaker APIs (M2/M8)")
+@Tag(name = "speakers", description = "Speaker APIs")
 public class SpeakerController {
 
     private final SpeakerService speakerService;
