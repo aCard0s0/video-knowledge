@@ -25,9 +25,12 @@ import org.springframework.stereotype.Component;
  * <p>FRAME_SAMPLE is checked <em>both</em> ways for one reason: a phase that did not run leaves no
  * frames whichever knob stopped it. Only the skip set was consulted, so a deployment with OCR on
  * and frames off ran OCR over an empty frame set and advertised it as runnable through
- * {@code /pipelines/capabilities}. The settings screen makes that state reachable in one click,
- * since the connections API can flip OCR but has no entry for frame sampling — frames are ffmpeg,
- * not a connection.
+ * {@code /pipelines/capabilities}. The settings screen could reach that state in one click at the
+ * time, because the connections API could flip OCR but had no entry for frame sampling. PR #49
+ * closed the other half by adding {@code ConnectionName.FRAME_SAMPLE} — a connection with no
+ * connection, carrying a phase toggle and no base URL — so the toggle this gate depends on is now
+ * reachable from the same screen. The two changes only make sense together: this one stops OCR
+ * pretending it can run, that one gives the operator the switch to fix it.
  *
  * <p>The console was <em>not</em> the thing that broke, which is worth knowing before "fixing" it
  * there too. Its phase picker already refused the combination on its own: {@code reasons()} in

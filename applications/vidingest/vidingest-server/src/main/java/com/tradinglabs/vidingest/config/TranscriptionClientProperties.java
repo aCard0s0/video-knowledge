@@ -93,10 +93,17 @@ public class TranscriptionClientProperties {
      * consumes them once, so a runtime edit could not reach the client; this value <em>is</em> read
      * per call, so an edit would reach it. It stays environment-only for three other reasons: it is
      * scoped to the <em>domain</em> being ingested rather than to the connection, so it does not
-     * change when the runtime does; storing it needs a column on {@code vidingest_connections} and
-     * therefore a migration, for a string set once per deployment; and a prompt that does not match
-     * the audio is a hallucination vector, which is a poor fit for a field an operator can change in
-     * one click. Revisit if a deployment starts ingesting several unrelated domains at once.
+     * change when the runtime does; storing it costs a column on {@code vidingest_connections} and
+     * a migration, for a string set once per deployment; and a prompt that does not match the audio
+     * is a hallucination vector, which is a poor fit for a field an operator can change in one
+     * click.
+     *
+     * <p>The second of those got cheaper after PR #49: {@code ConnectionSummary} now carries
+     * per-connection capability flags ({@code supportsBaseUrl} beside {@code supportsModel} and
+     * {@code supportsEnabled}) and {@code FRAME_SAMPLE} established a connection that omits fields
+     * it has no use for, so a {@code supportsPrompt} would follow an existing pattern rather than
+     * invent one. The first and third reasons are unchanged, and they are the ones doing the work.
+     * Revisit if a deployment starts ingesting several unrelated domains at once.
      */
     private String prompt = "";
 
