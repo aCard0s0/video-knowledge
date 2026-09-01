@@ -228,7 +228,10 @@ def report(results, facts, arms):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("prompts", nargs="+", help="system-prompt file(s); 2+ are compared interleaved")
+    ap.add_argument("prompts", nargs="+",
+                    help="arms as PROMPT[@FIXTURE]; 2+ are compared interleaved. The optional "
+                         "@FIXTURE overrides --fixture for that arm, which is how an input-side "
+                         "change (a FUSE filter, different OCR) is measured rather than a prompt.")
     ap.add_argument("-n", "--reps", type=int, default=3, help="reps per prompt (default 3; 3 is the noise floor, prefer 6)")
     ap.add_argument("--fixture", default=DEFAULT_FIXTURE)
     ap.add_argument("--base-url", default=os.environ.get("VK_EVAL_BASE_URL", "http://127.0.0.1:8000/v1"))
@@ -239,21 +242,56 @@ def main():
     ap.add_argument("--out-dir", default=None, help="cache dir for raw results (default: alongside the fixture)")
     args = ap.parse_args()
 
-    fixture = json.load(open(args.fixture))
-    segments, facts, noise = fixture["segments"], fixture["facts"], fixture["noise"]
-    user = user_message(segments)
+    # Line-buffer stdout: a sweep is minutes per call, and Python block-buffers when redirected, so
+    # `> log 2>&1` otherwise shows nothing at all until the whole run exits.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:  # pragma: no cover - very old interpreters
+        pass
 
-    out_dir = args.out_dir or os.path.join(os.path.dirname(os.path.abspath(args.fixture)), "runs")
+    # An arm is a (prompt, fixture) pair. Same prompt on two fixtures measures an input change;
+    # two prompts on one fixture measures a prompt change; both vary if you really mean to.
+    specs = []
+    for spec in args.prompts:
+        prompt_path, _, fixture_path = spec.partition("@")
+        specs.append((prompt_path, fixture_path or args.fixture))
+
+    fixtures = {}
+    for _, fx_path in specs:
+        if fx_path not in fixtures:
+            fixtures[fx_path] = json.load(open(fx_path))
+
+    # Facts and noise must be identical across arms or the scores are not comparable.
+    baseline_fx = fixtures[specs[0][1]]
+    facts, noise = baseline_fx["facts"], baseline_fx["noise"]
+    for fx_path, fx in fixtures.items():
+        if fx["facts"] != facts or fx["noise"] != noise:
+            sys.exit(f"{fx_path} has a different ground truth from {specs[0][1]} — "
+                     "scores across arms would not be comparable")
+
+    out_dir = args.out_dir or os.path.join(REPO_ROOT, "scripts", "eval", "runs")
     os.makedirs(out_dir, exist_ok=True)
 
-    arms = [os.path.splitext(os.path.basename(p))[0] for p in args.prompts]
+    def arm_name(prompt_path, fixture_path):
+        name = os.path.splitext(os.path.basename(prompt_path))[0]
+        if fixture_path != args.fixture:
+            name += "@" + os.path.splitext(os.path.basename(fixture_path))[0]
+        return name
+
+    arms = [arm_name(p, f) for p, f in specs]
     if len(set(arms)) != len(arms):
-        sys.exit("prompt files must have distinct basenames -- they name the arms in the report")
-    systems = {arm: open(p).read() for arm, p in zip(arms, args.prompts)}
+        sys.exit("arms must have distinct names -- they come from the prompt and fixture basenames")
+    systems = {arm: open(p).read() for arm, (p, _) in zip(arms, specs)}
+    users = {}
+    for arm, (_, fx_path) in zip(arms, specs):
+        segs = fixtures[fx_path]["segments"]
+        users[arm] = user_message(segs)
 
     print(f"model={args.model}  base-url={args.base_url}")
-    print(f"fixture={os.path.relpath(args.fixture, REPO_ROOT)}  segments={len(segments)}  userChars={len(user)}")
-    print(f"arms={arms}  reps={args.reps}  interleaved")
+    for arm, (_, fx_path) in zip(arms, specs):
+        print(f"  {arm:28} fixture={os.path.basename(fx_path):32} "
+              f"segments={len(fixtures[fx_path]['segments']):3}  userChars={len(users[arm])}")
+    print(f"reps={args.reps}  interleaved")
     if args.reps < 3:
         print("WARNING: fewer than 3 reps cannot separate a real effect from this harness's noise.")
 
@@ -268,7 +306,7 @@ def main():
                 print(f"  {arm} rep{rep}: cached")
             else:
                 try:
-                    units = call_llm(args.base_url, args.model, systems[arm], user,
+                    units = call_llm(args.base_url, args.model, systems[arm], users[arm],
                                      args.max_tokens, args.temperature, args.timeout)
                 except (urllib.error.URLError, OSError) as e:
                     print(f"  {arm} rep{rep}: TRANSPORT FAILED -- {e}")
