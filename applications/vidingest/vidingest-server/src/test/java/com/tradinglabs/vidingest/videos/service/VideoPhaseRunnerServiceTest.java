@@ -89,7 +89,7 @@ class VideoPhaseRunnerServiceTest {
 
     @Test
     void runsThePhaseFromTheRegistryAndReportsItsRowCount() throws Exception {
-        register(new OcrPhase(ocrService, new OcrConfig()));
+        register(new OcrPhase(ocrService, new OcrConfig(), new FrameSamplingConfig()));
         when(ocrService.ocrAllFrames(video)).thenReturn(42);
 
         RunVideoPhaseResult result = runner.runPhase(videoId, "ocr");
@@ -105,7 +105,7 @@ class VideoPhaseRunnerServiceTest {
         // so it bypasses applies() and the vidingest.<phase>.enabled toggle behind it.
         OcrConfig disabled = new OcrConfig();
         disabled.setEnabled(false);
-        register(new OcrPhase(ocrService, disabled));
+        register(new OcrPhase(ocrService, disabled, new FrameSamplingConfig()));
         when(ocrService.ocrAllFrames(video)).thenReturn(1);
 
         assertThat(runner.runPhase(videoId, "ocr").rowsAffected()).isEqualTo(1);
@@ -166,7 +166,7 @@ class VideoPhaseRunnerServiceTest {
     void doesNotRestoreTheStatusWhenThePhaseFailed() {
         // A phase that fails without touching the status leaves it alone; the runner must not
         // "restore" anything on the failure path.
-        register(new OcrPhase(ocrService, new OcrConfig()));
+        register(new OcrPhase(ocrService, new OcrConfig(), new FrameSamplingConfig()));
         doThrow(new OcrFailureException("paddleocr down")).when(ocrService).ocrAllFrames(video);
 
         assertThatThrownBy(() -> runner.runPhase(videoId, "ocr"))
