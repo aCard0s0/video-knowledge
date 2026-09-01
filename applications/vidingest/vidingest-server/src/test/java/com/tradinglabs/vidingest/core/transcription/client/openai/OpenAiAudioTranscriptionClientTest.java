@@ -62,6 +62,46 @@ class OpenAiAudioTranscriptionClientTest extends TranscriptionClientTestBase {
         assertThat(body).doesNotContain("name=\"audio_file\"");
     }
 
+    /**
+     * The vocabulary hint reaches the wire when set. Measured worth on a 3-minute trading short
+     * against whisper-large-v3-turbo, 3 deterministic runs per arm: 9 mangled domain terms became
+     * 3 — "breaker structure" gone entirely, "fiber tracement" only improved to "fiber
+     * retracement". It matters downstream because the
+     * KNOWLEDGE prompt copies the speaker's terminology verbatim, so an ASR error there lands in
+     * the knowledge units and their embeddings.
+     */
+    @Test
+    void sendsThePromptPartWhenAVocabularyHintIsConfigured() throws Exception {
+        startServer("/audio/transcriptions", 200, VERBOSE_JSON);
+
+        TranscriptionClientProperties properties = properties("openai-compatible");
+        properties.setPrompt("break of structure, fib retracement, CHoCH");
+        client(properties).transcribeToJson(tempWav());
+
+        String body = lastRequestBody.get();
+        assertThat(body).contains("name=\"prompt\"");
+        assertThat(body).contains("break of structure, fib retracement, CHoCH");
+    }
+
+    /**
+     * Unset means the part is absent, not present and empty. A blank prompt is a real (empty)
+     * decoder context to some servers, and the default has to be a no-op — a whisper prompt that
+     * does not match the audio is a documented hallucination vector.
+     */
+    @Test
+    void omitsThePromptPartEntirelyWhenUnsetOrBlank() throws Exception {
+        startServer("/audio/transcriptions", 200, VERBOSE_JSON);
+
+        TranscriptionClientProperties properties = properties("openai-compatible");
+        client(properties).transcribeToJson(tempWav());
+        assertThat(lastRequestBody.get()).doesNotContain("name=\"prompt\"");
+
+        startServer("/audio/transcriptions", 200, VERBOSE_JSON);
+        properties.setPrompt("   ");
+        client(properties).transcribeToJson(tempWav());
+        assertThat(lastRequestBody.get()).doesNotContain("name=\"prompt\"");
+    }
+
     @Test
     void appendsThePathUnderABaseUrlThatAlreadyCarriesOne() throws Exception {
         // The realistic case: an OpenAI-compatible base URL ends in /v1, and the resolved request

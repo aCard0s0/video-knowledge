@@ -96,9 +96,11 @@ class KnowledgeExtractionPromptTest {
      * model stops hunting for rule kinds it was not handed.
      *
      * <p>Deliberately no instruction here against filling them in with "None specified". Adding one
-     * cost a further 2.7 recovered rules — attention spent on formatting rather than on the
-     * material — so that non-answer is stripped deterministically by
-     * {@code KnowledgeExtractionService.stripEmptySlotLines} instead, where it is free.
+     * measured 2.7 rules worse, which is inside the harness's ~±3-rule noise floor and so is not an
+     * established effect — but the alternative costs nothing either way, since
+     * {@code KnowledgeExtractionService.stripEmptySlotLines} strips those lines with a regex rather
+     * than with prompt budget. Absence is asserted so the weaker option is not reintroduced on the
+     * assumption that it must help.
      */
     @Test
     void systemMessageEnumeratesTheRuleKindChecklist() {

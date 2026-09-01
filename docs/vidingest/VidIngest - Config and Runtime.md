@@ -6,7 +6,7 @@ last_reviewed: 2026-08-29
 # VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
-- **Last reviewed**: 2026-08-29
+- **Last reviewed**: 2026-09-01
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -136,6 +136,7 @@ openai-whisper-asr-webservice. Code pointers:
 | `vidingest.transcription.base-url` | `http://localhost:9000` (base), `${VK_HOST_LLM_URL}` (docker) | Must include the API prefix (usually `/v1`) for `openai-compatible` |
 | `vidingest.transcription.model` | `whisper-1` | Required by `openai-compatible`; ignored by whisper-asr-webservice, whose model is fixed by the image's `ASR_MODEL` |
 | `vidingest.transcription.api-key` | *(empty)* | Sent as `Authorization: Bearer` whenever set, for either provider |
+| `vidingest.transcription.prompt` | *(empty)*; compose sets a trading vocabulary | Decoder vocabulary hint, sent as the `prompt` part by `openai-compatible` only — the whisper-asr sidecar's `/asr` has no equivalent. See below |
 | `vidingest.transcription.connect-timeout` | `5s` | Startup-bound — not editable through the connections API |
 | `vidingest.transcription.read-timeout` | `30m` | Startup-bound |
 
@@ -149,6 +150,35 @@ depending on which server is answering. Both providers return the same envelope 
 The docker profile used to hardcode `http://whisper:9000` with no `${...}` indirection, so
 `VIDINGEST_WHISPER_BASE_URL` had never had any effect under compose. The replacement
 `VIDINGEST_TRANSCRIPTION_BASE_URL` does.
+
+**`vidingest.transcription.prompt` is worth setting, and is not an instruction.** The OpenAI audio
+API's `prompt` conditions the decoder, so it belongs in the same register as the speech: a
+comma-separated list of terms and spellings the audio is likely to contain, never a sentence.
+
+Measured on a 3-minute trading short against `whisper-large-v3-turbo`, 3 runs per arm, both fully
+deterministic — **9 wrong-form occurrences became 3**:
+
+| term | without the hint | with it |
+|---|---|---|
+| *break of structure* | 12 correct, **3× "breaker structure"** | **15 correct, 0 wrong** |
+| garbled *"where we can will close"* | 3× | **0** |
+| *fib retracement* | 3 correct, 3× "fiber tracement" | 3 correct, 3× **"fiber retracement"** — still wrong |
+
+Confirmed live: re-running TRANSCRIBE on that video produced the 3783-char transcript with
+`break of structure` ×5 and no `breaker structure`, and re-running FUSE + KNOWLEDGE after it left
+**zero** ASR-error terms in the knowledge units.
+
+Why this is worth more than a transcript typo normally would be: the KNOWLEDGE prompt tells the
+model to reproduce the speaker's terminology **verbatim**
+([Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)), so a mangled domain term
+propagates by design into the units, their embeddings and search. It was observed doing so before
+this was set.
+
+Two cautions. It is **empty by default** because a whisper prompt is a documented hallucination
+vector — the decoder will happily continue a prompt that does not match the audio, so set it to the
+vocabulary of the channels actually being ingested and to nothing else. And listing a term does not
+guarantee it: `fib retracement` was in the hint and still came back as `fiber retracement`, so a
+short surface form can simply lose to a common English word. Unsolved.
 
 #### Getting an ASR model into oMLX
 

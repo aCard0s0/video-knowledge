@@ -187,6 +187,25 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   everywhere), so a unit's ticker comes from the transcript or not at all. And it still opens a
   SUMMARY or TOPIC with "The video …" perhaps a third of the time despite being told twice not to —
   at this model size that instruction is a preference, not a constraint.
+
+- **The harness resolves about ±3 rules — do not trust a smaller delta.** Ten runs of the shipped
+  configuration across three separate batches scored 11–16 (sd 1.5), with batch means spanning
+  12.7–14.7. Two numbers that were briefly recorded as findings sit inside that floor and have been
+  demoted rather than deleted: "instructing the model not to write *None specified* cost 2.7 rules"
+  and "a structure-preserving paraphrase cost 3.4". Both may be real; neither is established at
+  n=3. What survives the floor is the v2→v3 gap (~9 rules, and 0 → 3 PROCEDURE units), the
+  output-example collapse (1 unit in 3 of 3 runs — categorical, not a mean shift), and
+  prose-folding the nine slots (~6 rules).
+- **Video title and channel in the user message do not help — and this is how the floor bit.**
+  Adding them looked decisive when the arms ran in blocks (15.3 against 12.7, and 4 individual
+  facts where the treatment strictly dominated). Interleaving the arms **reversed the sign** (12.8
+  against 13.5). Pooled over 7 runs each: 13.9 against 13.1 — nothing. Not applied. The user
+  message still carries only index, time, transcript and on-screen text.
+- **The higher-leverage fix was upstream, not in this phase.** `vidingest.transcription.prompt`
+  ([Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)) fixes the domain terms this
+  phase then copies verbatim: `breaker structure` → `break of structure` in 3 of 3 runs, and zero
+  ASR-error terms in the knowledge units afterwards. Worth checking before reaching for a bigger
+  chat model.
 - **Provider**: `vidingest.knowledge.provider` picks the *wire protocol*, not a vendor. Both
   impls sit behind `KnowledgeChatClient` and are selected per call by
   `KnowledgeChatClientRouter`, so `KnowledgeExtractionService` never learns which one it got:

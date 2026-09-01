@@ -58,24 +58,29 @@ import java.util.stream.Collectors;
  *       ("preconditions, confirmations, entry, exit, …") cost 4.7 rules per run: the list works as
  *       a retrieval scaffold, not as formatting, and the model stops looking for rule kinds it was
  *       not handed.</li>
- *   <li><b>Do not add an instruction against filling those slots in.</b> The obvious follow-up to
- *       the line above — the model answers all nine, so tell it not to write "None specified" —
- *       cost a further 2.7 rules, attention spent on formatting rather than on the material.
- *       {@code KnowledgeExtractionService.stripEmptySlotLines} deletes those lines instead, where
- *       it is deterministic and free.</li>
- *   <li><b>Glossary order matters; allowed-types order does not.</b> Moving PROCEDURE to the front
- *       of the allowed-types CSV changed nothing measurable (11.3 against 11.0). PROCEDURE leading
- *       the <em>glossary</em> is worth the gap between 14.7 and 11.0. Hence
- *       {@link #GLOSSARY_ORDER}, which is fixed here rather than read from
- *       {@code vidingest.knowledge.types}.</li>
- *   <li><b>The wording is a measured artifact, not prose.</b> A paraphrase that preserved every
- *       structural element above — same sections, same slots, same priorities, reworded headers and
- *       sentences — measured <b>11.3 against 14.7</b>. The text in this class is byte-identical to
- *       the variant that scored 14.7, and it should be edited only behind a fresh three-run
- *       comparison, not tidied.</li>
+ *   <li><b>Allowed-types order does not matter.</b> Moving PROCEDURE to the front of the CSV
+ *       measured 11.3 against 11.0 — nothing. {@link #GLOSSARY_ORDER} is nonetheless fixed here
+ *       rather than read from {@code vidingest.knowledge.types}, so that an operator expressing a
+ *       preference through config cannot move the glossary, whose order was never measured
+ *       independently.</li>
+ *   <li><b>Video title and channel in the user message do not help.</b> Adding them looked like a
+ *       clear win when the arms ran in blocks (15.3 against 12.7) and the effect <em>reversed</em>
+ *       when the arms were interleaved (12.8 against 13.5). Pooled over 7 runs each: 13.9 against
+ *       13.1, i.e. nothing. Not applied. The interesting part is why the first pass lied — see the
+ *       noise floor below.</li>
  *   <li><b>The glossary is filtered to the allow-list.</b> Describing a type the model is then
  *       forbidden to emit spends output budget on units {@code filterAndCap} throws away.</li>
  * </ul>
+ *
+ * <p><b>The harness resolves about ±3 rules, so do not trust a smaller delta.</b> Ten runs of this
+ * exact configuration, across three separate batches, scored 11–16 (sd 1.5) with batch means
+ * spanning 12.7–14.7. Two claims that earlier sat in this javadoc as findings are inside that
+ * floor and have been demoted: that instructing the model not to write "None specified" cost 2.7
+ * rules, and that a structure-preserving paraphrase cost 3.4. Both may be real; neither is
+ * established at n=3. The decisions they motivated were kept because each is independently
+ * harmless — {@code stripEmptySlotLines} is a regex rather than prompt budget, and the text here
+ * is byte-identical to a variant that did score 14.7 — but a future session should not cite either
+ * number, and should raise n before believing any new sub-3-rule result.
  *
  * <p>Two things v3 does not fix. The model never reads the instrument name off the chart OCR (0/3
  * on every variant), so a unit's ticker comes from the transcript or not at all. And it still
@@ -205,16 +210,14 @@ public final class KnowledgeExtractionPrompt {
     /**
      * Fixed reading order for the glossary, independent of {@code vidingest.knowledge.types}.
      *
-     * <p>The glossary order and the allowed-types CSV order are <b>different things and measured
-     * differently</b>. Moving PROCEDURE to the front of the CSV changed nothing (11.3 vs 11.0
-     * rules recovered, 3 runs each); PROCEDURE leading the <em>glossary</em> is what separates
-     * 14.7 from 11.0. The glossary is where the instruction weight sits, so it is a property of
-     * the prompt and not of the operator's config — an operator reordering {@code types} to
-     * express a preference must not be able to degrade extraction as a side effect.
+     * <p>Moving PROCEDURE to the front of the allowed-types CSV measured nothing (11.3 vs 11.0,
+     * 3 runs each), so this order is <em>not</em> read from {@code vidingest.knowledge.types}: the
+     * config list is the operator's, and the glossary is the prompt's. The two were varied together
+     * in the sweep and never separated, so how much this particular order is worth is unmeasured —
+     * it is simply the order the best-scoring variant used.
      *
-     * <p>PROCEDURE then CLAIM before the three descriptive types is the order that measured best;
-     * it was not derived from a theory and no theory here has survived contact with the numbers.
-     * Change it only with a fresh three-run comparison.
+     * <p>No theory about ordering has survived contact with the numbers in this file's history.
+     * Change it only behind a comparison with n above three, given the ~±3-rule noise floor.
      */
     private static final List<KnowledgeUnitType> GLOSSARY_ORDER = List.of(
             KnowledgeUnitType.PROCEDURE,
@@ -241,9 +244,11 @@ public final class KnowledgeExtractionPrompt {
      * because "numbered WHEN/THEN steps" is the one output shape that a rule cannot be summarised
      * out of — prose invites the model to compress the sequence back into a description.
      *
-     * <p>These strings are a <b>measured artifact, not prose to tidy</b>. Every paraphrase tried
-     * during the v3 sweep lost coverage: rewording this block while keeping its structure cost 3.5
-     * recovered rules per run. Re-run the three-run comparison before editing a sentence here.
+     * <p>These strings are byte-identical to the variant that scored 14.7 in the v3 sweep, and are
+     * best left that way. A structure-preserving paraphrase measured 3.4 rules worse, which is at
+     * the edge of the harness's noise floor rather than clearly outside it — so the case for not
+     * rewording is "no measured upside and a possible cost", not a proven penalty. If you do
+     * reword, raise n above three before believing the result.
      */
     private static String guidanceFor(KnowledgeUnitType type) {
         return switch (type) {

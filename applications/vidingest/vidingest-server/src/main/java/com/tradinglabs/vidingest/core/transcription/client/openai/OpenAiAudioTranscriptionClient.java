@@ -52,6 +52,13 @@ public class OpenAiAudioTranscriptionClient extends AbstractTranscriptionClient 
         parts.add("file", audio);
         parts.add("model", properties.getModel());
         parts.add("response_format", "verbose_json");
+        // Domain-vocabulary hint, omitted entirely when unset rather than sent empty: some servers
+        // treat a blank prompt as a real (empty) decoder context. See
+        // TranscriptionClientProperties#prompt for the measurement and the hallucination caveat.
+        String prompt = properties.getPrompt();
+        if (prompt != null && !prompt.isBlank()) {
+            parts.add("prompt", prompt.trim());
+        }
         return parts;
     }
 }
