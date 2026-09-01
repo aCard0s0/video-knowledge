@@ -49,10 +49,10 @@ export class KnowledgeService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<KnowledgeUnitDto>>;
-    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<KnowledgeUnitDto>>>;
-    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<KnowledgeUnitDto>>>;
-    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<KnowledgeUnitDto>>;
+    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<KnowledgeUnitDto>>>;
+    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<KnowledgeUnitDto>>>;
+    public listVideoKnowledge(videoId: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (videoId === null || videoId === undefined) {
             throw new Error('Required parameter videoId was null or undefined when calling listVideoKnowledge.');
         }
@@ -177,10 +177,10 @@ export class KnowledgeService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', limit?: number, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<SearchKnowledgeHit>>;
-    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', limit?: number, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<SearchKnowledgeHit>>>;
-    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', limit?: number, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<SearchKnowledgeHit>>>;
-    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'QUESTION', limit?: number, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', limit?: number, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<SearchKnowledgeHit>>;
+    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', limit?: number, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<SearchKnowledgeHit>>>;
+    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', limit?: number, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<SearchKnowledgeHit>>>;
+    public searchKnowledge(query: string, type?: 'ENTITY' | 'TOPIC' | 'SUMMARY' | 'CLAIM' | 'PROCEDURE' | 'QUESTION', limit?: number, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (query === null || query === undefined) {
             throw new Error('Required parameter query was null or undefined when calling searchKnowledge.');
         }

@@ -226,7 +226,7 @@ public class KnowledgeExtractionService {
                     .video(video)
                     .type(d.type())
                     .title(truncate(d.title(), 512))
-                    .content(d.content())
+                    .content(stripEmptySlotLines(d.content()))
                     .metadata(buildMetadata(d))
                     .startSeconds(d.startSeconds())
                     .endSeconds(d.endSeconds())
@@ -234,6 +234,54 @@ public class KnowledgeExtractionService {
         }
         return out;
     }
+
+    /**
+     * Drop the rule-kind lines the model filled in with a non-answer.
+     *
+     * <p>A PROCEDURE's content is numbered steps followed by optional
+     * {@code "Stop/abort: ..."}-style lines, and the prompt lists nine of those as a checklist of
+     * rule kinds to look for. That list is what makes the extraction find the fallback path and the
+     * settings — dropping it measured 4.7 fewer rules recovered per run — but handing a model nine
+     * labels also invites it to answer all nine, so a video that never states a stop yields
+     * {@code "Stop/abort: None specified"}.
+     *
+     * <p>Fixed here rather than in the prompt because it is deterministic and free: the instruction
+     * that forbade it ("never write None specified") cost 2.7 recovered rules on its own, spending
+     * the model's attention on formatting instead of on the material. A regex spends none. Only a
+     * line whose entire value is a non-answer goes — a line naming a real rule is untouched, and a
+     * unit that is nothing but such lines is left alone rather than emptied, since
+     * {@code filterAndCap} has already accepted it and a blank body is worse than a useless line.
+     */
+    static String stripEmptySlotLines(String content) {
+        if (content == null || content.isBlank() || content.indexOf(':') < 0) {
+            return content;
+        }
+        String[] lines = content.split("\n", -1);
+        StringBuilder kept = new StringBuilder(content.length());
+        int dropped = 0;
+        for (String line : lines) {
+            if (EMPTY_SLOT_LINE.matcher(line).matches()) {
+                dropped++;
+                continue;
+            }
+            if (!kept.isEmpty()) kept.append('\n');
+            kept.append(line);
+        }
+        if (dropped == 0) return content;
+        String result = kept.toString().strip();
+        return result.isEmpty() ? content : result;
+    }
+
+    /**
+     * {@code "<Label>: <non-answer>"}, where the label is a word or two and the value says nothing.
+     * Anchored on the whole line so a step mentioning "not specified" mid-sentence survives.
+     */
+    private static final java.util.regex.Pattern EMPTY_SLOT_LINE = java.util.regex.Pattern.compile(
+            "\\s*[A-Za-z][A-Za-z/ ]{0,24}:\\s*"
+                    + "(none|none specified|not specified|not stated|not mentioned|not given"
+                    + "|n/?a|unspecified|unknown|none given|no|nothing)"
+                    + "[.\\s]*",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
 
     /**
      * Per-row metadata. Encoded as a {@code Map} so JPA stores it as JSONB via the

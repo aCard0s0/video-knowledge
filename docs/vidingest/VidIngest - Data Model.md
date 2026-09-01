@@ -322,7 +322,7 @@ an id array went stale on a re-run with no FK to catch it, while `UNIQUE (video_
 the label the stable natural key. `transcript_text` and `ocr_text` are independently nullable.
 
 ### `vidingest_knowledge_units` (KnowledgeUnit)
-LLM-extracted typed knowledge units (`ENTITY` / `TOPIC` / `SUMMARY` / `CLAIM` / `QUESTION`)
+LLM-extracted typed knowledge units (`PROCEDURE` / `ENTITY` / `TOPIC` / `SUMMARY` / `CLAIM` / `QUESTION`)
 with `vector(1536)` embeddings and ivfflat index for semantic search. JSONB `metadata`
 holds salience, source segment indices, prompt version, chat model name.
 

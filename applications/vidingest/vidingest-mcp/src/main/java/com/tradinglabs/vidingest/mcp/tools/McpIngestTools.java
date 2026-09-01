@@ -173,7 +173,7 @@ public class McpIngestTools {
             + "Pass type=null or empty to search all unit types.")
     public List<SearchKnowledgeHit> searchKnowledge(
             @McpToolParam(description = "Natural language query") String query,
-            @McpToolParam(description = "Knowledge unit type filter (ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Null or blank = all types.") String type,
+            @McpToolParam(description = "Knowledge unit type filter (PROCEDURE, ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Null or blank = all types.") String type,
             @McpToolParam(description = "Maximum results (1-50)") int limit
     ) {
         log.info("MCP: Searching knowledge units. query={}, type={}, limit={}", query, type, limit);
@@ -185,7 +185,7 @@ public class McpIngestTools {
             + "Ordered by creation time (which matches the LLM's emission order across batches).")
     public List<KnowledgeUnitDto> getKnowledgeUnits(
             @McpToolParam(description = "Video UUID") String videoId,
-            @McpToolParam(description = "Optional unit type filter (ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Null or blank = all types.") String type
+            @McpToolParam(description = "Optional unit type filter (PROCEDURE, ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Null or blank = all types.") String type
     ) {
         log.info("MCP: Listing knowledge units. videoId={}, type={}", videoId, type);
         return client.getKnowledgeUnits(UUID.fromString(videoId), parseTypeOrNull(type));

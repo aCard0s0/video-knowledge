@@ -95,8 +95,16 @@ public class KnowledgeExtractionConfig {
     /**
      * Max tokens to generate per LLM call. Caps the output budget so a single rogue
      * response can't blow through the read timeout.
+     *
+     * <p>Raised from 4096 with prompt v3, which asks for full coverage of every rule in a batch
+     * and so writes considerably more per segment than v2's "prefer fewer units" did. The cap
+     * matters more than it looks: an overrun truncates the model's JSON mid-object, and
+     * {@code KnowledgeUnitJson.parseUnitsArray} answers unparseable content with an empty list
+     * rather than an exception — so the batch is recorded as a success that extracted nothing.
+     * A cap set too low costs coverage silently, which is the one failure this phase is otherwise
+     * built to avoid.
      */
-    private int maxOutputTokens = 4096;
+    private int maxOutputTokens = 8192;
 
     /**
      * Per-batch input cap (characters). Roughly 4 chars ≈ 1 token, so 16k chars ≈ 4k token
@@ -106,14 +114,26 @@ public class KnowledgeExtractionConfig {
     private int maxInputCharsPerBatch = 16_000;
 
     /**
-     * Knowledge unit types the LLM should produce. Order is documentary only; output rows
-     * are not sorted on this. An empty list = "extract all supported types".
+     * Knowledge unit types the LLM should produce. An empty list = "extract all supported types".
+     *
+     * <p>Order here is documentary, and deliberately so. It sets only the order of the
+     * allowed-types list in the prompt, which was measured to make no difference (11.3 vs 11.0
+     * rules recovered with PROCEDURE moved to the front, 3 runs each). What does matter is the
+     * order of the prompt's type <em>glossary</em>, and that is pinned by
+     * {@code KnowledgeExtractionPrompt.GLOSSARY_ORDER} rather than read from here — so an operator
+     * reordering this list cannot degrade extraction as a side effect.
+     *
+     * <p>QUESTION is omitted rather than unsupported: an open question the video never answers is
+     * useful for follow-up prompting but is not knowledge the video delivered, and on monetised
+     * content the model reliably mines the call-to-action for one. Add it per deployment if the
+     * follow-up value is wanted.
      */
     private List<KnowledgeUnitType> types = List.of(
             KnowledgeUnitType.ENTITY,
             KnowledgeUnitType.TOPIC,
             KnowledgeUnitType.SUMMARY,
-            KnowledgeUnitType.CLAIM
+            KnowledgeUnitType.CLAIM,
+            KnowledgeUnitType.PROCEDURE
     );
 
     /**

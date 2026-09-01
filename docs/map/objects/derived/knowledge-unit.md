@@ -10,7 +10,7 @@ entity: applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vi
 
 # KnowledgeUnit
 
-LLM-extracted knowledge from the fused segments: an entity, topic, summary, claim or question, with
+LLM-extracted knowledge from the fused segments: a procedure, entity, topic, summary, claim or question, with
 a time span and a 1536-dim embedding.
 
 ## Why this shape

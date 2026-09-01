@@ -6,7 +6,7 @@ last_reviewed: 2026-08-29
 # VidIngest — Knowledge Extraction
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-08-29
+- **Last reviewed**: 2026-09-01
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
@@ -143,12 +143,53 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 - **Code**: `core/knowledge/`
 - **Prompt**: pure-function assembly in `KnowledgeExtractionPrompt.java`. System message
   pins a strict JSON output contract (single root key `"units"`, explicit ban-list of
-  alternate root keys, illustrative example output). User message renders one block per
-  segment with a global index. `PROMPT_VERSION` is written into each row's
-  `metadata.prompt_version` for offline auditing — currently `2`.
+  alternate root keys), a glossary of the permitted types filtered to
+  `vidingest.knowledge.types`, three ordered extraction priorities, and an exclusion list for
+  promotional and interface noise. User message renders one block per segment with a global
+  index. `PROMPT_VERSION` is written into each row's `metadata.prompt_version` for offline
+  auditing — currently `3`.
+- **v3 optimises for mechanism, not brevity** (Sep 2026). v2 asked for "fewer high-salience
+  units", "deduplicate aggressively" and a 1–4 sentence body, which on instructional video threw
+  away the thing worth keeping: a 3-minute trading tutorial stating a full entry/stop/target
+  method extracted as one sentence, an ENTITY naming the video's *sponsor* and a CLAIM quoting its
+  *ad copy*. Replaying that video's eight fused segments three times per prompt against
+  `Qwen2.5-14B-Instruct-4bit`, scored against a hand-listed ground truth of the 19 rules the
+  transcript states:
+
+  | prompt | units | PROCEDUREs | rules recovered |
+  |---|---|---|---|
+  | v2 | 3.3 | 0.0 | 4.3 / 19 |
+  | v3 | 6.0 | 3.0 | 14.7 / 19 |
+
+  The sweep ran eleven variants and its most useful output is what turned out **not** to be true.
+  Each of these is a change that looks like an improvement:
+  - **No illustrative example output.** v2 had one showing two units; a v3 variant that kept it
+    returned exactly one unit in 3 of 3 runs. A 14B anchors on the example's *cardinality*, and the
+    JSON schema pins the shape far better than prose does. Re-add an example only if it shows as
+    many units as a dense batch should produce.
+  - **The nine "Preconditions/Confirmation/Entry/Stop/Target/…" slots stay an enumerated list.**
+    Compressing them into a prose sentence cost 4.7 rules per run — the list works as a retrieval
+    scaffold, so the model stops hunting for rule kinds it was not handed.
+  - **Do not tell it off for filling those slots in.** The obvious follow-up — the model answers all
+    nine, so forbid "None specified" — cost a further 2.7 rules. Those lines are deleted in code by
+    `KnowledgeExtractionService.stripEmptySlotLines`, where it costs the model nothing.
+  - **Glossary order matters, `vidingest.knowledge.types` order does not.** Moving `PROCEDURE` to
+    the front of the allowed-types list changed nothing (11.3 vs 11.0). `PROCEDURE` leading the
+    *glossary* is worth the gap between 14.7 and 11.0 — so the glossary order is pinned in
+    `KnowledgeExtractionPrompt.GLOSSARY_ORDER` and an operator reordering `types` cannot degrade
+    extraction by accident.
+  - **The wording is a measured artifact.** A paraphrase preserving every structural element above
+    — same sections, same slots, same priorities, reworded headers and sentences — measured 11.3
+    against 14.7. The text in `KnowledgeExtractionPrompt` is byte-identical to the variant that
+    scored 14.7. Edit it behind a fresh three-run comparison, not as a tidy-up.
+
+  Two things v3 does not fix. No variant ever read the instrument name off the chart OCR (0/3
+  everywhere), so a unit's ticker comes from the transcript or not at all. And it still opens a
+  SUMMARY or TOPIC with "The video …" perhaps a third of the time despite being told twice not to —
+  at this model size that instruction is a preference, not a constraint.
 - **Provider**: `vidingest.knowledge.provider` picks the *wire protocol*, not a vendor. Both
-  impls sit behind `KnowledgeChatClient` and are selected by `@ConditionalOnProperty`, so
-  `KnowledgeExtractionService` never learns which one it got:
+  impls sit behind `KnowledgeChatClient` and are selected per call by
+  `KnowledgeChatClientRouter`, so `KnowledgeExtractionService` never learns which one it got:
 
   | value | client | endpoint | schema goes in | output cap |
   |---|---|---|---|---|
@@ -167,16 +208,23 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   `core/knowledge/client/KnowledgeUnitJson` and are shared by both clients — a fallback added
   for one runtime cannot silently not exist for the other.
 
-  An unrecognised `provider` value leaves no `KnowledgeChatClient` bean and **fails the context
-  at startup**. That is deliberate: unlike embeddings there is no `Disabled` floor here, because
-  `vidingest.knowledge.enabled=false` is already the off switch, and a typo that degrades
-  silently would only surface ten minutes into a run.
+  An unrecognised `provider` value **fails the KNOWLEDGE phase**, not the context at startup —
+  the router resolves per call because `PUT /api/v1/connections/KNOWLEDGE` can change the value
+  while the app runs, and a bean chosen at startup cannot follow a property that moves afterwards
+  (PR #46). The connections API validates the value against the router's own supported set on the
+  way in, so a typo is still caught before any run. There is no `Disabled` floor here as there is
+  for embeddings, because `vidingest.knowledge.enabled=false` is already the off switch.
 - **Fallback parser**: `KnowledgeUnitJson.locateUnitsArray` looks for `units` first,
   then alternates (`knowledge_units`, `items`, `data`, `results`), then any value array of
   objects with `type` + `content` fields. Defence-in-depth even after schema enforcement.
 - **Recommended model**: `qwen2.5:14b-instruct` (`VIDINGEST_KNOWLEDGE_CHAT_MODEL`). Returns
   fewer but higher-salience units than the 7b variant — typical 12 min video → ~10–15
   CLAIM/SUMMARY-heavy units vs. 7b's noisy ~40 ENTITY/TOPIC dump.
+- **Do not switch to a reasoning model on oMLX.** oMLX does not enforce `response_format`, so
+  `Qwen3.5-9B-MLX-4bit` emits its chain-of-thought as `message.content`, hits
+  `finish_reason: length` and returns no JSON at all — the phase fails rather than improves. The
+  connections API will accept the model name (it validates the *provider*, not the model's
+  behaviour), so this is not caught before a run.
 - **Filtering**: drops drafts below `vidingest.knowledge.min-salience` (0.2) and types
   outside `vidingest.knowledge.types`. Caps total persisted to `max-units-per-video`.
 - **Embedding**: each surviving unit's content is embedded via the existing

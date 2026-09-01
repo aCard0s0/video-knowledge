@@ -40,6 +40,110 @@ class KnowledgeExtractionPromptTest {
         assertThat(sys).doesNotContain("CLAIM,");
     }
 
+    /**
+     * The glossary is filtered too, not just the CSV. A described-but-forbidden type is worse than
+     * an undescribed one: the model spends output budget emitting units that {@code filterAndCap}
+     * then discards, and on a small model those crowd out the types that were asked for.
+     */
+    @Test
+    void systemMessageDescribesOnlyTheAllowedTypes() {
+        String sys = KnowledgeExtractionPrompt.systemMessage(List.of(
+                KnowledgeUnitType.PROCEDURE,
+                KnowledgeUnitType.ENTITY
+        ));
+
+        assertThat(sys).contains("- PROCEDURE:");
+        assertThat(sys).contains("- ENTITY:");
+        assertThat(sys).doesNotContain("- TOPIC:");
+        assertThat(sys).doesNotContain("- CLAIM:");
+        assertThat(sys).doesNotContain("- SUMMARY:");
+        assertThat(sys).doesNotContain("- QUESTION:");
+    }
+
+    /**
+     * The three instructions v2 shipped that made an instructional video extract to nothing usable.
+     * Re-adding any of them is the regression this test exists to catch, so it asserts their
+     * absence by the exact wording rather than by outcome — the outcome needs a live LLM.
+     */
+    @Test
+    void systemMessageDoesNotAskTheModelToCompress() {
+        String sys = KnowledgeExtractionPrompt.systemMessage(List.of());
+
+        assertThat(sys).doesNotContain("Prefer fewer");
+        assertThat(sys).doesNotContain("Deduplicate aggressively");
+        assertThat(sys).doesNotContain("1-4 sentences");
+        assertThat(sys).doesNotContain("1–4 sentences");
+    }
+
+    /**
+     * The instructions that replaced them. A prompt that permits PROCEDURE without demanding the
+     * WHEN/THEN step shape gets prose back, and prose is what a rule gets summarised out of.
+     */
+    @Test
+    void systemMessageAsksForMechanismCoverageAndVerbatimValues() {
+        String sys = KnowledgeExtractionPrompt.systemMessage(List.of());
+
+        assertThat(sys).contains("MECHANISM over description");
+        assertThat(sys).contains("COVERAGE beats brevity");
+        assertThat(sys).contains("FIDELITY");
+        assertThat(sys).contains("WHEN <trigger condition> THEN <action>");
+        assertThat(sys).contains("verbatim");
+    }
+
+    /**
+     * The nine rule-kind slots stay an enumerated list. Folding them into a prose sentence measured
+     * 4.7 fewer rules recovered per run: the list is a retrieval scaffold, not formatting, and the
+     * model stops hunting for rule kinds it was not handed.
+     *
+     * <p>Deliberately no instruction here against filling them in with "None specified". Adding one
+     * cost a further 2.7 recovered rules — attention spent on formatting rather than on the
+     * material — so that non-answer is stripped deterministically by
+     * {@code KnowledgeExtractionService.stripEmptySlotLines} instead, where it is free.
+     */
+    @Test
+    void systemMessageEnumeratesTheRuleKindChecklist() {
+        String sys = KnowledgeExtractionPrompt.systemMessage(List.of(KnowledgeUnitType.PROCEDURE));
+
+        for (String slot : List.of("Preconditions:", "Confirmation:", "Entry:", "Stop/abort:",
+                "Target:", "Settings:", "Invalidated if:", "Alternative:", "Tools:")) {
+            assertThat(sys).contains(slot);
+        }
+        assertThat(sys).doesNotContain("None specified");
+        // The general prohibition still stands; only the slot-specific restatement was removed.
+        assertThat(sys).contains("Do NOT invent content");
+    }
+
+    /**
+     * No illustrative output example, and this asserts its absence rather than its shape. v2 carried
+     * one showing two units and a v3 variant that kept it returned exactly one unit in 3 of 3 runs —
+     * a 14B anchors on the example's cardinality. The JSON schema in {@code KnowledgeUnitJson} is
+     * what actually pins the shape, so the example bought nothing and cost most of the coverage.
+     */
+    @Test
+    void systemMessageCarriesNoOutputExampleToAnchorUnitCount() {
+        String sys = KnowledgeExtractionPrompt.systemMessage(List.of());
+
+        assertThat(sys).doesNotContain("Example of the EXACT output shape");
+        assertThat(sys).doesNotContain("{\"units\":[\n");
+        // The contract itself must still be stated in prose — it is the only thing left saying it.
+        assertThat(sys).contains("EXACTLY ONE top-level key named \"units\"");
+    }
+
+    /**
+     * OCR on a monetised video is mostly sponsor overlay and garbled interface chrome, and under v2
+     * the model made the sponsor the ENTITY and its ad copy the CLAIM. The exclusion has to survive
+     * any future trimming of the rules block.
+     */
+    @Test
+    void systemMessageExcludesPromotionalAndInterfaceNoise() {
+        String sys = KnowledgeExtractionPrompt.systemMessage(List.of());
+
+        assertThat(sys).contains("call to action");
+        assertThat(sys).contains("sponsor plug");
+        assertThat(sys).contains("watermark");
+        assertThat(sys).contains("A product becomes an ENTITY only when");
+    }
+
     @Test
     void systemMessageDefaultsToAllTypesWhenAllowListIsEmpty() {
         String sys = KnowledgeExtractionPrompt.systemMessage(List.of());
@@ -86,6 +190,16 @@ class KnowledgeExtractionPromptTest {
         // (1000 + 500 = 1500) plus the same overhead. ≥ 1500 is a robust check.
         assertThat(tinyEst).isLessThan(100);
         assertThat(bigEst).isGreaterThanOrEqualTo(1500);
+    }
+
+    /**
+     * Pinned, not merely positive: {@code metadata.prompt_version} is the only way to tell rows
+     * extracted under different instructions apart, so a prompt edit that forgets the bump makes
+     * old and new units indistinguishable after the fact.
+     */
+    @Test
+    void promptVersionMatchesTheCurrentPromptGeneration() {
+        assertThat(KnowledgeExtractionPrompt.PROMPT_VERSION).isEqualTo(3);
     }
 
     @Test

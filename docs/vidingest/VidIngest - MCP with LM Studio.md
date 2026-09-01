@@ -240,7 +240,7 @@ as the original nine — no separate tool group.
 
 | Tool | Parameters | Notes |
 |------|------------|-------|
-| `searchKnowledge`      | `query` (text), `type` (ENTITY/TOPIC/SUMMARY/CLAIM/QUESTION, optional), `limit` (1–50) | pgvector similarity across all videos; returns title/snippet/timing. |
+| `searchKnowledge`      | `query` (text), `type` (PROCEDURE/ENTITY/TOPIC/SUMMARY/CLAIM/QUESTION, optional), `limit` (1–50) | pgvector similarity across all videos; returns title/snippet/timing. |
 | `getKnowledgeUnits`    | `videoId` (UUID), `type` (optional) | All units for one video, ordered by creation. |
 | `regenerateKnowledge`  | `videoId` (UUID) | Re-runs `KnowledgePhase` in isolation; idempotent. |
 | `getSpeakers`          | `videoId` (UUID) | Speakers + per-speaker transcript-segment counts. |
