@@ -127,7 +127,7 @@ export const VIDEO_STATUSES = [
   'FAILED',
 ] as const;
 
-export const KNOWLEDGE_TYPES = ['ENTITY', 'TOPIC', 'SUMMARY', 'CLAIM', 'QUESTION'] as const;
+export const KNOWLEDGE_TYPES = ['PROCEDURE', 'ENTITY', 'TOPIC', 'SUMMARY', 'CLAIM', 'QUESTION'] as const;
 export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number];
 
 /**

@@ -39,6 +39,13 @@ public class ConnectionProbeService {
         ConnectionValues values = settings.current(name);
         String baseUrl = values.baseUrl();
 
+        // FRAME_SAMPLE is local ffmpeg: there is no endpoint, so "unreachable" would be a lie and
+        // "no base URL configured" would read as something the operator forgot to fill in.
+        if (!settings.hasBaseUrl(name)) {
+            return new ConnectionTestResult(name, false, null, null, null,
+                    name + " runs locally and has no endpoint to probe", 0);
+        }
+
         if (baseUrl == null || baseUrl.isBlank()) {
             return new ConnectionTestResult(name, false, baseUrl, null, null,
                     "No base URL configured for " + name, 0);

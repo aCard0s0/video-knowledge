@@ -81,7 +81,32 @@ class PipelineCapabilitiesControllerTest {
                 .isEqualTo(new YoutubeSyncProperties().getPlaylistLimit());
     }
 
+    /**
+     * OCR on, frame sampling off. Asserted here and not only at {@code OcrPhase.applies} because
+     * this endpoint is the contract the console reads, and advertising a phase that cannot produce
+     * anything is the shape of the original defect: the full pipeline run entered OCR and worked
+     * through an empty frame set. Both toggles now live on the settings screen — PR #49 added
+     * {@code ConnectionName.FRAME_SAMPLE} — so this combination is one an operator can produce
+     * deliberately, which is the better reason to assert it than the original one-click trap.
+     *
+     * <p>The helper took one flag for every toggle, so this mixed combination could not be
+     * expressed and went uncovered — the all-on and all-off cases both pass with the gate removed.
+     */
+    @Test
+    void doesNotReportOcrWhenFrameSamplingIsOffEvenThoughOcrIsOn() {
+        PipelineCapabilities caps = capabilities(true, /* framesEnabled */ false);
+
+        assertThat(caps.enabledPhases())
+                .doesNotContain(PipelineRunPhase.OCR.name(), PipelineRunPhase.FRAME_SAMPLE.name())
+                // The other enrichment phases are unaffected — this is a dependency, not a cascade.
+                .contains(PipelineRunPhase.DIARIZE.name(), PipelineRunPhase.KNOWLEDGE.name());
+    }
+
     private PipelineCapabilities capabilities(boolean enrichmentEnabled) {
+        return capabilities(enrichmentEnabled, enrichmentEnabled);
+    }
+
+    private PipelineCapabilities capabilities(boolean enrichmentEnabled, boolean framesEnabled) {
         // The registry indexes by phase(), so the three mandatory phases have to answer with theirs;
         // nothing else about them is reached — they are never optional, so never probed.
         when(metadataPhase.phase()).thenReturn(PipelineRunPhase.METADATA);
@@ -91,7 +116,7 @@ class PipelineCapabilitiesControllerTest {
         DiarizationConfig diarization = new DiarizationConfig();
         diarization.setEnabled(enrichmentEnabled);
         FrameSamplingConfig frames = new FrameSamplingConfig();
-        frames.setEnabled(enrichmentEnabled);
+        frames.setEnabled(framesEnabled);
         OcrConfig ocr = new OcrConfig();
         ocr.setEnabled(enrichmentEnabled);
         KnowledgeExtractionConfig knowledge = new KnowledgeExtractionConfig();
@@ -108,7 +133,7 @@ class PipelineCapabilitiesControllerTest {
                 new TranscribePhase(null, null),
                 new DiarizePhase(null, diarization),
                 new FrameSamplePhase(null, frames),
-                new OcrPhase(null, ocr),
+                new OcrPhase(null, ocr, frames),
                 new FusePhase(null, fusion),
                 new KnowledgePhase(null, knowledge),
                 new ContextPhase(null, null, search)

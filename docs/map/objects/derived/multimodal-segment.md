@@ -22,6 +22,19 @@ what KNOWLEDGE and CONTEXT actually read — not the raw transcript.
   cannot dangle (`004-knowledge.sql:17-22`).
 - **`startSeconds`/`endSeconds` are `Double` here and `Float` on transcription segments.** Not a
   bug, but do not assume one timebase across the two tables.
+- **`ocrText` is filtered, not raw.** `SegmentFusionService` drops two classes of OCR line before
+  the row is written, because a screen recording picks up the browser and the price axis along with
+  the content — on the reference video OCR was **54% of what the KNOWLEDGE phase read** (5852 chars
+  against 4938 of transcript), and under prompt v2 the model made the repeated sponsor watermark its
+  ENTITY. `carriesMeaning` drops a line with no letter in it (a chart price axis is a number with
+  nothing saying what it refers to; 27% of raw OCR chars), and `chromeOcrLines` drops a line present
+  in ≥ `vidingest.fusion.ocr-chrome-window-ratio` of the video's windows, since chrome is static and
+  content is not. Together: 54% → 43%, and the whole KNOWLEDGE prompt 17% smaller.
+  **Rule recovery was unchanged** (13.8 against 14.8 of 19, inside the eval's noise floor), so the
+  filters are a token saving rather than a quality gain — the theory that a smaller prompt would
+  extract more was tested and did not hold. **Confidence and bbox position were measured and
+  rejected** as further filters — see `SegmentFusionService.carriesMeaning`. Anything asserting on
+  `ocrText` needs to know it has been through both.
 - **No index on `video_id` alone** — leftmost column of both the unique constraint and the time
   composite (`004-knowledge.sql:28`).
 

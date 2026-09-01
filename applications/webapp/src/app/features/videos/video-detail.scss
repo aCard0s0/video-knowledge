@@ -254,9 +254,15 @@
   padding-inline: var(--space-md);
 }
 
+// `pre-wrap`, not the default `normal`: a PROCEDURE unit's content is numbered WHEN/THEN steps
+// separated by newlines, and collapsing them runs the whole method into one paragraph — which is
+// the shape the extraction prompt exists to get away from. Every other unit type is a single
+// paragraph with no newlines to preserve, so this only ever affects the type that needs it. Used
+// by the knowledge pane alone (the transcript pane's span is `.line`).
 .body {
   color: var(--fg-muted);
   font-size: var(--fs-sm);
+  white-space: pre-wrap;
 }
 
 .kind {

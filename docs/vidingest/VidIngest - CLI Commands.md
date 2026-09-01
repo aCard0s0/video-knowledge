@@ -301,8 +301,8 @@ been run for the target video).
 
 | Command | Usage | Output |
 |---------|-------|--------|
-| `search-knowledge --query <TEXT> [--type ENTITY\|TOPIC\|SUMMARY\|CLAIM\|QUESTION] [--limit N]` | Cross-video semantic search over `vidingest_knowledge_units`. Returns one block per hit with type, title, snippet, parent video. | Requires semantic search enabled. |
-| `knowledge --video-id <UUID> [--type ENTITY\|TOPIC\|SUMMARY\|CLAIM\|QUESTION]` | All knowledge units for one video, optionally filtered by type. | |
+| `search-knowledge --query <TEXT> [--type PROCEDURE\|ENTITY\|TOPIC\|SUMMARY\|CLAIM\|QUESTION] [--limit N]` | Cross-video semantic search over `vidingest_knowledge_units`. Returns one block per hit with type, title, snippet, parent video. | Requires semantic search enabled. |
+| `knowledge --video-id <UUID> [--type PROCEDURE\|ENTITY\|TOPIC\|SUMMARY\|CLAIM\|QUESTION]` | All knowledge units for one video, optionally filtered by type. | |
 | `regenerate-knowledge --video-id <UUID>` | Re-runs `KnowledgePhase` in isolation against the video's current multimodal segments. | Mirrors `POST /videos/{id}/knowledge/regenerate`. |
 | `speakers --video-id <UUID>` | Lists pyannote-identified speakers with per-speaker transcript segment counts. | |
 

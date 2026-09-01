@@ -8,6 +8,7 @@ import com.tradinglabs.vidingest.core.fusion.repo.MultimodalSegmentRepository;
 import com.tradinglabs.vidingest.core.knowledge.client.KnowledgeChatClient;
 import com.tradinglabs.vidingest.core.knowledge.domain.KnowledgeUnit;
 import com.tradinglabs.vidingest.core.knowledge.dto.KnowledgeUnitDraft;
+import com.tradinglabs.vidingest.core.knowledge.prompt.KnowledgeExtractionPrompt;
 import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository;
 import com.tradinglabs.vidingest.search.service.embedding.EmbeddingsClient;
 import com.tradinglabs.vidingest.videos.domain.Video;
@@ -175,7 +176,7 @@ class KnowledgeExtractionServiceTest {
         assertThat(saved.get(0).getEmbedding()).isEqualTo(vec1);
         assertThat(saved.get(0).getMetadata())
                 .containsEntry("chat_model", "qwen2.5:14b-instruct")
-                .containsEntry("prompt_version", 2);
+                .containsEntry("prompt_version", KnowledgeExtractionPrompt.PROMPT_VERSION);
         assertThat(saved.get(0).getMetadata()).containsKey("salience");
         assertThat(saved.get(1).getEmbedding()).isEqualTo(vec2);
     }
@@ -393,4 +394,117 @@ class KnowledgeExtractionServiceTest {
         verifyNoInteractions(chatClient);
     }
 
+
+    // ---- stripEmptySlotLines ----
+
+    /**
+     * The nine rule-kind slots in the PROCEDURE contract are what make the extraction find the
+     * fallback path and the settings, but handing a model nine labels invites it to answer all
+     * nine. Only a line whose whole value is a non-answer goes.
+     */
+    @Test
+    void stripEmptySlotLinesDropsNonAnswersAndKeepsRealRules() {
+        String content = """
+                1. WHEN price sweeps the liquidity THEN wait for a structure shift.
+                2. WHEN structure shifts THEN enter.
+                Confirmation: a downside structure shift.
+                Stop/abort: None specified.
+                Target: a lower low or 1.5 to 2 to 1.
+                Settings: N/A
+                Invalidated if: not stated
+                Tools: luxalgo.com/library""";
+
+        String out = KnowledgeExtractionService.stripEmptySlotLines(content);
+
+        assertThat(out).contains("1. WHEN price sweeps the liquidity");
+        assertThat(out).contains("Confirmation: a downside structure shift.");
+        assertThat(out).contains("Target: a lower low or 1.5 to 2 to 1.");
+        assertThat(out).contains("Tools: luxalgo.com/library");
+        assertThat(out).doesNotContain("None specified");
+        assertThat(out).doesNotContain("N/A");
+        assertThat(out).doesNotContain("Invalidated if:");
+    }
+
+    /**
+     * "not specified" inside a step is prose, not a non-answer slot — the pattern is anchored on
+     * the whole line so a step that happens to contain the phrase survives.
+     */
+    @Test
+    void stripEmptySlotLinesLeavesStepsAndOrdinaryContentAlone() {
+        String step = "1. WHEN the timeframe is not specified THEN default to the 5m chart.";
+        assertThat(KnowledgeExtractionService.stripEmptySlotLines(step)).isEqualTo(step);
+
+        String prose = "LuxAlgo is a platform whose pricing is not stated in the video.";
+        assertThat(KnowledgeExtractionService.stripEmptySlotLines(prose)).isEqualTo(prose);
+
+        assertThat(KnowledgeExtractionService.stripEmptySlotLines(null)).isNull();
+        assertThat(KnowledgeExtractionService.stripEmptySlotLines("")).isEmpty();
+    }
+
+    /**
+     * A unit that is nothing but non-answers keeps its body. {@code filterAndCap} already accepted
+     * it, and a row with a useless line is recoverable where a row with an empty body is not —
+     * {@code content} is what the embedding and the console both read.
+     */
+    @Test
+    void stripEmptySlotLinesNeverEmptiesTheBody() {
+        String allFiller = "Stop/abort: None specified.\nTarget: N/A";
+        assertThat(KnowledgeExtractionService.stripEmptySlotLines(allFiller)).isEqualTo(allFiller);
+    }
+
+    // ---- stripMetaOpening ----
+
+    /**
+     * Real openings taken from eval runs. The prompt forbids this twice and the model does it in
+     * roughly a third of runs anyway, so it is stripped rather than argued about — the same trade
+     * as {@code stripEmptySlotLines}, for the same measured reason.
+     */
+    @Test
+    void stripMetaOpeningTurnsADescriptionOfTheVideoIntoTheKnowledge() {
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "The video explains a trend continuation trading strategy that involves identifying a trend."))
+                .isEqualTo("Trend continuation trading strategy that involves identifying a trend.");
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "The video teaches how to sharpen a knife on a whetstone."))
+                .isEqualTo("Sharpen a knife on a whetstone.");
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "This video covers the use of trading indicators to identify liquidity."))
+                .isEqualTo("Use of trading indicators to identify liquidity.");
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "The video walks through configuring the indicator."))
+                .isEqualTo("Configuring the indicator.");
+    }
+
+    /**
+     * The pattern is anchored and its verb list is closed, so it only removes a clause that is
+     * purely <em>about</em> the video. Everything else keeps its text — including a unit that
+     * mentions the video after the first clause, and a sentence where "video" is the subject of
+     * something real.
+     */
+    @Test
+    void stripMetaOpeningLeavesAnythingThatIsNotAPureDescription() {
+        for (String untouched : List.of(
+                "Short entries are taken after a liquidity sweep confirms a downside shift.",
+                "The video was recorded on a 5m NASDAQ chart.",
+                "The videos are compared side by side.",
+                "A liquidity sweep is required; the video explains why.",
+                "The host explains a trend continuation strategy.")) {
+            assertThat(KnowledgeExtractionService.stripMetaOpening(untouched))
+                    .withFailMessage("should have been left alone: %s", untouched)
+                    .isEqualTo(untouched);
+        }
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(null)).isNull();
+        assertThat(KnowledgeExtractionService.stripMetaOpening("")).isEmpty();
+    }
+
+    /** A unit that is nothing but the meta clause keeps its body rather than becoming blank. */
+    @Test
+    void stripMetaOpeningNeverEmptiesTheBody() {
+        assertThat(KnowledgeExtractionService.stripMetaOpening("The video explains "))
+                .isEqualTo("The video explains ");
+    }
 }

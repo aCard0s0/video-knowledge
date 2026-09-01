@@ -25,6 +25,7 @@ export enum KnowledgeUnitDtoTypeEnum {
     Topic = 'TOPIC',
     Summary = 'SUMMARY',
     Claim = 'CLAIM',
+    Procedure = 'PROCEDURE',
     Question = 'QUESTION'
 };
 

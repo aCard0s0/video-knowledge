@@ -1,12 +1,12 @@
 ---
 type: reference
-last_reviewed: 2026-08-29
+last_reviewed: 2026-09-01
 ---
 
 # VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
-- **Last reviewed**: 2026-08-29
+- **Last reviewed**: 2026-09-01
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -136,6 +136,7 @@ openai-whisper-asr-webservice. Code pointers:
 | `vidingest.transcription.base-url` | `http://localhost:9000` (base), `${VK_HOST_LLM_URL}` (docker) | Must include the API prefix (usually `/v1`) for `openai-compatible` |
 | `vidingest.transcription.model` | `whisper-1` | Required by `openai-compatible`; ignored by whisper-asr-webservice, whose model is fixed by the image's `ASR_MODEL` |
 | `vidingest.transcription.api-key` | *(empty)* | Sent as `Authorization: Bearer` whenever set, for either provider |
+| `vidingest.transcription.prompt` | *(empty)*; compose sets a trading vocabulary | Decoder vocabulary hint, sent as the `prompt` part by `openai-compatible` only — the whisper-asr sidecar's `/asr` has no equivalent. See below |
 | `vidingest.transcription.connect-timeout` | `5s` | Startup-bound — not editable through the connections API |
 | `vidingest.transcription.read-timeout` | `30m` | Startup-bound |
 
@@ -149,6 +150,35 @@ depending on which server is answering. Both providers return the same envelope 
 The docker profile used to hardcode `http://whisper:9000` with no `${...}` indirection, so
 `VIDINGEST_WHISPER_BASE_URL` had never had any effect under compose. The replacement
 `VIDINGEST_TRANSCRIPTION_BASE_URL` does.
+
+**`vidingest.transcription.prompt` is worth setting, and is not an instruction.** The OpenAI audio
+API's `prompt` conditions the decoder, so it belongs in the same register as the speech: a
+comma-separated list of terms and spellings the audio is likely to contain, never a sentence.
+
+Measured on a 3-minute trading short against `whisper-large-v3-turbo`, 3 runs per arm, both fully
+deterministic — **9 wrong-form occurrences became 3**:
+
+| term | without the hint | with it |
+|---|---|---|
+| *break of structure* | 12 correct, **3× "breaker structure"** | **15 correct, 0 wrong** |
+| garbled *"where we can will close"* | 3× | **0** |
+| *fib retracement* | 3 correct, 3× "fiber tracement" | 3 correct, 3× **"fiber retracement"** — still wrong |
+
+Confirmed live: re-running TRANSCRIBE on that video produced the 3783-char transcript with
+`break of structure` ×5 and no `breaker structure`, and re-running FUSE + KNOWLEDGE after it left
+**zero** ASR-error terms in the knowledge units.
+
+Why this is worth more than a transcript typo normally would be: the KNOWLEDGE prompt tells the
+model to reproduce the speaker's terminology **verbatim**
+([Knowledge Extraction](VidIngest%20-%20Knowledge%20Extraction.md)), so a mangled domain term
+propagates by design into the units, their embeddings and search. It was observed doing so before
+this was set.
+
+Two cautions. It is **empty by default** because a whisper prompt is a documented hallucination
+vector — the decoder will happily continue a prompt that does not match the audio, so set it to the
+vocabulary of the channels actually being ingested and to nothing else. And listing a term does not
+guarantee it: `fib retracement` was in the hint and still came back as `fiber retracement`, so a
+short surface form can simply lose to a common English word. Unsolved.
 
 #### Getting an ASR model into oMLX
 
@@ -264,7 +294,7 @@ Notes:
   process has to **bind `0.0.0.0`**: a container arrives on the bridge address, so a
   `127.0.0.1`-only listener refuses the connection. This is the single most common cause of
   "connection refused" after the move off the `llm` container.
-- Every one of these is a *starting* value. All five connections are editable at runtime — see
+- Every one of these is a *starting* value. All six connections are editable at runtime — see
   [Connections API](#connections-api-runtime-editable) below.
 - **oMLX decides a model is an embedding model by its directory name.** `_is_causal_lm_embedding`
   looks for `embed`/`embedding` in the name, because a causal-LM embedder's `config.json` is
@@ -297,26 +327,32 @@ Notes:
 
 ## Connections API (runtime-editable)
 
-Everything above is bound from the environment at startup. The five *connections* — where the
-server reaches its model runtimes and sidecars — are additionally editable while it runs, from
-`GET/PUT/DELETE /api/v1/connections/{name}` or the console's **Settings** screen.
+Everything above is bound from the environment at startup. The six *connections* — where the
+server reaches its model runtimes and sidecars, plus the one phase that runs locally — are
+additionally editable while it runs, from `GET/PUT/DELETE /api/v1/connections/{name}` or the
+console's **Settings** screen.
 
 Code:
 [connections/](../../applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/connections),
-changeset `008-connections.sql`, console
+changesets `008-connections.sql` and `009-connections-nullable-base-url.sql`, console
 [features/settings/](../../applications/webapp/src/app/features/settings).
 
-| Name | Config bean | Providers | Model? | Enable toggle? |
-|------|-------------|-----------|--------|----------------|
-| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `disabled` | yes | no |
-| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible` | yes | yes |
-| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible` | yes | no |
-| `DIARIZATION` | `vidingest.diarization.*` | `diarize-asr` | no | yes |
-| `OCR` | `vidingest.ocr.*` | `paddleocr` | no | yes |
+| Name | Config bean | Providers | Base URL? | Model? | Enable toggle? |
+|------|-------------|-----------|-----------|--------|----------------|
+| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `disabled` | yes | yes | no |
+| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible` | yes | yes | yes |
+| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible` | yes | yes | no |
+| `DIARIZATION` | `vidingest.diarization.*` | `diarize-asr` | yes | no | yes |
+| `FRAME_SAMPLE` | `vidingest.frames.*` | `ffmpeg` | **no** | no | yes |
+| `OCR` | `vidingest.ocr.*` | `paddleocr` | yes | no | yes |
+
+The three `supports*` columns are served per row (`supportsBaseUrl`, `supportsModel`,
+`supportsEnabled`) so the console renders only the controls the server would honour. Mirror none of
+it client-side — a new connection then needs no console change.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/api/v1/connections` | All five, with their effective values |
+| `GET` | `/api/v1/connections` | All six, with their effective values |
 | `GET` | `/api/v1/connections/{name}` | |
 | `PUT` | `/api/v1/connections/{name}` | Stores the override **and** applies it immediately |
 | `DELETE` | `/api/v1/connections/{name}` | 204; reverts to the value the server started with |
@@ -353,6 +389,14 @@ Things worth knowing before you rely on it:
 - **The provider is validated on the way in**, against the same list the router uses at call time
   (served back as `supportedProviders`). An unrecognised value would otherwise fail the phase
   rather than the request.
+- **`FRAME_SAMPLE` is a connection with no connection.** It is local ffmpeg, so it carries only the
+  phase toggle: `supportsBaseUrl` is false, `base_url` is nullable (changeset `009`), a `PUT` that
+  sends no `baseUrl` is accepted, and `POST .../test` answers `reachable: false` with *"runs locally
+  and has no endpoint to probe"* rather than pretending to have tried. It is on this API because
+  `vidingest.ocr.enabled` is meaningless without it — `OcrPhase.applies` requires
+  `vidingest.frames.enabled` too, since frame sampling writes the only input OCR has, so a settings
+  screen that could flip OCR but not frames was one click from a run that entered OCR and found
+  nothing. Every other connection still requires an absolute `http(s)` base URL.
 
 ## Docker configuration
 
@@ -545,6 +589,8 @@ vidingest.fusion.enabled=${VIDINGEST_FUSION_ENABLED:true}
 vidingest.fusion.window-seconds=${VIDINGEST_FUSION_WINDOW_SECONDS:30.0}
 vidingest.fusion.window-overlap-seconds=${VIDINGEST_FUSION_WINDOW_OVERLAP_SECONDS:5.0}
 vidingest.fusion.max-segments-per-video=${VIDINGEST_FUSION_MAX_SEGMENTS_PER_VIDEO:2000}
+vidingest.fusion.ocr-chrome-window-ratio=${VIDINGEST_FUSION_OCR_CHROME_WINDOW_RATIO:0.6}
+vidingest.fusion.ocr-chrome-min-windows=${VIDINGEST_FUSION_OCR_CHROME_MIN_WINDOWS:4}
 ```
 
 ### Knowledge extraction

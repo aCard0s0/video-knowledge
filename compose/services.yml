@@ -76,6 +76,13 @@ services:
       VIDINGEST_TRANSCRIPTION_BASE_URL: ${VIDINGEST_TRANSCRIPTION_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
       VIDINGEST_TRANSCRIPTION_MODEL: ${VIDINGEST_TRANSCRIPTION_MODEL:-whisper-large-v3-turbo}
       VIDINGEST_TRANSCRIPTION_API_KEY: ${VIDINGEST_TRANSCRIPTION_API_KEY:-}
+      # Vocabulary hint for whisper, set to the domain this deployment ingests. Measured on a
+      # trading short, 3 deterministic runs per arm: 9 mangled domain terms became 3 — "break of
+      # structure" fully fixed, "fib retracement" still coming back as "fiber retracement". Worth
+      # setting because the KNOWLEDGE phase copies the speaker's terminology verbatim, so an ASR
+      # error reaches the knowledge units. Keep it a term list, never a sentence — whisper will
+      # continue a prompt that does not match the audio.
+      VIDINGEST_TRANSCRIPTION_PROMPT: ${VIDINGEST_TRANSCRIPTION_PROMPT:-break of structure, BOS, change of character, CHoCH, liquidity sweep, fib retracement, Fibonacci, order block, higher low, lower high, market structure shift, stop loss, NASDAQ, NQ1, LuxAlgo}
       # Speaker diarization (optional). Flip enabled + start the diarize-asr sidecar (needs
       # HUGGINGFACE_TOKEN) to opt in. Intentionally NOT a depends_on so vidingest starts without it.
       VIDINGEST_DIARIZATION_ENABLED: ${VIDINGEST_DIARIZATION_ENABLED:-false}
@@ -103,7 +110,7 @@ services:
       VIDINGEST_KNOWLEDGE_BASE_URL: ${VIDINGEST_KNOWLEDGE_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
       VIDINGEST_KNOWLEDGE_API_KEY: ${VIDINGEST_KNOWLEDGE_API_KEY:-}
       VIDINGEST_KNOWLEDGE_TEMPERATURE: ${VIDINGEST_KNOWLEDGE_TEMPERATURE:-0.2}
-      VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS: ${VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS:-4096}
+      VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS: ${VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS:-8192}
       VIDINGEST_KNOWLEDGE_MAX_INPUT_CHARS_PER_BATCH: ${VIDINGEST_KNOWLEDGE_MAX_INPUT_CHARS_PER_BATCH:-16000}
       VIDINGEST_KNOWLEDGE_MAX_UNITS_PER_VIDEO: ${VIDINGEST_KNOWLEDGE_MAX_UNITS_PER_VIDEO:-300}
       VIDINGEST_KNOWLEDGE_MIN_SALIENCE: ${VIDINGEST_KNOWLEDGE_MIN_SALIENCE:-0.2}

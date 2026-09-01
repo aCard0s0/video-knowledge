@@ -47,10 +47,10 @@ export class ConnectionsService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ConnectionSummary>;
-    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ConnectionSummary>>;
-    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ConnectionSummary>>;
-    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ConnectionSummary>;
+    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ConnectionSummary>>;
+    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ConnectionSummary>>;
+    public getConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (name === null || name === undefined) {
             throw new Error('Required parameter name was null or undefined when calling getConnection.');
         }
@@ -80,7 +80,7 @@ export class ConnectionsService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR'", dataFormat: undefined})}`;
+        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR'", dataFormat: undefined})}`;
         const { basePath, withCredentials } = this.configuration;
         return this.httpClient.request<ConnectionSummary>('get', `${basePath}${localVarPath}`,
             {
@@ -157,10 +157,10 @@ export class ConnectionsService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<any>;
-    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
-    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
-    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public resetConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: undefined, context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (name === null || name === undefined) {
             throw new Error('Required parameter name was null or undefined when calling resetConnection.');
         }
@@ -189,7 +189,7 @@ export class ConnectionsService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR'", dataFormat: undefined})}`;
+        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR'", dataFormat: undefined})}`;
         const { basePath, withCredentials } = this.configuration;
         return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`,
             {
@@ -213,10 +213,10 @@ export class ConnectionsService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ConnectionTestResult>;
-    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ConnectionTestResult>>;
-    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ConnectionTestResult>>;
-    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ConnectionTestResult>;
+    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ConnectionTestResult>>;
+    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ConnectionTestResult>>;
+    public testConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (name === null || name === undefined) {
             throw new Error('Required parameter name was null or undefined when calling testConnection.');
         }
@@ -246,7 +246,7 @@ export class ConnectionsService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR'", dataFormat: undefined})}/test`;
+        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR'", dataFormat: undefined})}/test`;
         const { basePath, withCredentials } = this.configuration;
         return this.httpClient.request<ConnectionTestResult>('post', `${basePath}${localVarPath}`,
             {
@@ -271,10 +271,10 @@ export class ConnectionsService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ConnectionSummary>;
-    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ConnectionSummary>>;
-    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ConnectionSummary>>;
-    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ConnectionSummary>;
+    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ConnectionSummary>>;
+    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ConnectionSummary>>;
+    public updateConnection(name: 'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR', updateConnectionRequest: UpdateConnectionRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (name === null || name === undefined) {
             throw new Error('Required parameter name was null or undefined when calling updateConnection.');
         }
@@ -316,7 +316,7 @@ export class ConnectionsService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'OCR'", dataFormat: undefined})}`;
+        let localVarPath = `/api/v1/connections/${this.configuration.encodeParam({name: "name", value: name, in: "path", style: "simple", explode: false, dataType: "'EMBEDDINGS' | 'KNOWLEDGE' | 'TRANSCRIPTION' | 'DIARIZATION' | 'FRAME_SAMPLE' | 'OCR'", dataFormat: undefined})}`;
         const { basePath, withCredentials } = this.configuration;
         return this.httpClient.request<ConnectionSummary>('put', `${basePath}${localVarPath}`,
             {

@@ -3,6 +3,7 @@ package com.tradinglabs.vidingest.core.knowledge.controller;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitDto;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
 import com.tradinglabs.vidingest.api.knowledge.RegenerateKnowledgeResult;
+import com.tradinglabs.vidingest.api.knowledge.StaleKnowledgeReport;
 import com.tradinglabs.vidingest.api.knowledge.SearchKnowledgeHit;
 import com.tradinglabs.vidingest.api.paths.VidIngestApiPaths;
 import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionService;
@@ -64,6 +65,20 @@ public class KnowledgeController {
             @RequestParam(name = "type", required = false) KnowledgeUnitType type
     ) {
         return knowledgeQueryService.listForVideo(videoId, type);
+    }
+
+    @GetMapping(VidIngestApiPaths.KNOWLEDGE_STALE)
+    @Operation(operationId = "getStaleKnowledge",
+            summary = "Videos extracted under an older prompt than this server sends",
+            description = "metadata.prompt_version is written on every knowledge unit; this reads it. "
+                    + "A prompt upgrade changes what extraction means, so older rows are not comparable "
+                    + "with newer ones. Pair with POST /videos/{videoId}/knowledge/regenerate per video: "
+                    + "one video is minutes of LLM time, so this reports rather than re-extracts. "
+                    + "`truncated` says the limit cut the list short.")
+    public StaleKnowledgeReport stale(
+            @RequestParam(name = "limit", defaultValue = "100") int limit
+    ) {
+        return knowledgeQueryService.findStale(limit);
     }
 
     @PostMapping(VidIngestApiPaths.VIDEO_KNOWLEDGE_REGENERATE)

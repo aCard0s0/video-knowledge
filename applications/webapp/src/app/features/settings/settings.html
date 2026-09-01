@@ -38,18 +38,22 @@
             </select>
           </div>
 
-          <div class="field">
-            <label class="lbl mono muted" [for]="row.name + '-baseUrl'">base URL</label>
-            <input
-              [id]="row.name + '-baseUrl'"
-              type="url"
-              formControlName="baseUrl"
-              placeholder="http://host:port/v1"
-              autocomplete="off"
-              spellcheck="false"
-              [attr.aria-invalid]="form(row).controls.baseUrl.invalid && form(row).controls.baseUrl.touched ? true : null"
-            />
-          </div>
+          <!-- Absent for FRAME_SAMPLE, which is local ffmpeg: an empty box labelled "base URL"
+               would read as a value someone forgot to fill in. -->
+          @if (row.supportsBaseUrl) {
+            <div class="field">
+              <label class="lbl mono muted" [for]="row.name + '-baseUrl'">base URL</label>
+              <input
+                [id]="row.name + '-baseUrl'"
+                type="url"
+                formControlName="baseUrl"
+                placeholder="http://host:port/v1"
+                autocomplete="off"
+                spellcheck="false"
+                [attr.aria-invalid]="form(row).controls.baseUrl.invalid && form(row).controls.baseUrl.touched ? true : null"
+              />
+            </div>
+          }
 
           @if (row.supportsModel) {
             <div class="field">
@@ -101,10 +105,14 @@
             <vk-icon name="check" />
             save
           </button>
-          <button class="mono" type="button" (click)="test(row)" [disabled]="busy() === row.name">
-            <vk-icon name="refresh" [spin]="busy() === row.name" />
-            test
-          </button>
+          <!-- Nothing to probe without an endpoint; the server says so too, but offering the
+               button and answering "not reachable" would read as a fault. -->
+          @if (row.supportsBaseUrl) {
+            <button class="mono" type="button" (click)="test(row)" [disabled]="busy() === row.name">
+              <vk-icon name="refresh" [spin]="busy() === row.name" />
+              test
+            </button>
+          }
           @if (row.overridden) {
             <button class="btn-danger mono" type="button" (click)="reset(row)" [disabled]="busy() === row.name">
               <vk-icon name="trash" />

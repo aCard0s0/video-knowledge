@@ -226,7 +226,7 @@ public class KnowledgeExtractionService {
                     .video(video)
                     .type(d.type())
                     .title(truncate(d.title(), 512))
-                    .content(d.content())
+                    .content(stripMetaOpening(stripEmptySlotLines(d.content())))
                     .metadata(buildMetadata(d))
                     .startSeconds(d.startSeconds())
                     .endSeconds(d.endSeconds())
@@ -234,6 +234,96 @@ public class KnowledgeExtractionService {
         }
         return out;
     }
+
+    /**
+     * Drop the rule-kind lines the model filled in with a non-answer.
+     *
+     * <p>A PROCEDURE's content is numbered steps followed by optional
+     * {@code "Stop/abort: ..."}-style lines, and the prompt lists nine of those as a checklist of
+     * rule kinds to look for. That list is what makes the extraction find the fallback path and the
+     * settings — dropping it measured 4.7 fewer rules recovered per run — but handing a model nine
+     * labels also invites it to answer all nine, so a video that never states a stop yields
+     * {@code "Stop/abort: None specified"}.
+     *
+     * <p>Fixed here rather than in the prompt because it is deterministic and free: the instruction
+     * that forbade it ("never write None specified") cost 2.7 recovered rules on its own, spending
+     * the model's attention on formatting instead of on the material. A regex spends none. Only a
+     * line whose entire value is a non-answer goes — a line naming a real rule is untouched, and a
+     * unit that is nothing but such lines is left alone rather than emptied, since
+     * {@code filterAndCap} has already accepted it and a blank body is worse than a useless line.
+     */
+    static String stripEmptySlotLines(String content) {
+        if (content == null || content.isBlank() || content.indexOf(':') < 0) {
+            return content;
+        }
+        String[] lines = content.split("\n", -1);
+        StringBuilder kept = new StringBuilder(content.length());
+        int dropped = 0;
+        for (String line : lines) {
+            if (EMPTY_SLOT_LINE.matcher(line).matches()) {
+                dropped++;
+                continue;
+            }
+            if (!kept.isEmpty()) kept.append('\n');
+            kept.append(line);
+        }
+        if (dropped == 0) return content;
+        String result = kept.toString().strip();
+        return result.isEmpty() ? content : result;
+    }
+
+    /**
+     * Turn "The video explains a trend continuation strategy…" into "A trend continuation
+     * strategy…".
+     *
+     * <p>The prompt forbids this twice — the SUMMARY contract says "never begin with 'The video' or
+     * 'This video'" and gives a worked example of the failure — and the model does it anyway in
+     * roughly a third of runs. At 14B/4-bit that instruction is a preference, not a constraint.
+     *
+     * <p>Fixed here for the same reason {@link #stripEmptySlotLines} is: the measured cost of
+     * telling the model harder is more prompt for less coverage, and a regex costs nothing. It
+     * matters beyond tidiness because a unit is supposed to <em>stand alone</em> — "the video
+     * explains X" is about the video, while "X" is the knowledge, and the content field is what
+     * gets embedded and what search returns.
+     *
+     * <p>Only strips a leading clause of the exact shape {@code "(The|This) video <verb>s "}, where
+     * the verb is one of a closed list of describing verbs. Anything else is left alone: a unit
+     * whose second sentence mentions the video keeps it, and "The videos are compared" is not a
+     * match. Re-capitalises what is left, since the remainder was mid-sentence.
+     */
+    static String stripMetaOpening(String content) {
+        if (content == null || content.isBlank()) return content;
+        var m = META_OPENING.matcher(content);
+        if (!m.lookingAt()) return content;
+        String rest = content.substring(m.end());
+        if (rest.isBlank()) return content;
+        return Character.toUpperCase(rest.charAt(0)) + rest.substring(1);
+    }
+
+    /**
+     * {@code "The video explains "} and its close relatives, anchored at the start only.
+     *
+     * <p>The verb list is closed on purpose. A wider pattern ("The video ...") would eat
+     * "The video was recorded on a 5m chart", which is content about the material rather than a
+     * description of it.
+     */
+    private static final java.util.regex.Pattern META_OPENING = java.util.regex.Pattern.compile(
+            "\\s*(?:the|this)\\s+video\\s+"
+                    + "(?:explains|describes|discusses|covers|teaches|demonstrates|shows|presents"
+                    + "|outlines|introduces|walks\\s+through|goes\\s+over)\\s+"
+                    + "(?:how\\s+to\\s+|that\\s+|a\\s+|an\\s+|the\\s+)?",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * {@code "<Label>: <non-answer>"}, where the label is a word or two and the value says nothing.
+     * Anchored on the whole line so a step mentioning "not specified" mid-sentence survives.
+     */
+    private static final java.util.regex.Pattern EMPTY_SLOT_LINE = java.util.regex.Pattern.compile(
+            "\\s*[A-Za-z][A-Za-z/ ]{0,24}:\\s*"
+                    + "(none|none specified|not specified|not stated|not mentioned|not given"
+                    + "|n/?a|unspecified|unknown|none given|no|nothing)"
+                    + "[.\\s]*",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
 
     /**
      * Per-row metadata. Encoded as a {@code Map} so JPA stores it as JSONB via the

@@ -19,7 +19,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
 /**
- * A stored override for one external runtime's connection settings.
+ * A stored override for one runtime's connection settings.
  *
  * <p>A row means "ignore what the environment said for this connection". Absent, the
  * environment-bound {@code @ConfigurationProperties} value applies. That is the whole model: the
@@ -46,7 +46,8 @@ public class Connection {
     @Column(name = "provider", length = 64)
     private String provider;
 
-    @Column(name = "base_url", nullable = false, length = 2000)
+    // Nullable since 009: FRAME_SAMPLE is local ffmpeg and overrides only `enabled`.
+    @Column(name = "base_url", length = 2000)
     private String baseUrl;
 
     @Column(name = "model")

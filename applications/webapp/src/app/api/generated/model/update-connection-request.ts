@@ -11,7 +11,7 @@
 
 export interface UpdateConnectionRequest { 
     provider: string;
-    baseUrl: string;
+    baseUrl?: string;
     model?: string;
     apiKey?: string;
     enabled?: boolean;

@@ -93,6 +93,59 @@ public interface KnowledgeUnitRepository extends JpaRepository<KnowledgeUnit, UU
     int deleteByVideo_Id(@Param("videoId") UUID videoId);
 
     /**
+     * Videos whose knowledge units were extracted under an older prompt, newest first.
+     *
+     * <p>{@code metadata.prompt_version} was already written on every row and nothing ever read it,
+     * which made a prompt upgrade unactionable: v2 to v3 changed what extraction <em>means</em>
+     * (4.3 of 19 stated rules recovered, against 14.7), so rows from the old prompt are not
+     * comparable with new ones — but finding them meant querying the database by hand.
+     *
+     * <p>A listing rather than a bulk re-extract: one video takes ~2.5 minutes of LLM time, so a
+     * bulk endpoint would hold a request open for hours and need its own async machinery. The
+     * existing per-video {@code POST /videos/{id}/knowledge/regenerate} already does the work, and
+     * a caller can drive it from this list at whatever rate it likes.
+     *
+     * <p>{@code MIN(...)} rather than a per-row filter, because a video is stale if <em>any</em> of
+     * its units is: the phase is wipe-then-repopulate, so mixed versions within one video means an
+     * interrupted run, and re-running is the answer either way.
+     *
+     * <p><b>This is the first query in the schema that reads JSONB by content</b>, which is why
+     * there is still no GIN index on {@code metadata} — the root CLAUDE.md rule is to add one
+     * alongside the query that needs it, and this one does not: it is an operator action over a
+     * table of thousands of rows, not a hot path. Add the index if it ever moves onto one.
+     */
+    @Query(value = """
+            SELECT CAST(k.video_id AS varchar)                                  AS videoId,
+                   v.title                                                      AS videoTitle,
+                   v.channel_name                                               AS channelName,
+                   COUNT(*)                                                     AS unitCount,
+                   MIN((k.metadata ->> 'prompt_version')::int)                   AS minPromptVersion,
+                   MAX((k.metadata ->> 'prompt_version')::int)                   AS maxPromptVersion,
+                   MAX(CAST(k.created_at AS varchar))                            AS lastExtractedAt
+            FROM vidingest_knowledge_units k
+            JOIN vidingest_videos v ON v.id = k.video_id
+            WHERE k.metadata ->> 'prompt_version' IS NOT NULL
+            GROUP BY k.video_id, v.title, v.channel_name
+            HAVING MIN((k.metadata ->> 'prompt_version')::int) < :currentVersion
+            ORDER BY MAX(k.created_at) DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<StalePromptVersionView> findVideosBelowPromptVersion(
+            @Param("currentVersion") int currentVersion,
+            @Param("limit") int limit);
+
+    /** Aliases above match these getters; Spring synthesises the implementation. */
+    interface StalePromptVersionView {
+        String getVideoId();
+        String getVideoTitle();
+        String getChannelName();
+        long getUnitCount();
+        int getMinPromptVersion();
+        int getMaxPromptVersion();
+        String getLastExtractedAt();
+    }
+
+    /**
      * Returns the {@code limit} most-similar knowledge units to {@code queryEmbedding},
      * optionally filtered by {@code type}. Pass {@code type=null} to search across all
      * types. The {@code <->} pgvector L2 operator gives us the nearest neighbours; the

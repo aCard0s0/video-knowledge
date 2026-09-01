@@ -280,6 +280,48 @@ describe('video detail: knowledge units read in timeline order', () => {
   });
 });
 
+describe('video detail: a PROCEDURE unit keeps its steps on separate lines', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  /**
+   * A PROCEDURE's content is numbered `WHEN … THEN …` steps separated by newlines — the one unit
+   * type whose body is not a paragraph. The template binds it into a `<span class="body">`, which
+   * needs `white-space: pre-wrap` in the SCSS to render them as lines; SCSS is not applied in this
+   * runner, so what is asserted here is the half a test can hold: the newlines survive into the
+   * DOM. A truncation pipe, a `.slice()`, or a `replace(/\s+/g, ' ')` added later would break
+   * this, and those are the changes that would silently flatten the method back into prose.
+   */
+  it('binds the content unmodified, newlines and all', async () => {
+    const content = [
+      '1. WHEN a trend is identified THEN look for a low, high, lower low.',
+      '2. WHEN liquidity is swept THEN wait for a shift of structure.',
+      'Stop/abort: above the high.',
+    ].join('\n');
+
+    const { el } = await screen({
+      units: [{ id: 'p1', type: 'PROCEDURE', title: 'A method', content, startSeconds: 0 }],
+    });
+
+    const body = el.querySelector('.units .body')!;
+    expect(body.textContent).toContain('\n');
+    expect(body.textContent!.split('\n').map((l) => l.trim()).filter(Boolean)).toHaveLength(3);
+    expect(body.textContent).toContain('1. WHEN a trend is identified');
+    expect(body.textContent).toContain('Stop/abort: above the high.');
+  });
+
+  /**
+   * PROCEDURE must be offered by the type filter. The list is hand-mirrored from a server enum in
+   * `core/domain.ts`, so a new constant renders as an unknown value until that file is updated —
+   * nothing fails, the chip is simply missing.
+   */
+  it('offers PROCEDURE in the type filter', async () => {
+    const { el } = await screen({ units: [UNIT] });
+
+    const chips = [...el.querySelectorAll('.chips-row .btn-sm')].map((n) => n.textContent!.trim());
+    expect(chips).toContain('PROCEDURE');
+  });
+});
+
 describe('video detail: renaming a speaker leaves the other rows alone', () => {
   beforeEach(() => TestBed.resetTestingModule());
 

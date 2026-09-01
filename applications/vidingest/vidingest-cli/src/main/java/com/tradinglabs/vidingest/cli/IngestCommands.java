@@ -437,7 +437,7 @@ public class IngestCommands {
     @ShellMethod(key = "search-knowledge", value = "Semantic search across LLM-extracted knowledge units")
     public String searchKnowledge(
             @ShellOption(help = "Natural language query") String query,
-            @ShellOption(help = "Filter by type (ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Blank = all.",
+            @ShellOption(help = "Filter by type (PROCEDURE, ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Blank = all.",
                     defaultValue = "") String type,
             @ShellOption(help = "Maximum number of results", defaultValue = "10") int limit) {
         try {
@@ -467,7 +467,7 @@ public class IngestCommands {
     @ShellMethod(key = "knowledge", value = "List knowledge units for a video")
     public String knowledge(
             @ShellOption(help = "Video UUID") String videoId,
-            @ShellOption(help = "Filter by type (ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Blank = all.",
+            @ShellOption(help = "Filter by type (PROCEDURE, ENTITY, TOPIC, SUMMARY, CLAIM, QUESTION). Blank = all.",
                     defaultValue = "") String type) {
         try {
             UUID uuid = UUID.fromString(videoId);

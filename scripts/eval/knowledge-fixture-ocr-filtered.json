@@ -1,0 +1,361 @@
+{
+ "_comment": [
+  "DERIVED FIXTURE, do not hand-edit. knowledge-fixture.json with both SegmentFusionService OCR",
+  "filters applied: carriesMeaning() drops unlabelled-digit lines (the chart price axis), and",
+  "chromeOcrLines() drops lines present in >=60% of the video's windows (ratio 0.6, minWindows 4).",
+  "Exists so scripts/eval-knowledge-prompt.py can measure the filters as an input-side change,",
+  "via PROMPT@this-fixture. ocrChars 5852 -> 3865.",
+  "MEASURED RESULT: filtering makes no difference to rule recovery. 13.8 of 19 against 14.8",
+  "unfiltered, four interleaved reps each, which is inside the harness's +/-3-rule noise floor.",
+  "The filters are kept in SegmentFusionService for the 17% token saving, not for accuracy.",
+  "Kept here so that negative result stays reproducible rather than being re-litigated.",
+  "179s), fetched verbatim from GET /videos/{id}/multimodal-timeline. They are checked in rather",
+  "than fetched so the eval is reproducible without a populated database, and so a change in the",
+  "FUSE phase cannot silently move the baseline underneath a prompt comparison.",
+  "facts[] is a hand-listed ground truth: every rule the transcript states. Scoring is keyword",
+  "based and deliberately generous - a group hits when all of its terms appear anywhere in the",
+  "run's units, so a paraphrase counts. It measures whether the RULE survived extraction, not",
+  "whether the wording matches.",
+  "noise[] counts units that should not have been emitted at all."
+ ],
+ "video": {
+  "title": "This NEW Price Action Strategy Is Actually Genius",
+  "channel": "LuxAlgo",
+  "runId": "45d29fe7-8642-4fe8-be82-aed3a76597c2",
+  "videoId": "0dd6ffd9-19d4-4b2f-b675-50806f902fd5",
+  "transcriptChars": 4938,
+  "ocrChars": 5852
+ },
+ "segments": [
+  {
+   "segmentIndex": 0,
+   "startSeconds": 0.0,
+   "endSeconds": 30.0,
+   "transcriptText": "You don't need to learn 10 different trading strategies. This is the only one I use and it prints money daily. First thing as always is look for the trend. You can see we have a low, high, lower low. This gives us a breaker structure from this low and where we can will close below it. So now we can draw a zone from here to here. That means according to structure, what we are expecting is a lower high, lower low. But we need to look out for two things before this. We need some form of liquidity within here that price can sweep. And if we look within this zone, this is really the only area of liquidity we have.",
+   "ocrText": "THIS STRATEGY PRINTS MONEY! LwAigo LOWER LwxAlgo LuxAlgo"
+  },
+  {
+   "segmentIndex": 1,
+   "startSeconds": 25.0,
+   "endSeconds": 55.0,
+   "transcriptText": "We need some form of liquidity within here that price can sweep. And if we look within this zone, this is really the only area of liquidity we have. So we can only enter a trade once this here gets swept. Now price has swept this liquidity. I'm going to look for shorts, but I need confirmation. So if I'm expecting price to go lower now, I want to see a shift of structure to the downside. That will happen if we close below this low here. Beautiful. After our liquidity sweep, we get a shift of structure. This is where I'm going to enter the trade, put my stop loss above this high and target a lower low.",
+   "ocrText": "AREA ALuxAlgo CONFIRMATION CE SLuxAlgo TO"
+  },
+  {
+   "segmentIndex": 2,
+   "startSeconds": 50.0,
+   "endSeconds": 80.0,
+   "transcriptText": "After our liquidity sweep, we get a shift of structure. This is where I'm going to enter the trade, put my stop loss above this high and target a lower low. And this is literally the model I use every single day. Wow. So this is actually a really unique strategy. It's trend continuation essentially into a failed bounce back into trend continuation. What's really unique about that is it is following the overall trend, which a lot of people don't do. They try to trade against the trend. So this is an interesting validation for that trend continuation. We can literally build this with quant. So here we go. But what's really nice now, the first thing I'm going to do is just go to luxalgo.com slash library.",
+   "ocrText": "TO ALuxAlgo AND ALuxAgo ALwxAlgo NQ129,679.500.68% LrAgoQuant LuzAgoTrngndicatox napinsta.to_AQPTVNYZ30 C luxalgo.com/ibrary/ a work Gtup to 40%OFF Lmted Tima Offer LuxAlgo Foatures Rosourcos Library Prtcing The Universal Hub. For Trading Tools Catogories arch indcaton FRETOOLD DCLUSMETOOLS CE ACTION AGE DYMC CWERLAYS VOLEAED SONALS MHLEN MEMASD SHOWALL Platform 380RSULTS e TradingView Nnjairador MetaTrader4/5 Historical Liquidity Proximity Heatmap Order Flow VwAP Deviation y.20 .and order See Detals"
+  },
+  {
+   "segmentIndex": 3,
+   "startSeconds": 75.0,
+   "endSeconds": 105.0,
+   "transcriptText": "So this is an interesting validation for that trend continuation. We can literally build this with quant. So here we go. But what's really nice now, the first thing I'm going to do is just go to luxalgo.com slash library. I'm going to search for a sweep indicator. We have a indicator right here called liquidity sweeps. And what I'm going to do is just click customizing quant. So from there, it's going to pull up the indicator in the code here, and we can add whatever we want to that indicator. So I explained everything that he said in the video that I wanted to add to the indicator, added a little bit of context with a screenshot. And then we actually came out with a insane indicator. As you can see right here, what happens is it doesn't plot that fiber tracement until a higher break of structure move occurs.",
+   "ocrText": "NQ129,679.500.68% LrAgoQuant LuzAgoTrngndicatox napinsta.to_AQPTVNYZ30 C luxalgo.com/ibrary/ a work Gtup to 40%OFF Lmted Tima Offer LuxAlgo Foatures Rosourcos Library Prtcing The Universal Hub. For Trading Tools Catogories arch indcaton FRETOOLD DCLUSMETOOLS CE ACTION AGE DYMC CWERLAYS VOLEAED SONALS MHLEN MEMASD SHOWALL Platform 380RSULTS e TradingView Nnjairador MetaTrader4/5 Historical Liquidity Proximity Heatmap Order Flow VwAP Deviation y.20 .and order See Detals NQ129.679.500.68% LurAlgoQuant Liquy Sweepsrading Sapinsta.to_AQPTVNYZ30 luxalgo.com/libraryAndicator/liquidity-sweeps/ Work Gt up to 40%OFF Limited Time Offer Pricing Liquidity Sweeps Al indicators Feb7.2024 Bitcoin/U.S.Doar-4h.COINBASE LuxAlg-Liquidty Swep PRCEACTIONEASED UQUIDTY Customize in Quan By highghting potnta aras of supportresistanceor enty when Liqudy Leves are brached.ths Freo access on tho folowing platforms Indicator bocomos an ossontial tool for cawy tradora. TradngViaw Got Access A liqudy swoop s a cconaro wher tho prico tomporarly broachos a Equdy -tormod as Lq-boforo NnjaTrader qudty swopsmanfest offring critica insights into poonta markot mo.ements How to Trade with the Liquidity Sweeps Indicator? Get Access Liquidty weops occur when the prco acton dynamicay ntracts w LqTho indcator offor two datinctive sconarios for traders to consider Tho wck surpassos a Lq boforo the prico rapidy rotracos Tho ciosing price crossos a LqL attor which the markot rotosts thic lovel and a wick forms n the rovoro LuxAgo NQ129.674.000.66% LurAgoQuant c uxalgo.com/quant/mg255dvcxat0tkuaw30922 Finich update SInUUIUnE"
+  },
+  {
+   "segmentIndex": 4,
+   "startSeconds": 100.0,
+   "endSeconds": 130.0,
+   "transcriptText": "And then we actually came out with a insane indicator. As you can see right here, what happens is it doesn't plot that fiber tracement until a higher break of structure move occurs. It plots that fib. What we're going to be looking for in that fib retracement is some type of sweep. As you can see here, we have this liquidity sweep. And then from there, a minor structure shift to the same direction. So this actually ended up making a pretty nice push down so far, and it has continued to playing out. Okay, this one's a very strong uptrend that we have here. We got that break of structure. Let's see if we get a retrace. We get a retrace. This is a nice recent swing that I would want to see swept.",
+   "ocrText": "NQ129.675.000.66% LAgoQuan Snaptrata.to_AQPTVhYZ3O Ask Geminl Stradingview.com/chart/5eiKJwsM Ca 1s 5s 15s 30s1m2m 3m 5m 15m 30m1h 4h D e Trade Publish NASDAQ100 E-mini Futures1CME Fib Sweep Structure Q n I.L Thu 14May26 13:07 A 1D5D1M 3M6M YTD1Y 5YAll NHI D34UTC-4ETH B-ADJ LwAgo 3px NQ129.698.750.74% Snaptrsta.to_AQPTVhYZ3O IFVG Alerts rade NASDAQ 100 E-mini Futures1CME Play+ -Select bar D|10x1m X 1D5D1M 3M 6MYTD 1Y 5YAll 14:52:58UTC-4ETH B-AD Replay Trading NHI4D"
+  },
+  {
+   "segmentIndex": 5,
+   "startSeconds": 125.0,
+   "endSeconds": 155.0,
+   "transcriptText": "this one's a very strong uptrend that we have here. We got that break of structure. Let's see if we get a retrace. We get a retrace. This is a nice recent swing that I would want to see swept. Get a swept signal right there. Now we got to look for a market shift. We get a market shift right here. We'd be taking our entry once that market structure shifted, stops below the low. In my opinion, target the high or a 1.5 or 2 to 1. We'll play it out. All right, perfectly ends up running and hitting. Absolutely no drawdown on this one either. There's also a lot of settings you can change. I would recommend tweaking it to your liking. Like for example, on this one here,",
+   "ocrText": "NQ129.698.750.74% LAgoQuan Snaptrsta.to_AQPTVhYZ3O IFVG Alerts rade Publish NASDAQ 100 E-mini Futures1CME Fib Sweep Structure Q n Play+ -Select bar D|10x1m X 1D5D1M 3M 6MYTD 1Y 5YAll 14:52:58UTC-4ETH B-AD Replay Trading Trade NHI4D BOS29129 LwAgo NQ129.696.250.74% Ask Geminl Work Tade D OS29166 1Fri 08May26 10:5111:00 1D5D1M 3M6M YTD 1Y 5YAll 14:54:09UTC-4ETH ALuxAgo"
+  },
+  {
+   "segmentIndex": 6,
+   "startSeconds": 150.0,
+   "endSeconds": 179.0,
+   "transcriptText": "There's also a lot of settings you can change. I would recommend tweaking it to your liking. Like for example, on this one here, you actually do not get a sweep indication, but in my opinion, you took out multiple higher lows here. After breaking structure, you came back, had an internal market shift. As you can see, it absolutely rips to the high. So there are other scenarios you can trade. If you don't get the perfect liquidity sweep, you can still take the initial break of structure into a retracement and then a internal break of structure to continue that move. I want to give you the source code of this indicator completely free. So comment the word fib and I'll send you a link.",
+   "ocrText": "NQ129711250.79% LAigoQuan Snaptrsta.to_AQPTVhYZ3O +Ask Gemini work FVG Alerts tade Publish NASDAQ 100 E-mini Futures1CME Fib Sweep Structure BOS (29360.75 n 11Wed 13May26 11:38 5 -Select bar 10x1m X 1D5D1M 3M 6M YTD 1Y 5YAll 14:57:58UTC-4ETH B-AD Replay Trading Trade NHID LuxAlgo NQ129,707.750.78% LrAgo|Quan Ask Gemin tradingview.com/chart/5eiKJwsM/ IFVG Alerts OS(29 O Wed 13 May26 11:37 D|10x1m 1D5D 1M 3M 6M YTD 1Y 5YAll 14:58:38UTC-4ETH DNHID LwXAlgo NQ129,703.50+0.76% LrAgoQuant tradingview.com/chart/5eikJwsM Q BOS(29 14:59:34UTC-4ETH ALwxAlgo"
+  },
+  {
+   "segmentIndex": 7,
+   "startSeconds": 175.0,
+   "endSeconds": 179.0,
+   "transcriptText": "I want to give you the source code of this indicator completely free. So comment the word fib and I'll send you a link.",
+   "ocrText": "NQ129,703.50+0.76% LrAgoQuant Snaptrsta.to_AQPTVhYZ3O tradingview.com/chart/5eikJwsM Q work IFVG Alerts Publish NASDAQ 100 E-mini Futures1CME Fib Sweep Structure BOS(29 -Select bar D|10x1m X 1D5D1M 3M 6M YTD 1Y 5YAll 14:59:34UTC-4ETH B-AD Replay Trading Trade ALwxAlgo"
+  }
+ ],
+ "facts": [
+  {
+   "label": "trend is low / high / lower low",
+   "any_of": [
+    [
+     "low",
+     "high",
+     "lower low"
+    ]
+   ]
+  },
+  {
+   "label": "break of structure",
+   "any_of": [
+    [
+     "break"
+    ],
+    [
+     "breaker"
+    ],
+    [
+     "bos"
+    ]
+   ]
+  },
+  {
+   "label": "draw a zone from the break",
+   "any_of": [
+    [
+     "zone"
+    ]
+   ]
+  },
+  {
+   "label": "liquidity must exist inside the zone",
+   "any_of": [
+    [
+     "liquidity"
+    ]
+   ]
+  },
+  {
+   "label": "entry only after the sweep",
+   "any_of": [
+    [
+     "swe"
+    ]
+   ]
+  },
+  {
+   "label": "confirmation is a shift of structure",
+   "any_of": [
+    [
+     "shift"
+    ]
+   ]
+  },
+  {
+   "label": "enter at the shift",
+   "any_of": [
+    [
+     "enter"
+    ],
+    [
+     "entry"
+    ]
+   ]
+  },
+  {
+   "label": "stop loss above the high",
+   "any_of": [
+    [
+     "stop",
+     "above"
+    ]
+   ]
+  },
+  {
+   "label": "target a lower low",
+   "any_of": [
+    [
+     "target",
+     "lower low"
+    ]
+   ]
+  },
+  {
+   "label": "with-trend, not counter-trend",
+   "any_of": [
+    [
+     "overall trend"
+    ],
+    [
+     "against the trend"
+    ],
+    [
+     "not trade against"
+    ]
+   ]
+  },
+  {
+   "label": "fib plots only after a higher BOS",
+   "any_of": [
+    [
+     "fib"
+    ]
+   ]
+  },
+  {
+   "label": "look for a sweep inside the fib",
+   "any_of": [
+    [
+     "fib",
+     "swe"
+    ]
+   ]
+  },
+  {
+   "label": "then a minor / internal structure shift",
+   "any_of": [
+    [
+     "minor"
+    ],
+    [
+     "internal"
+    ]
+   ]
+  },
+  {
+   "label": "long example: stops below the low",
+   "any_of": [
+    [
+     "stop",
+     "below"
+    ],
+    [
+     "stops below"
+    ]
+   ]
+  },
+  {
+   "label": "target the high or 1.5-2:1",
+   "any_of": [
+    [
+     "1.5"
+    ],
+    [
+     "2 to 1"
+    ],
+    [
+     "2:1"
+    ]
+   ]
+  },
+  {
+   "label": "settings are tweakable",
+   "any_of": [
+    [
+     "setting"
+    ],
+    [
+     "tweak"
+    ]
+   ]
+  },
+  {
+   "label": "fallback: no sweep, BOS then internal",
+   "any_of": [
+    [
+     "not",
+     "perfect"
+    ],
+    [
+     "without a perfect"
+    ],
+    [
+     "do not get a swe"
+    ]
+   ]
+  },
+  {
+   "label": "instrument is NQ / NASDAQ",
+   "any_of": [
+    [
+     "nasdaq"
+    ],
+    [
+     "nq1"
+    ],
+    [
+     "e-mini"
+    ]
+   ]
+  },
+  {
+   "label": "tool: luxalgo library sweep indicator",
+   "any_of": [
+    [
+     "luxalgo"
+    ]
+   ]
+  }
+ ],
+ "noise": [
+  {
+   "label": "filler slot line",
+   "any_of": [
+    [
+     "none specified"
+    ],
+    [
+     "not specified"
+    ],
+    [
+     "n/a"
+    ],
+    [
+     "not stated"
+    ]
+   ]
+  },
+  {
+   "label": "promo / call to action",
+   "any_of": [
+    [
+     "comment the word"
+    ],
+    [
+     "free upon request"
+    ],
+    [
+     "source code",
+     "free"
+    ],
+    [
+     "subscribe"
+    ],
+    [
+     "link in bio"
+    ]
+   ]
+  },
+  {
+   "label": "marketing claim",
+   "any_of": [
+    [
+     "performs well"
+    ],
+    [
+     "prints money"
+    ],
+    [
+     "insane"
+    ],
+    [
+     "no drawdown"
+    ],
+    [
+     "clear signals"
+    ]
+   ]
+  },
+  {
+   "label": "meta phrasing",
+   "any_of": [
+    [
+     "the video"
+    ],
+    [
+     "this video"
+    ]
+   ]
+  }
+ ]
+}

@@ -37,6 +37,8 @@ export * from './run-video-phase-result';
 export * from './search-chunk-result';
 export * from './search-knowledge-hit';
 export * from './speaker-dto';
+export * from './stale-knowledge-report';
+export * from './stale-knowledge-video';
 export * from './transcription-segment-summary';
 export * from './update-connection-request';
 export * from './video-artifact-counts';

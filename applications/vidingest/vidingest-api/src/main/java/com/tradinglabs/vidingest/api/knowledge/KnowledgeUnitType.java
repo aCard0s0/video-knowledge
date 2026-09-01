@@ -15,6 +15,14 @@ public enum KnowledgeUnitType {
     SUMMARY,
     /** A factual or analytical claim made on-screen. */
     CLAIM,
+    /**
+     * A method the video teaches, as ordered steps each pairing a trigger condition with an
+     * action. Added Sep 2026, because its absence was the largest single cause of instructional
+     * videos extracting to nothing usable: a tutorial's value is its sequence of rules, and with
+     * no type for a sequence the model could only file one under SUMMARY, which is a type whose
+     * whole job is to compress. {@code KnowledgeExtractionPrompt} carries the measurement.
+     */
+    PROCEDURE,
     /** An open question raised in the video (useful for follow-up agent prompts). */
     QUESTION
 }

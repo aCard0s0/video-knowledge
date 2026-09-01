@@ -34,6 +34,12 @@ Order: `METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_S
   metadata → download → persist → transcribe → fuse → context.
 - Each phase gates itself in `applies(ctx)`; the default is `!ctx.skipped(phase())`. Overrides add
   the enabled check or an upstream dependency (OCR needs FRAME_SAMPLE, DIARIZE needs TRANSCRIBE).
+- **An upstream dependency is two checks, not one**: the upstream's skip flag *and* its
+  `vidingest.<phase>.enabled` toggle. A phase that did not run leaves no output whichever knob
+  stopped it. `OcrPhase` consulted only the skip flag, so OCR-on + frames-off reported OCR as
+  runnable through `/pipelines/capabilities`, the console offered the chip and the phase worked
+  through an empty frame set (fixed Sep 2026). `DiarizePhase` has the same shape and no equivalent
+  hole only because transcription has no `enabled` property to turn off.
 
 ## Connected to
 

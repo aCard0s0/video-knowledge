@@ -3,15 +3,15 @@ type: object
 cluster: runtime
 universe: live
 status: verified
-verified: 2026-08-29
+verified: 2026-09-01
 entity: applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/connections/domain/Connection.java
 ---
 
 # Connection
 
-Where the server reaches one external runtime — an LLM or a sidecar — and the only row in the
-schema that is configuration rather than data. Five names, fixed:
-`EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `OCR`.
+Where the server reaches one runtime — an LLM or a sidecar — and the only row in the schema that
+is configuration rather than data. Six names, fixed:
+`EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `FRAME_SAMPLE`, `OCR`.
 
 ## Why this shape
 
@@ -29,12 +29,19 @@ schema that is configuration rather than data. Five names, fixed:
   the key back could not otherwise save any other field without wiping it.
 - **Timeouts are deliberately absent.** Each transport consumes them once when its request factory
   is built, so a value served here would not be the one in use.
+- **`FRAME_SAMPLE` is a connection with no connection.** Local ffmpeg: no base URL, no model,
+  nothing to probe. It is on this API because what the settings screen manages is which enrichment
+  the deployment performs, and frame sampling was the one toggle with no home — which made OCR's
+  toggle beside it a trap, since `OcrPhase` has no input without frames. `Binding.hasBaseUrl` is
+  what keeps that from becoming three `if (name == FRAME_SAMPLE)` branches: it gates the URL
+  validation, the stored column and the probe in one place.
 
 ## Shape
 
 - `vidingest_connections` — `Connection.java:38`; `name` PK (`ConnectionName`, `STRING`),
-  `provider`, `base_url NOT NULL`, `model`, `api_key`, `enabled`, `updated_at` — `:40`–`:66`
-- No indexes and no `created_at`: at most five rows, read whole at startup, by PK otherwise
+  `provider`, `base_url` (nullable since `009-connections-nullable-base-url.sql`), `model`,
+  `api_key`, `enabled`, `updated_at`
+- No indexes and no `created_at`: at most six rows, read whole at startup, by PK otherwise
   (`008-connections.sql`)
 - The bridge to the config beans is `ConnectionSettingsService`'s `Binding` record — one reader and
   one writer per connection over `ConnectionValues`, so the awkward parts stay in two lambdas:
@@ -51,10 +58,11 @@ schema that is configuration rather than data. Five names, fixed:
 ## If you change this
 
 - **Hits:** `VideoSearchConfig`, `KnowledgeExtractionConfig`, `TranscriptionClientProperties`,
-  `DiarizationConfig`, `OcrConfig` (the five beans it writes); the four routers that read
-  `provider` per call; the console `features/settings/`; the generated client.
+  `DiarizationConfig`, `FrameSamplingConfig`, `OcrConfig` (the six beans it writes); the four
+  routers that read `provider` per call; the console `features/settings/`; the generated client.
 - **Adding a connection** means: a `ConnectionName` constant, a `Binding` in the service
-  constructor, and nothing else — the controller, the DTOs and the console iterate the enum.
+  constructor, and nothing else — the controller, the DTOs and the console iterate the enum, and
+  the three `supports*` flags decide which controls render.
 - **Does not hit:** the schema of anything else, or any phase's logic. A connection decides *where*
   a phase calls, never *what* it does.
 

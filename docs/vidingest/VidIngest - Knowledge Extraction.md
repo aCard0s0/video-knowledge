@@ -6,7 +6,7 @@ last_reviewed: 2026-08-29
 # VidIngest — Knowledge Extraction
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-08-29
+- **Last reviewed**: 2026-09-01
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
@@ -73,7 +73,7 @@ vidingest ────┤   ┌────────────────�
 The three model connections point outside compose on purpose: a Linux container on Docker Desktop
 cannot reach Apple Silicon's GPU, and the measurements under
 [The default chat model does not fit CPU-only Docker](#the-default-chat-model-does-not-fit-cpu-only-docker)
-are what that costs. All five connections (the two sidecars included) are repointable at runtime —
+are what that costs. All six connections (the two sidecars included) are repointable at runtime —
 see [Connections API](VidIngest%20-%20Config%20and%20Runtime.md#connections-api-runtime-editable).
 
 Frames live inside the per-video folder on disk
@@ -143,12 +143,72 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 - **Code**: `core/knowledge/`
 - **Prompt**: pure-function assembly in `KnowledgeExtractionPrompt.java`. System message
   pins a strict JSON output contract (single root key `"units"`, explicit ban-list of
-  alternate root keys, illustrative example output). User message renders one block per
-  segment with a global index. `PROMPT_VERSION` is written into each row's
-  `metadata.prompt_version` for offline auditing — currently `2`.
+  alternate root keys), a glossary of the permitted types filtered to
+  `vidingest.knowledge.types`, three ordered extraction priorities, and an exclusion list for
+  promotional and interface noise. User message renders one block per segment with a global
+  index. `PROMPT_VERSION` is written into each row's `metadata.prompt_version` for offline
+  auditing — currently `3`.
+- **v3 optimises for mechanism, not brevity** (Sep 2026). v2 asked for "fewer high-salience
+  units", "deduplicate aggressively" and a 1–4 sentence body, which on instructional video threw
+  away the thing worth keeping: a 3-minute trading tutorial stating a full entry/stop/target
+  method extracted as one sentence, an ENTITY naming the video's *sponsor* and a CLAIM quoting its
+  *ad copy*. Replaying that video's eight fused segments three times per prompt against
+  `Qwen2.5-14B-Instruct-4bit`, scored against a hand-listed ground truth of the 19 rules the
+  transcript states:
+
+  | prompt | units | PROCEDUREs | rules recovered |
+  |---|---|---|---|
+  | v2 | 3.3 | 0.0 | 4.3 / 19 |
+  | v3 | 6.0 | 3.0 | 14.7 / 19 |
+
+  The sweep ran eleven variants and its most useful output is what turned out **not** to be true.
+  Each of these is a change that looks like an improvement:
+  - **No illustrative example output.** v2 had one showing two units; a v3 variant that kept it
+    returned exactly one unit in 3 of 3 runs. A 14B anchors on the example's *cardinality*, and the
+    JSON schema pins the shape far better than prose does. Re-add an example only if it shows as
+    many units as a dense batch should produce.
+  - **The nine "Preconditions/Confirmation/Entry/Stop/Target/…" slots stay an enumerated list.**
+    Compressing them into a prose sentence cost 4.7 rules per run — the list works as a retrieval
+    scaffold, so the model stops hunting for rule kinds it was not handed.
+  - **Do not tell it off for filling those slots in.** The obvious follow-up — the model answers all
+    nine, so forbid "None specified" — cost a further 2.7 rules. Those lines are deleted in code by
+    `KnowledgeExtractionService.stripEmptySlotLines`, where it costs the model nothing.
+  - **Glossary order matters, `vidingest.knowledge.types` order does not.** Moving `PROCEDURE` to
+    the front of the allowed-types list changed nothing (11.3 vs 11.0). `PROCEDURE` leading the
+    *glossary* is worth the gap between 14.7 and 11.0 — so the glossary order is pinned in
+    `KnowledgeExtractionPrompt.GLOSSARY_ORDER` and an operator reordering `types` cannot degrade
+    extraction by accident.
+  - **The wording is a measured artifact.** A paraphrase preserving every structural element above
+    — same sections, same slots, same priorities, reworded headers and sentences — measured 11.3
+    against 14.7. The text in `KnowledgeExtractionPrompt` is byte-identical to the variant that
+    scored 14.7. Edit it behind a fresh three-run comparison, not as a tidy-up.
+
+  Two things v3 does not fix. No variant ever read the instrument name off the chart OCR (0/3
+  everywhere), so a unit's ticker comes from the transcript or not at all. And it still opens a
+  SUMMARY or TOPIC with "The video …" perhaps a third of the time despite being told twice not to —
+  at this model size that instruction is a preference, not a constraint.
+
+- **The harness resolves about ±3 rules — do not trust a smaller delta.** Ten runs of the shipped
+  configuration across three separate batches scored 11–16 (sd 1.5), with batch means spanning
+  12.7–14.7. Two numbers that were briefly recorded as findings sit inside that floor and have been
+  demoted rather than deleted: "instructing the model not to write *None specified* cost 2.7 rules"
+  and "a structure-preserving paraphrase cost 3.4". Both may be real; neither is established at
+  n=3. What survives the floor is the v2→v3 gap (~9 rules, and 0 → 3 PROCEDURE units), the
+  output-example collapse (1 unit in 3 of 3 runs — categorical, not a mean shift), and
+  prose-folding the nine slots (~6 rules).
+- **Video title and channel in the user message do not help — and this is how the floor bit.**
+  Adding them looked decisive when the arms ran in blocks (15.3 against 12.7, and 4 individual
+  facts where the treatment strictly dominated). Interleaving the arms **reversed the sign** (12.8
+  against 13.5). Pooled over 7 runs each: 13.9 against 13.1 — nothing. Not applied. The user
+  message still carries only index, time, transcript and on-screen text.
+- **The higher-leverage fix was upstream, not in this phase.** `vidingest.transcription.prompt`
+  ([Config and Runtime](VidIngest%20-%20Config%20and%20Runtime.md)) fixes the domain terms this
+  phase then copies verbatim: `breaker structure` → `break of structure` in 3 of 3 runs, and zero
+  ASR-error terms in the knowledge units afterwards. Worth checking before reaching for a bigger
+  chat model.
 - **Provider**: `vidingest.knowledge.provider` picks the *wire protocol*, not a vendor. Both
-  impls sit behind `KnowledgeChatClient` and are selected by `@ConditionalOnProperty`, so
-  `KnowledgeExtractionService` never learns which one it got:
+  impls sit behind `KnowledgeChatClient` and are selected per call by
+  `KnowledgeChatClientRouter`, so `KnowledgeExtractionService` never learns which one it got:
 
   | value | client | endpoint | schema goes in | output cap |
   |---|---|---|---|---|
@@ -167,21 +227,95 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   `core/knowledge/client/KnowledgeUnitJson` and are shared by both clients — a fallback added
   for one runtime cannot silently not exist for the other.
 
-  An unrecognised `provider` value leaves no `KnowledgeChatClient` bean and **fails the context
-  at startup**. That is deliberate: unlike embeddings there is no `Disabled` floor here, because
-  `vidingest.knowledge.enabled=false` is already the off switch, and a typo that degrades
-  silently would only surface ten minutes into a run.
+  An unrecognised `provider` value **fails the KNOWLEDGE phase**, not the context at startup —
+  the router resolves per call because `PUT /api/v1/connections/KNOWLEDGE` can change the value
+  while the app runs, and a bean chosen at startup cannot follow a property that moves afterwards
+  (PR #46). The connections API validates the value against the router's own supported set on the
+  way in, so a typo is still caught before any run. There is no `Disabled` floor here as there is
+  for embeddings, because `vidingest.knowledge.enabled=false` is already the off switch.
 - **Fallback parser**: `KnowledgeUnitJson.locateUnitsArray` looks for `units` first,
   then alternates (`knowledge_units`, `items`, `data`, `results`), then any value array of
   objects with `type` + `content` fields. Defence-in-depth even after schema enforcement.
 - **Recommended model**: `qwen2.5:14b-instruct` (`VIDINGEST_KNOWLEDGE_CHAT_MODEL`). Returns
   fewer but higher-salience units than the 7b variant — typical 12 min video → ~10–15
   CLAIM/SUMMARY-heavy units vs. 7b's noisy ~40 ENTITY/TOPIC dump.
+- **Do not switch to a reasoning model on oMLX.** oMLX does not enforce `response_format`, so
+  `Qwen3.5-9B-MLX-4bit` emits its chain-of-thought as `message.content`, hits
+  `finish_reason: length` and returns no JSON at all — the phase fails rather than improves. The
+  connections API will accept the model name (it validates the *provider*, not the model's
+  behaviour), so this is not caught before a run.
+- **OCR reaching this phase is filtered upstream, in FUSE — for cost, not for quality.** On the
+  reference video OCR was **54% of the input** (5852 chars against 4938 of transcript): a screen
+  recording picks up the browser, the price axis and the sponsor watermark along with the content,
+  and under v2 the model made that watermark its ENTITY and the ad copy its CLAIM.
+  `SegmentFusionService` drops two classes, taking OCR to **43% of the input** and the whole prompt
+  down 17% (11435 → 9448 chars).
+
+  **It does not recover more rules.** Measured at 13.8 of 19 filtered against 14.8 unfiltered, four
+  interleaved reps each — inside the ±3 noise floor, so no effect. The plausible theory (the model
+  is attention-limited, so a smaller prompt should extract more) was tested and did not hold.
+  Reproduce with `v3-baseline.txt@knowledge-fixture-ocr-filtered.json`. Kept because a sixth off
+  the prompt for no measured loss is worth having, especially where
+  `max-input-chars-per-batch` binds on a long video. The two classes:
+  - `carriesMeaning` — a line with no letter in it is a chart price axis, a number with nothing
+    saying what it refers to, and 27% of the raw OCR characters. A labelled level (`BOS (29360.75`,
+    `NQ129,679.500.68%`) keeps its letters and survives.
+  - `chromeOcrLines` — a line present in ≥ `vidingest.fusion.ocr-chrome-window-ratio` of a video's
+    windows is interface furniture, since chrome is static and content is not. Worth only ~2% here,
+    because OCR garbling means the same watermark reads differently in nearly every frame, but it
+    is the right rule for videos with stable overlays.
+
+  Two wider filters were **measured and rejected**, which is worth not re-proposing:
+  - **OCR confidence.** Garbled brand overlays median 0.840 against 0.943 for everything else, but
+    the distributions overlap: a 0.9 threshold drops 36 chrome lines and 133 content lines. Net
+    loss at every threshold.
+  - **Fixed screen position.** Chrome is spatially static, so a grid cell occupied in most frames
+    should be furniture — but on a short cutting between chart, browser and landing page, only the
+    watermark stays put: 11 of 51 chrome lines for 5 content lines. A fifth of the problem for a
+    bbox-quantising pass.
+
+  What survives both filters is unstructured noise — ad copy, site navigation, clickbait overlay
+  text — that no cheap structural rule separates from content. That is what the prompt's exclusion
+  list is for, and why it stays. Taken together with the null result above, the honest summary is
+  that **OCR noise on a monetised screen recording is a prompt problem, not an input problem**: the
+  exclusion list is what handles it, and filtering the input buys tokens rather than accuracy.
+- **`stripMetaOpening` and `stripEmptySlotLines` clean the output in code, not in the prompt.** The
+  model opens a SUMMARY with "The video explains…" in about a third of runs despite being told twice
+  not to, and answers all nine rule-kind slots including the ones the video never stated. Both are
+  deterministic and free to fix in `KnowledgeExtractionService`; telling the model harder measured
+  *worse* (see the noise floor above).
 - **Filtering**: drops drafts below `vidingest.knowledge.min-salience` (0.2) and types
   outside `vidingest.knowledge.types`. Caps total persisted to `max-units-per-video`.
 - **Embedding**: each surviving unit's content is embedded via the existing
   `EmbeddingsClient` (1536-d, same shape as `context_chunks`). Embedding failure is soft —
   rows persist with `embedding=null` so they remain queryable by type/time.
+- **`GET /api/v1/knowledge/stale` says which videos need re-extracting.** `metadata.prompt_version`
+  was written on every unit and nothing read it, so a prompt upgrade was unactionable: v2 → v3
+  changed what extraction *means*, so older rows are not comparable with newer ones. The endpoint
+  reports rather than re-extracts — one video is ~2.5 minutes of LLM time, so a bulk version would
+  hold a request open for hours — and pairs with the existing per-video regenerate:
+
+  ```bash
+  curl -s localhost:8051/vidingest/api/v1/knowledge/stale | jq -r '.videos[].videoId' \
+    | while read id; do curl -s -X POST "localhost:8051/vidingest/api/v1/videos/$id/knowledge/regenerate"; done
+  ```
+
+  `truncated` says the limit cut the list short, so a short list is not mistaken for finished. This
+  is the **first query in the schema that reads JSONB by content**, and it still adds no GIN index
+  on `metadata` — the rule is to add one alongside the query that needs it, and an operator action
+  over thousands of rows does not.
+- **Reproducible prompt evaluation**: `scripts/eval-knowledge-prompt.py` scores prompt files against
+  `scripts/eval/knowledge-fixture.json` (the reference video's eight fused segments plus its 19-rule
+  ground truth). Arms are `PROMPT[@FIXTURE]`, so an input-side change — a FUSE filter, different OCR
+  — is measured the same way as a prompt change, and arms run **interleaved** rather than blocked.
+  `KnowledgeExtractionPromptTest.baselineEvalPromptIsInSyncWithTheCode` keeps the committed baseline
+  equal to what `systemMessage()` renders and rewrites it under `-DupdateEvalBaseline=true`.
+- **A batch that cannot be read now fails the phase.** `KnowledgeUnitJson.parseUnitsArray` used to
+  answer an unparseable payload with an empty list, but the service counts a batch as failed only
+  when `extract` throws — so the phase reported success having extracted nothing and replaced a
+  complete extraction with a partial one. A well-formed `{"units": []}` is still an empty success.
+  Failure messages carry the content length and name `max-output-tokens`, because a truncating
+  output cap is the likely trigger.
 - **Idempotent**: wipe-then-save on each run, both in one short transaction *after* the LLM
   batch loop. The loop itself still holds no pooled connection — one transaction across it would
   pin a connection for every chat round-trip — but the wipe no longer commits ahead of it, so

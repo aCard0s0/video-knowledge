@@ -39,7 +39,7 @@ Tracks **eight** server enums; **six** as exported lists.
 | `ERROR_CODES` | `PipelineErrorCode` (5) | `pipeline/domain/` |
 | `EVENT_TYPES` | `PipelineRunItemEventType` (8) | `pipeline/domain/` |
 | `VIDEO_STATUSES` | `VideoStatus` (8) | `videos/domain/` |
-| `KNOWLEDGE_TYPES` | `KnowledgeUnitType` (5) | **`vidingest-api`**, not the server |
+| `KNOWLEDGE_TYPES` | `KnowledgeUnitType` (6) | **`vidingest-api`**, not the server |
 | *(none — `statusVar` cases)* | `YoutubeChannelStatus` (4) | `youtube/domain/` |
 | *(none — `statusVar` cases)* | `TranscriptionStatus` (3) | `core/transcription/domain/` |
 

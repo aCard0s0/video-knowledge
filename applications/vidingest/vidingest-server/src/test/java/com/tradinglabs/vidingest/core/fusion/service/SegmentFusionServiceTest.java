@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -428,6 +429,93 @@ class SegmentFusionServiceTest {
         t.setId(UUID.randomUUID());
         t.setVideo(video);
         return t;
+    }
+
+    // -------------------- OCR noise filters --------------------
+
+    /**
+     * A line with no letter is a chart price axis: a number with nothing saying what it refers to,
+     * which cannot become a knowledge unit. 27% of the raw OCR characters on the video this was
+     * measured against.
+     */
+    @Test
+    void aggregateDropsUnlabelledDigitLinesAndKeepsLabelledOnes() {
+        UUID frameId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
+        VideoFrame f = frame(frameId, 5.0);
+        Map<UUID, List<OcrResult>> ocrByFrame = Map.of(frameId, List.of(
+                ocr(f, "29,810.00"),          // price axis
+                ocr(f, "  1,234  "),          // price axis, padded
+                ocr(f, "0.239%2801043"),      // axis debris
+                ocr(f, "BOS (29360.75"),      // a labelled level -- must survive
+                ocr(f, "NQ129,679.500.68%"),  // ticker + price -- must survive
+                ocr(f, "CONFIRMATION")));
+
+        SegmentFusionService.WindowAggregation agg = SegmentFusionService.aggregate(
+                0.0, 30.0, List.of(), List.of(f), ocrByFrame, Map.of());
+
+        assertThat(agg.ocrLines())
+                .containsExactly("BOS (29360.75", "NQ129,679.500.68%", "CONFIRMATION");
+    }
+
+    @Test
+    void carriesMeaningIsAboutLettersNotAboutDigits() {
+        assertThat(SegmentFusionService.carriesMeaning("29,810.00")).isFalse();
+        assertThat(SegmentFusionService.carriesMeaning("  0.68  ")).isFalse();
+        assertThat(SegmentFusionService.carriesMeaning("+0.76%")).isFalse();
+        assertThat(SegmentFusionService.carriesMeaning("BOS (29360.75")).isTrue();
+        assertThat(SegmentFusionService.carriesMeaning("Fib Sweep Structure")).isTrue();
+        assertThat(SegmentFusionService.carriesMeaning("1s")).isTrue();
+    }
+
+    /**
+     * Interface furniture is static and content is not, so a line present in most windows is
+     * chrome. Deduping within a window already collapses N frames of the same watermark, but still
+     * repeats it once per window.
+     */
+    @Test
+    void chromeOcrLinesDropsWhatAppearsInMostWindows() {
+        List<SegmentFusionService.WindowAggregation> windows = List.of(
+                window("Ask Gemini", "AREA"),
+                window("Ask Gemini", "CONFIRMATION"),
+                window("Ask Gemini", "Fib Sweep Structure"),
+                window("Ask Gemini", "BOS"),
+                window("something else", "LOWER"));
+
+        assertThat(SegmentFusionService.chromeOcrLines(windows, 0.6, 4))
+                .containsExactly("Ask Gemini");
+    }
+
+    /**
+     * "Appears in most windows" says nothing until there are enough windows for "most" to mean
+     * something: on two windows a legitimate label present in both is in 100% of them.
+     */
+    @Test
+    void chromeOcrLinesIsInertOnTooFewWindowsOrWhenDisabled() {
+        List<SegmentFusionService.WindowAggregation> few = List.of(
+                window("CONFIRMATION"), window("CONFIRMATION"), window("CONFIRMATION"));
+
+        assertThat(SegmentFusionService.chromeOcrLines(few, 0.6, 4)).isEmpty();
+
+        List<SegmentFusionService.WindowAggregation> enough = List.of(
+                window("chrome"), window("chrome"), window("chrome"), window("chrome"));
+        // ratio 1.0 is the documented off switch.
+        assertThat(SegmentFusionService.chromeOcrLines(enough, 1.0, 4)).isEmpty();
+        assertThat(SegmentFusionService.chromeOcrLines(enough, 0.6, 4)).containsExactly("chrome");
+    }
+
+    @Test
+    void ocrTextExcludingRemovesOnlyTheNamedLines() {
+        SegmentFusionService.WindowAggregation agg = window("Ask Gemini", "CONFIRMATION", "AREA");
+
+        assertThat(agg.ocrText()).isEqualTo("Ask Gemini CONFIRMATION AREA");
+        assertThat(agg.ocrTextExcluding(Set.of("Ask Gemini"))).isEqualTo("CONFIRMATION AREA");
+        assertThat(agg.ocrTextExcluding(Set.of())).isEqualTo("Ask Gemini CONFIRMATION AREA");
+        assertThat(agg.ocrTextExcluding(null)).isEqualTo("Ask Gemini CONFIRMATION AREA");
+    }
+
+    private static SegmentFusionService.WindowAggregation window(String... ocrLines) {
+        return new SegmentFusionService.WindowAggregation(
+                "transcript", new LinkedHashSet<>(List.of(ocrLines)), Set.of());
     }
 
     private static TranscriptionSegment ts(float start, float end, String text, UUID speakerId) {

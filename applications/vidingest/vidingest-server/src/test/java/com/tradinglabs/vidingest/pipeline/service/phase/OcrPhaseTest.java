@@ -1,5 +1,6 @@
 package com.tradinglabs.vidingest.pipeline.service.phase;
 
+import com.tradinglabs.vidingest.config.FrameSamplingConfig;
 import com.tradinglabs.vidingest.config.OcrConfig;
 import com.tradinglabs.vidingest.core.ocr.service.OcrService;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
@@ -19,8 +20,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * Gating + delegation tests for {@link OcrPhase}. Three knobs must be open: master switch,
- * the run's own opt-out, and FRAME_SAMPLE (since OCR has no input without frames).
+ * Gating + delegation tests for {@link OcrPhase}. Four knobs must be open: the master switch,
+ * the run's own opt-out, and FRAME_SAMPLE both ways — its deployment toggle and its skip flag —
+ * since OCR has no input without frames whichever of the two stopped them being written.
  */
 @ExtendWith(MockitoExtension.class)
 class OcrPhaseTest {
@@ -30,38 +32,47 @@ class OcrPhaseTest {
 
     @Test
     void phaseEnumIsOcr() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(true));
         assertThat(phase.phase()).isEqualTo(PipelineRunPhase.OCR);
     }
 
     @Test
     void doesNotApplyWhenMasterSwitchOff() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(false));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(false), frames(true));
         assertThat(phase.applies(ctx(false, false))).isFalse();
     }
 
     @Test
     void doesNotApplyWhenSkipOcrFlagSet() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(true));
         assertThat(phase.applies(ctx(/* skipFrames */ false, /* skipOcr */ true))).isFalse();
     }
 
     @Test
     void doesNotApplyWhenFrameSamplingWasSkipped() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(true));
         // No frames means no input — OCR is a no-op anyway, so skip cleanly.
         assertThat(phase.applies(ctx(/* skipFrames */ true, /* skipOcr */ false))).isFalse();
     }
 
     @Test
+    void doesNotApplyWhenFrameSamplingIsOffOnTheDeployment() {
+        // No frames were ever written, so there is nothing to OCR — same outcome as the skip
+        // flag. Without this the settings screen could enable OCR alone and the phase would run
+        // over an empty frame set.
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(false));
+        assertThat(phase.applies(ctx(false, false))).isFalse();
+    }
+
+    @Test
     void appliesWhenAllGatesOpen() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(true));
         assertThat(phase.applies(ctx(false, false))).isTrue();
     }
 
     @Test
     void executeDelegatesToServiceWithCtxVideo() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(true));
         PipelinePhaseContext ctx = ctx(false, false);
         Video video = new Video();
         video.setId(UUID.randomUUID());
@@ -74,7 +85,7 @@ class OcrPhaseTest {
 
     @Test
     void executeNoOpsWhenCtxVideoIsNull() {
-        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true));
+        OcrPhase phase = new OcrPhase(ocrService, configWithEnabled(true), frames(true));
         PipelinePhaseContext ctx = ctx(false, false);
 
         phase.execute(ctx);
@@ -84,6 +95,12 @@ class OcrPhaseTest {
 
     private static OcrConfig configWithEnabled(boolean enabled) {
         OcrConfig cfg = new OcrConfig();
+        cfg.setEnabled(enabled);
+        return cfg;
+    }
+
+    private static FrameSamplingConfig frames(boolean enabled) {
+        FrameSamplingConfig cfg = new FrameSamplingConfig();
         cfg.setEnabled(enabled);
         return cfg;
     }

@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 /**
@@ -114,14 +115,17 @@ public class SegmentFusionService {
         log.info("Fusion start: videoId={}, transcriptSegments={}, frames={}, ocrRows={}, maxEnd={}s, window={}s, overlap={}s",
                 video.getId(), transSegs.size(), frames.size(), ocrResults.size(), maxEnd, window, overlap);
 
-        List<MultimodalSegment> segments = new ArrayList<>();
+        // Two passes, because the OCR chrome filter is a property of the whole video: a line can
+        // only be recognised as interface furniture by how many windows it appears in, which is not
+        // knowable while the first window is being built.
+        List<WindowAggregation> aggregations = new ArrayList<>();
+        List<double[]> bounds = new ArrayList<>();
         int cap = fusionConfig.getMaxSegmentsPerVideo();
-        int densityIndex = 0;
 
         for (double start = 0.0; start < maxEnd; start += step) {
-            if (cap > 0 && densityIndex >= cap) {
+            if (cap > 0 && aggregations.size() >= cap) {
                 log.warn("Fusion cap reached: videoId={}, segments={}, cap={}",
-                        video.getId(), densityIndex, cap);
+                        video.getId(), aggregations.size(), cap);
                 break;
             }
             double end = Math.min(start + window, maxEnd);
@@ -134,16 +138,35 @@ public class SegmentFusionService {
             if (agg.isEmpty()) {
                 continue;
             }
+            aggregations.add(agg);
+            bounds.add(new double[]{start, end});
+        }
 
+        Set<String> chrome = chromeOcrLines(aggregations,
+                fusionConfig.getOcrChromeWindowRatio(), fusionConfig.getOcrChromeMinWindows());
+
+        List<MultimodalSegment> segments = new ArrayList<>(aggregations.size());
+        for (int i = 0; i < aggregations.size(); i++) {
+            WindowAggregation agg = aggregations.get(i);
             segments.add(MultimodalSegment.builder()
                     .video(video)
-                    .segmentIndex(densityIndex++)
-                    .startSeconds(start)
-                    .endSeconds(end)
+                    .segmentIndex(i)
+                    .startSeconds(bounds.get(i)[0])
+                    .endSeconds(bounds.get(i)[1])
                     .transcriptText(blankToNull(agg.transcriptText))
-                    .ocrText(blankToNull(agg.ocrText))
+                    .ocrText(blankToNull(agg.ocrTextExcluding(chrome)))
                     .speakerLabels(agg.speakerLabels.isEmpty() ? null : agg.speakerLabels.toArray(String[]::new))
                     .build());
+        }
+
+        if (!chrome.isEmpty()) {
+            int before = aggregations.stream().mapToInt(a -> a.ocrText().length()).sum();
+            int after = segments.stream()
+                    .mapToInt(sg -> sg.getOcrText() == null ? 0 : sg.getOcrText().length()).sum();
+            log.info("Fusion dropped {} repeated OCR line(s) as interface chrome: videoId={}, "
+                            + "ocrChars {} -> {} ({}% removed)",
+                    chrome.size(), video.getId(), before, after,
+                    before == 0 ? 0 : (before - after) * 100 / before);
         }
 
         log.info("Fusion produced {} segments for videoId={}", segments.size(), video.getId());
@@ -255,14 +278,90 @@ public class SegmentFusionService {
             for (OcrResult r : hits) {
                 if (r.getText() == null) continue;
                 String trimmed = r.getText().trim();
-                if (!trimmed.isEmpty()) {
+                if (!trimmed.isEmpty() && carriesMeaning(trimmed)) {
                     ocrLines.add(trimmed);
                 }
             }
         }
-        String ocrText = String.join(" ", ocrLines);
+        return new WindowAggregation(transcript.toString(), ocrLines, speakers);
+    }
 
-        return new WindowAggregation(transcript.toString(), ocrText, speakers);
+    /**
+     * Whether an OCR line can carry knowledge at all, as opposed to being a chart axis.
+     *
+     * <p>A line with no letter in it is a number with no label, and a number with no label cannot
+     * become a knowledge unit — nothing downstream can say what {@code 29,810.00} refers to. On a
+     * screen-recorded trading video that is the price ladder down the side of every chart, and it
+     * was <b>27% of the raw OCR characters</b> on the 3-minute short this was measured against.
+     *
+     * <p><b>Dropping it does not improve extraction.</b> This filter and {@link #chromeOcrLines}
+     * together cut the prompt 17% and left rule recovery unchanged within the eval's noise floor
+     * (13.8 against 14.8 of 19, four interleaved reps each). They are kept for the cost, not for a
+     * quality gain that was tested for and not found — see {@code FusionConfig}.
+     *
+     * <p>Deliberately narrow. A meaningful level reaches the model inside a labelled line
+     * ({@code "BOS (29360.75"}, {@code "NQ129,679.500.68%"}) and those keep their letters, so they
+     * survive. The rule is "unlabelled digits", not "contains digits".
+     *
+     * <p>Two wider filters were measured and rejected on this data rather than skipped:
+     * <ul>
+     *   <li><b>OCR confidence.</b> Garbled brand overlays median 0.840 against 0.943 for
+     *       everything else, but the distributions overlap: a 0.9 threshold drops 36 chrome lines
+     *       and 133 content lines. Net loss at every threshold.</li>
+     *   <li><b>Fixed screen position.</b> Chrome is spatially static, so a grid cell occupied in
+     *       most frames should be furniture — but on a short that cuts between chart, browser and
+     *       landing page, only the watermark stays put: 11 of 51 chrome lines, for 5 content lines.
+     *       A fifth of the problem for a bbox-quantising pass, so not worth the code.</li>
+     * </ul>
+     * What remains after this and {@link #chromeOcrLines} is unstructured noise — ad copy, website
+     * navigation, clickbait overlay text — that no cheap structural rule separates from content.
+     * That is what the KNOWLEDGE prompt's exclusion list is for, and why it stays.
+     */
+    static boolean carriesMeaning(String line) {
+        for (int i = 0; i < line.length(); i++) {
+            if (Character.isLetter(line.charAt(i))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * OCR lines that appear in at least {@code ratio} of the windows, and are therefore interface
+     * furniture rather than content.
+     *
+     * <p>Static and content are the two kinds of thing OCR picks up, and they separate cleanly on
+     * persistence: a watermark, a browser tab title or a "Subscribe" overlay is on screen for the
+     * whole video, while a price level or a break-of-structure label is on screen for one window.
+     * Deduping within a window (which {@code aggregate} does) collapses N frames of the same
+     * watermark to one line but still repeats it once per window — enough that OCR was 54% of the
+     * KNOWLEDGE phase's input on a 3-minute short, carrying the sponsor's name 21 times.
+     *
+     * <p>Returns empty below {@code minWindows}: "appears in most windows" cannot distinguish
+     * chrome from content until there are enough windows for "most" to mean anything, and on two
+     * windows a legitimate label present in both is in 100% of them.
+     *
+     * <p>Visible for testing.
+     */
+    static Set<String> chromeOcrLines(List<WindowAggregation> aggregations, double ratio, int minWindows) {
+        if (aggregations == null || aggregations.size() < Math.max(minWindows, 2) || ratio >= 1.0) {
+            return Set.of();
+        }
+        Map<String, Integer> windowsPerLine = new HashMap<>();
+        for (WindowAggregation agg : aggregations) {
+            if (agg.ocrLines() == null) continue;
+            // Counting windows, not frames: aggregate() already deduped within the window, so each
+            // line contributes at most one here whatever its frame count was.
+            for (String line : agg.ocrLines()) {
+                windowsPerLine.merge(line, 1, Integer::sum);
+            }
+        }
+        double threshold = ratio * aggregations.size();
+        Set<String> chrome = new LinkedHashSet<>();
+        for (Map.Entry<String, Integer> e : windowsPerLine.entrySet()) {
+            if (e.getValue() >= threshold) {
+                chrome.add(e.getKey());
+            }
+        }
+        return chrome;
     }
 
     private static boolean overlaps(double aStart, double aEnd, double bStart, double bEnd) {
@@ -274,11 +373,29 @@ public class SegmentFusionService {
         return (s == null || s.isBlank()) ? null : s;
     }
 
-    /** Aggregated content for one window. Package-private so tests can construct it. */
-    record WindowAggregation(String transcriptText, String ocrText, Set<String> speakerLabels) {
+    /**
+     * Aggregated content for one window. Package-private so tests can construct it.
+     *
+     * <p>OCR is held as its <em>lines</em> rather than as joined text, because the chrome filter
+     * decides per line and only after every window is known. {@link #ocrText()} is the joined form
+     * the segment stores.
+     */
+    record WindowAggregation(String transcriptText, Set<String> ocrLines, Set<String> speakerLabels) {
+        /** Every line, joined as the segment stores it. */
+        String ocrText() {
+            return ocrLines == null ? "" : String.join(" ", ocrLines);
+        }
+
+        /** Joined, minus the lines the video-wide filter classified as interface chrome. */
+        String ocrTextExcluding(Set<String> drop) {
+            if (ocrLines == null || ocrLines.isEmpty()) return "";
+            if (drop == null || drop.isEmpty()) return ocrText();
+            return ocrLines.stream().filter(l -> !drop.contains(l)).collect(Collectors.joining(" "));
+        }
+
         boolean isEmpty() {
             return (transcriptText == null || transcriptText.isBlank())
-                    && (ocrText == null || ocrText.isBlank())
+                    && (ocrLines == null || ocrLines.isEmpty())
                     && (speakerLabels == null || speakerLabels.isEmpty());
         }
 
