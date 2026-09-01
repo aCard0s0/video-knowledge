@@ -52,7 +52,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | Progress | **Polled.** The REST API has no SSE and no websocket |
 | Corpus scale | Thousands of videos/runs — server-side paging everywhere |
 | Video playback | Yes; the player drives the artifact panes |
-| Deployment | Angular build baked into `classpath:/static` at Docker image build time (multi-stage, not Maven). Dev: `ng serve` + proxy |
+| Deployment | Its own nginx image (`applications/webapp/Dockerfile`), built with `--base-href=/vidingest/`, proxying the API to `vidingest:8051`. It used to be baked into the server's `classpath:/static`; that and its `SpaStaticResourceConfig` are both gone. Dev: `ng serve` + proxy |
 | Not built | A search screen (`/api/v1/search`, `/api/v1/knowledge/search`) — another system queries the knowledge |
 
 ## Screens
@@ -62,7 +62,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/llm` |
 | **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos?notIngestedOnly`, `POST /{id}/pipelines`, `GET /pipelines/{runId}`, `/audit`, `GET /pipelines/capabilities` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
-| **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `GET /pipelines/capabilities` |
+| **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `POST /videos/{videoId}/phases/{phase}/run`, `GET /pipelines/capabilities` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
 | **Video detail** | `/detail`, `/file`, `/transcription/segments`, `/ocr/frames`, `/frames/{frameId}/image`, `/multimodal-timeline/page`, `/knowledge`, `/speakers`, `PATCH /speakers/{speakerId}`, `POST /phases/{phase}/run`, `/context/regenerate`, `/knowledge/regenerate` |
 | **Audit feed** | `GET /audit/events?runId&eventType&status&phase&errorCode&fromDate&toDate&page&size` |

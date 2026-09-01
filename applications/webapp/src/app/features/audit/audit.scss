@@ -19,10 +19,11 @@
 
 // Transparent, so the row of controls reads as one bar rather than seven boxes floating on the
 // panel. The border is what says "control"; the fill was only ever repeating the panel behind it.
+//
+// Type and padding are the global `input` rule's, like the channels form's fields — a filter is a
+// form field wherever it sits, and the two screens were running a 27px control against a 34px one.
 .filter input,
 .filter select {
-  font-size: var(--fs-sm);
-  padding: 4px 8px;
   background: transparent;
 }
 
@@ -59,16 +60,24 @@
   input {
     border: 0;
     background: transparent;
-    padding: 4px 8px 4px 0;
-    font-size: var(--fs-sm);
+    // The global input's own 7px 10px, less the left gutter the box already draws for the word.
+    // Both halves have to move together or the pair goes back to being a different height from the
+    // selects beside it — the thing the comment above this block exists to prevent.
+    padding: 7px 10px 7px 0;
   }
 }
 
 .filter input[type='search'] {
-  // The placeholder is now the field's name *and* the format it takes — "run id — " plus a whole
+  // The placeholder is the field's name *and* the format it takes — "run id — " plus a whole
   // 36-character uuid, 45 in all. At the old 37ch it clipped to `…-9d61…`, which is the truncated
   // id the placeholder exists to stop anyone pasting.
-  width: 46ch;
+  //
+  // The chrome added on top of the characters, because the reset is `border-box`: a bare `46ch` is
+  // 46 characters *including* everything around them, so it never actually held 46 — measured at 42
+  // against the padding this screen now inherits. 22px is the global input rule's side padding plus
+  // its border; the other 16 is the clear button Chromium reserves inside a `type="search"`, which
+  // was still eating the uuid's last character on its own.
+  width: calc(46ch + 38px);
   max-width: 100%;
 }
 

@@ -150,20 +150,102 @@ table.grid td.when {
   white-space: nowrap;
 }
 
-// The message row belongs to the event above it, so it loses the gap between them and wraps.
+// The phase table. Ten rows, fixed set, so the columns are sized to their content rather than
+// left to fight over the width the way a hundred-row event feed had to.
+table.grid.phases {
+  th.act,
+  td.act {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  // A phase that never ran carries no duration, no timestamp and no events; dimming the whole row
+  // is what stops ten of them reading as loudly as the two that did something.
+  tr.void td {
+    opacity: 0.55;
+  }
+
+  tr.on td {
+    background: color-mix(in srgb, var(--fg-muted) 5%, transparent);
+  }
+}
+
+.ph-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.caret {
+  display: inline-block;
+  width: 8px;
+  color: var(--fg-muted);
+}
+
+// The event count doubles as the affordance: a row with 2 beside it opens onto two lines, and one
+// with nothing beside it is not a control at all.
+.ph-open .n {
+  font-size: var(--fs-xs);
+}
+
+.ph-flat {
+  color: var(--fg-muted);
+}
+
+// Events for the one open phase, as lines rather than a nested table: at two or three rows the
+// header a table needs costs more height than the rows it labels.
+.events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.events li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.ev-when {
+  color: var(--fg-muted);
+}
+
+.ev-gap {
+  min-width: 6ch;
+}
+
+.ev-fault {
+  padding-left: 2ch;
+}
+
+// The events belong to the row above them, so they lose the gap between the two and wrap.
 table.grid .detail-row td {
   padding-top: 0;
   white-space: normal;
 }
 
+// Armed to wipe. Same voice the videos list gives its armed delete: the button says what the next
+// press does, and the colour is the second reading, never the only one.
+.btn-sm.armed {
+  border-color: var(--st-failed-fill);
+  color: var(--st-failed);
+}
+
 @media (max-width: 767px) {
-  // Drop From and Status. `previousPhase` repeats the phase of the row below it and the status is
-  // implied by the event type. errorCode and its message stay: they are the reason the screen gets
-  // opened, and they are on their own row rather than in a column that would sit off the edge.
-  table.grid th.from,
-  table.grid td.from,
-  table.grid th.st,
-  table.grid td.st {
+  // Drop Started. The duration beside it is what the row is read for, and the exact instant is one
+  // press away in the events. Status stays: it is the column the operator came for.
+  table.grid.phases th.when,
+  table.grid.phases td.when {
     display: none;
   }
 
@@ -172,4 +254,24 @@ table.grid .detail-row td {
     white-space: normal;
     overflow-wrap: anywhere;
   }
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: var(--space-sm);
+}
+
+// A re-run's numbers standing in a column of the run's own. Small, and the word does the work —
+// colour is the second reading.
+.tag {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+}
+
+.ev-rerun {
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px dashed var(--border);
 }

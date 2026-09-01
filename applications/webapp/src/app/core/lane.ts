@@ -9,6 +9,8 @@ export interface LaneSegment {
   state: SegmentState;
   /** Measured duration; null when the phase never ran. */
   ms: number | null;
+  /** When the phase was entered. Absent for a phase that never ran — there is no event to read. */
+  at?: string;
 }
 
 /**
@@ -62,18 +64,18 @@ export function buildLane(item: RunItem, events: RunItemAuditEvent[], nowMs: num
       return { phase, state: index > frontier ? 'pending' : 'skipped', ms: null };
     }
     if (end) {
-      return { phase, state: 'done', ms: msBetween(start, end) };
+      return { phase, state: 'done', ms: msBetween(start, end), at: start };
     }
     if (phase === stoppedAt) {
-      return { phase, state: stopState, ms: msBetween(start, item.phaseUpdatedAt) };
+      return { phase, state: stopState, ms: msBetween(start, item.phaseUpdatedAt), at: start };
     }
     if (live) {
       const from = parseServerTime(start);
-      return { phase, state: 'live', ms: from ? nowMs - from.getTime() : null };
+      return { phase, state: 'live', ms: from ? nowMs - from.getTime() : null, at: start };
     }
     // Entered, never completed, and the item is not live and did not blame this phase: the
     // process died mid-phase. Draw it as stopped rather than silently as complete.
-    return { phase, state: stopState, ms: msBetween(start, item.phaseUpdatedAt) };
+    return { phase, state: stopState, ms: msBetween(start, item.phaseUpdatedAt), at: start };
   });
 }
 
@@ -104,6 +106,36 @@ export function buildLanes(
   return new Map(
     items.map((item) => [item.itemId, buildLane(item, byItem.get(item.itemId) ?? [], nowMs)] as const),
   );
+}
+
+/**
+ * A phase re-run fired outside the pipeline, for {@link paintRerun}.
+ *
+ * `POST /videos/{id}/phases/{phase}/run` writes no `PipelineRunItemEvent` — it runs the phase
+ * against the video row and never touches the run item — so nothing a re-run does can reach
+ * `buildLane`. The caller holds the timing itself and paints it on.
+ */
+export interface Rerun {
+  /** When the request left, by the browser's clock. There is no server timestamp to have. */
+  at: string;
+  startedMs: number;
+  /** null while it is still running: that is what puts the segment in progress. */
+  ms: number | null;
+  rows?: number;
+  failed?: boolean;
+}
+
+/**
+ * One segment with a re-run painted over it — in progress while the request is open, then its
+ * own measured outcome. Undefined `rerun` returns the segment untouched, identity included, so a
+ * screen with no re-runs pays nothing.
+ */
+export function paintRerun(seg: LaneSegment, rerun: Rerun | undefined, nowMs: number): LaneSegment {
+  if (!rerun) return seg;
+  if (rerun.ms === null) {
+    return { ...seg, state: 'live', ms: Math.max(0, nowMs - rerun.startedMs), at: rerun.at };
+  }
+  return { ...seg, state: rerun.failed ? 'failed' : 'done', ms: rerun.ms, at: rerun.at };
 }
 
 /** Total measured time across the drawn attempt. */

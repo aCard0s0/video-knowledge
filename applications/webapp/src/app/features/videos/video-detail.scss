@@ -279,9 +279,14 @@
   color: var(--fg);
 }
 
+// `start`, not the grid default `stretch`: a button is centred inside its own box by the UA, so a
+// stretched cell floated the thumbnail down the middle of a tall row, away from the first read it
+// belongs beside. With the line cap above it the two columns are now within a few pixels of each
+// other and every row is the thumbnail's height.
 .frames-list > li {
   display: grid;
   grid-template-columns: 160px 1fr;
+  align-items: start;
   gap: var(--space-md);
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border);
@@ -326,5 +331,19 @@
   li {
     overflow-wrap: anywhere;
     padding: 1px 0;
+  }
+}
+
+.more {
+  margin-top: var(--space-xs);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fg);
   }
 }

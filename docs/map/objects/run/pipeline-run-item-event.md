@@ -22,6 +22,11 @@ phases an item actually entered — the item row keeps current state, not histor
   path against its own audit trail.
 - **`ITEM_PHASE_COMPLETED` exists so a phase can render as "Completed"** rather than stuck at
   "In progress" — it pairs with the preceding `ITEM_PHASE_ENTERED` (`PipelineRunItemEventType.java:5-11`).
+- **`PipelineAuditService` is the only writer, and the per-phase rerun is not one of its callers.**
+  `VideoPhaseRunnerService` runs a phase against the *video* row and never touches a run item, so
+  it writes no event at all. Anything built from this table therefore cannot see a rerun: the
+  console's lane and phase trail reload byte-identical after one, which is why `run-detail.ts`
+  paints re-run timing over them client-side (`core/lane.ts` `paintRerun`).
 
 ## Shape
 

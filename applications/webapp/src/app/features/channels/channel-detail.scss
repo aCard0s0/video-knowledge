@@ -118,3 +118,54 @@ td.pick input[type='checkbox'] {
   padding: 0;
   cursor: pointer;
 }
+
+/*
+  The ingest panel rides the top edge, and lifts off the page when it gets there.
+
+  Its old home was under the table, sticky to `bottom`: that solved the reach problem — with fifty
+  rows the CTA landed ~1000px below the fold — but it read as a footer, with the checkboxes you
+  were ticking at the top of the screen and the count of what you had ticked at the bottom. Above
+  the rows the two are together.
+
+  `top: 0` rather than `top: var(--space-md)`: an inset leaves a strip of gap above the panel with
+  the catalog sliding through it, which reads as a rendering fault. Flush against the edge, rows
+  pass underneath and nothing shows through.
+*/
+.ingest {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  transition:
+    box-shadow var(--t-med) ease,
+    border-color var(--t-med) ease;
+}
+
+// Not a `:stuck` selector — that is proposed, not shipped. `stuck()` in the component is an
+// IntersectionObserver on the panel itself; this is only the paint.
+.ingest.stuck {
+  border-color: var(--border-hover);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ingest {
+    transition: none;
+  }
+}
+
+/*
+  The table's own sticky header stacks *under* the ingest panel rather than behind it.
+
+  `table.grid th` in `styles.scss` pins to `top: 0`, which is where the panel now is: the column
+  headers slid out of sight behind it exactly while the rows they label were being scrolled and
+  picked. `--ingest-h` is published by the same observer that sets `.stuck`.
+
+  **Only while the panel is actually pinned.** `position: sticky` with a positive `top` does not
+  merely hold an element there — it pushes it *down* when its natural position is above the offset.
+  Unconditionally, at scroll 0, that put the header ~150px into its own table: THEAD slid over the
+  first three rows and left its flow space empty under the panel head. Once the panel is pinned the
+  table starts below it, so the header's natural position is past the offset and nothing is pushed.
+*/
+:host(.pinned) table.grid th {
+  top: var(--ingest-h, 0);
+}

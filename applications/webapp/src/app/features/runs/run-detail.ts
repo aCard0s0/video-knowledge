@@ -8,9 +8,11 @@ import {
   PipelinesService,
   RunItem,
   RunItemAuditEvent,
+  VideoPhasesService,
 } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import {
+  OPTIONAL_PHASES,
   OptionalPhase,
   PHASE_PANE,
   RUN_STATUSES,
@@ -20,7 +22,8 @@ import {
   statusVar,
 } from '../../core/domain';
 import { absoluteTime, clockTime, humanAge, humanDuration, msBetween } from '../../core/time';
-import { laneTotalMs } from '../../core/lane';
+import { LaneSegment, Rerun, SegmentState, laneTotalMs, paintRerun } from '../../core/lane';
+import { Capabilities } from '../../core/capabilities';
 import { watchRun } from '../../core/watch-run';
 import { ApiFailure, firstFailure, toApiFailure } from '../../core/problem';
 import { syncQueryParams } from '../../core/url-state';
@@ -33,6 +36,29 @@ import { Problem } from '../../ui/problem';
 import { Rejects } from '../../ui/rejects';
 import { PhasePicker } from '../../ui/phase-picker';
 
+/**
+ * What a phase's lane state is called in the trail's Status column.
+ *
+ * Not the item's status, which is what the per-event feed showed and why every row of a finished
+ * run read IN_PROGRESS: that column carried the status the *item* held when the event was written,
+ * so twenty rows repeated the state the item was passing through rather than the outcome of the
+ * phase on the row. `statusVar` colours the first four; the two voids fall through to neutral,
+ * which is the right answer for a phase that has no outcome to report.
+ */
+const PHASE_STATUS: Record<SegmentState, string> = {
+  done: 'COMPLETED',
+  live: 'IN_PROGRESS',
+  failed: 'FAILED',
+  cancelled: 'CANCELLED',
+  skipped: 'SKIPPED',
+  pending: 'NOT REACHED',
+};
+
+/** Re-runs are keyed per item as well as per phase: the operator can switch item between two. */
+function rerunKey(itemId: string | undefined, phase: string): string {
+  return `${itemId}:${phase}`;
+}
+
 @Component({
   selector: 'vk-run-detail',
   imports: [RouterLink, StatusBadge, Lane, Fault, Problem, PhasePicker, Rejects, ErrorCode],
@@ -43,6 +69,8 @@ export class RunDetail {
   readonly runId = input.required<string>();
 
   private readonly pipelines = inject(PipelinesService);
+  private readonly videoPhases = inject(VideoPhasesService);
+  private readonly capabilities = inject(Capabilities);
   protected readonly poller = inject(Poller);
 
   /**
@@ -57,17 +85,28 @@ export class RunDetail {
   protected readonly retryFailure = signal<ApiFailure | null>(null);
   protected readonly retryRejects = signal<ItemResult[]>([]);
   /**
-   * What the retry did, for the `role="status"` line — the same voice the runs board's `retrySaid`
-   * gives its own retry. A queued retry moves the run back to PENDING and the button out of the
-   * head, which on its own is indistinguishable from a press that did nothing. Empty when nothing
-   * was queued: the rejects panel and the problem panel are already saying why.
+   * What the last action did, for the `role="status"` line — the same voice the runs board's
+   * `retrySaid` gives its own retry. A queued retry moves the run back to PENDING and the button
+   * out of the head, which on its own is indistinguishable from a press that did nothing. A
+   * per-phase re-run repaints its own row, so this line is the one place its rows-written count
+   * lands. Empty when a retry queued nothing: the rejects and problem panels are saying why.
    */
   protected readonly said = signal('');
-  /** '' rather than null: syncQueryParams keeps defaults out of the URL by comparing to ''. */
-  protected readonly phaseFilter = signal('');
+
+  /** The phase row one press from wiping its artifacts, and the one currently doing it. */
+  protected readonly armedPhase = signal<string | null>(null);
+  protected readonly runningPhase = signal<string | null>(null);
+  /** Every re-run this screen has fired, overlaid on the run's own trail. See {@link Rerun}. */
+  protected readonly reruns = signal<Record<string, Rerun>>({});
+  /**
+   * Which phase row in the trail has its raw events open, in the URL as `?phase=`.
+   *
+   * '' rather than null: syncQueryParams keeps defaults out of the URL by comparing to ''.
+   */
+  protected readonly openPhase = signal('');
 
   constructor() {
-    syncQueryParams({ item: this.picked, phase: this.phaseFilter });
+    syncQueryParams({ item: this.picked, phase: this.openPhase });
     this.poller.every(
       () => (isLive(this.detail()?.status) ? POLL_LIVE : POLL_IDLE),
       () => this.watch.reload(),
@@ -81,7 +120,38 @@ export class RunDetail {
   protected readonly events = this.watch.events;
   protected readonly auditTotal = this.watch.auditTotal;
   protected readonly auditTruncated = this.watch.auditTruncated;
-  protected readonly lane = this.watch.lane;
+  private readonly runLane = this.watch.lane;
+
+  /**
+   * The run's lanes with this screen's re-runs painted over them.
+   *
+   * `POST /videos/{id}/phases/{phase}/run` records nothing on the run, so `watch.reload()` after
+   * one answers with the run byte-identical — the lane and every column of the trail kept showing
+   * the original numbers and there was no in-progress state at any point. See `paintRerun`.
+   *
+   * A computed map rather than a function the template calls: `vk-lane` takes an array input, so
+   * rebuilding it per change-detection read would hand the component a fresh reference every pass
+   * — the exact cost `watchRun` moved `buildLanes` out of the read path to avoid. The clock is a
+   * dependency only while a re-run is actually open, so a screen with none rebuilds nothing.
+   */
+  private readonly lanes = computed(() => {
+    const reruns = this.reruns();
+    const items = this.items();
+    if (Object.keys(reruns).length === 0) {
+      return new Map(items.map((item) => [item.itemId, this.runLane(item)] as const));
+    }
+    const now = this.runningPhase() ? this.poller.now() : 0;
+    return new Map(
+      items.map((item) => {
+        const painted = this.runLane(item).map((seg) =>
+          paintRerun(seg, reruns[rerunKey(item.itemId, seg.phase)], now),
+        );
+        return [item.itemId, painted] as const;
+      }),
+    );
+  });
+
+  protected readonly lane = (item: RunItem): LaneSegment[] => this.lanes().get(item.itemId) ?? [];
 
   /**
    * Loads only. Alone among the screens this one gives the retry its *own* adjacent panel rather
@@ -110,14 +180,42 @@ export class RunDetail {
 
   protected readonly selected = computed(() => this.items().find((i) => i.itemId === this.selectedId()) ?? null);
 
+  /**
+   * The raw events behind the one open phase row — the detail under the summary, not the summary.
+   *
+   * Newest first: the last thing that happened in that phase is what you came to read. Empty
+   * while no row is open, which is what keeps the panel a per-phase table rather than the
+   * hundred-row event dump it used to be.
+   */
   protected readonly timeline = computed(() => {
     const id = this.selectedId();
-    const phase = this.phaseFilter();
+    const phase = this.openPhase();
+    if (!phase) return [];
     return this.events()
-      .filter((e) => e.itemId === id)
-      .filter((e) => !phase || e.phase === phase)
+      .filter((e) => e.itemId === id && e.phase === phase)
       .slice()
-      .reverse(); // newest first: the last thing that happened is what you came to read
+      .reverse();
+  });
+
+  /**
+   * The trail, one row per phase.
+   *
+   * Per *event* the panel repeated ENTERED/COMPLETED pairs for every phase and stamped each of
+   * them with the item's status at the time — so a finished run's trail was twenty-two rows of
+   * which twenty said IN_PROGRESS. The lane already computes what an operator actually reads off
+   * that table (did this phase run, how long did it take, where did it stop), so the summary is
+   * the lane's own segments in a table; the events stay one press away, per phase.
+   */
+  protected readonly phaseRows = computed(() => {
+    const item = this.selected();
+    if (!item) return [];
+    const reruns = this.reruns();
+    return this.lane(item).map((seg) => ({
+      seg,
+      status: PHASE_STATUS[seg.state],
+      rerun: reruns[rerunKey(item.itemId, seg.phase)] ?? null,
+      events: this.events().filter((e) => e.itemId === item.itemId && e.phase === seg.phase).length,
+    }));
   });
 
   protected readonly retryable = computed(() => this.detail()?.status === 'FAILED');
@@ -231,12 +329,104 @@ export class RunDetail {
 
   protected select(item: RunItem): void {
     this.picked.set(item.itemId ?? '');
-    this.phaseFilter.set('');
+    this.openPhase.set('');
+    this.armedPhase.set(null);
   }
 
   protected pickPhase(item: RunItem, phase: string): void {
     this.picked.set(item.itemId ?? '');
-    this.phaseFilter.set(this.phaseFilter() === phase ? '' : phase);
+    this.togglePhase(phase);
+  }
+
+  /**
+   * Also disarms. An arm belongs to the row it was pressed on, and moving the selection with the
+   * lane leaves that row behind — a second press would then wipe a phase of a *different* item.
+   */
+  protected togglePhase(phase: string): void {
+    this.armedPhase.set(null);
+    this.openPhase.set(this.openPhase() === phase ? '' : phase);
+  }
+
+  /**
+   * Whether the per-phase rerun endpoint will take this row.
+   *
+   * Three separate answers, all of which have to be yes. `POST /videos/{id}/phases/{phase}/run`
+   * takes a *video* id, so an item whose video row is gone (`ON DELETE SET NULL`) has nothing to
+   * address; only `OPTIONAL_PHASES` are reachable at all, since METADATA/DOWNLOAD/PERSIST consume
+   * the source URL rather than the persisted row and the server 400s on them; and KNOWLEDGE
+   * additionally throws Conflict when `vidingest.knowledge.enabled` is off, which `Capabilities`
+   * already knows without another request. Every other disabled phase still runs — the rerun is
+   * the operator's escape hatch, the same reasoning the video screen's chip row carries.
+   */
+  protected rerunnable(item: RunItem | null, seg: LaneSegment): boolean {
+    if (!item?.videoId || this.live(item)) return false;
+    if (!(OPTIONAL_PHASES as readonly string[]).includes(seg.phase)) return false;
+    return !(seg.phase === 'KNOWLEDGE' && this.capabilities.disabledOnServer('KNOWLEDGE'));
+  }
+
+  protected rerunLabel(phase: string): string {
+    if (this.armedPhase() === phase) return 'Wipe & re-run?';
+    if (this.runningPhase() === phase) return 'Running…';
+    return 'Re-run';
+  }
+
+  /**
+   * Two presses, like the video screen's chip row: a rerun wipes this video's artifacts for the
+   * phase before rebuilding them, so a stray click in a ten-row table costs a transcript and a
+   * ten-minute whisper call. Pressing a different row re-arms that one, so there is always a way
+   * out besides Cancel.
+   */
+  protected confirmRerun(item: RunItem, phase: string): void {
+    if (this.armedPhase() !== phase) {
+      this.armedPhase.set(phase);
+      return;
+    }
+    this.armedPhase.set(null);
+    this.rerunPhase(item, phase);
+  }
+
+  /**
+   * Synchronous and idempotent server-side — each phase wipes and repopulates its own artifacts —
+   * so the honest feedback is elapsed time and rows written.
+   *
+   * The overlay is written *before* the request goes out and again when it answers: the endpoint
+   * records nothing on the run, so `watch.reload()` alone would leave the lane and the row exactly
+   * as they were and the operator with nothing but a disabled button to go on. The reload still
+   * happens — a re-run can move the video's own status, which the item row reads.
+   */
+  private rerunPhase(item: RunItem, phase: string): void {
+    const key = rerunKey(item.itemId, phase);
+    const startedMs = Date.now();
+    this.runningPhase.set(phase);
+    this.retryFailure.set(null);
+    this.said.set('');
+    this.reruns.update((all) => ({ ...all, [key]: { at: new Date(startedMs).toISOString(), startedMs, ms: null } }));
+
+    this.videoPhases.runVideoPhase(item.videoId!, phase).subscribe({
+      next: (result) => {
+        this.runningPhase.set(null);
+        // The server's own measurement, not the round trip: it is what the phase actually cost,
+        // and it is the number the log line beside it carries.
+        const ms = result.elapsedMs ?? Date.now() - startedMs;
+        this.reruns.update((all) => ({
+          ...all,
+          [key]: { ...all[key], ms, rows: result.rowsAffected },
+        }));
+        const rows = result.rowsAffected === null || result.rowsAffected === undefined ? '' : `, ${result.rowsAffected} row(s)`;
+        this.said.set(`re-ran ${result.phase}: ${humanDuration(ms)}${rows}`);
+        this.watch.reload();
+      },
+      error: (err: unknown) => {
+        this.runningPhase.set(null);
+        // Kept rather than dropped: a failed re-run is the state the row should be reporting, and
+        // dropping it would silently restore the successful run underneath as if nothing happened.
+        this.reruns.update((all) => ({
+          ...all,
+          [key]: { ...all[key], ms: Date.now() - startedMs, failed: true },
+        }));
+        this.retryFailure.set(toApiFailure(err));
+      },
+    });
   }
 
   /**

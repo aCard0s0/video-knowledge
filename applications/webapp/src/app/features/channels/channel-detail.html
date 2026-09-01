@@ -87,6 +87,35 @@
     </section>
   }
 
+  <!--
+    Above the catalog it acts on, and pinned to the top edge while that catalog scrolls past.
+
+    It used to sit under the table, sticky to the *bottom*, which put the selection count and the
+    button in the same place but read as a footer: with the filter off and fifty rows, the thing you
+    were building was at the top of the screen and the thing that says what you had built was at the
+    bottom. Above the rows, the count sits beside the checkboxes feeding it.
+
+    `#ingestPanel` is watched so the panel can say when it has left the flow — see `stuck` in the
+    component. The class is what the shadow transitions on.
+  -->
+  <section class="panel ingest" #ingestPanel [class.stuck]="stuck()">
+    <div class="panel-head">
+      <span class="eyebrow">ingest selection</span>
+      <!-- Ticking a box changes this and nothing else; without a live region it is silent. -->
+      <span class="mono sm" role="status" [class.warn]="overLimit()">
+        {{ pickedCount() }} selected
+        @if (overLimit()) {
+          · over the {{ maxPerRun }}-video limit for one run
+        }
+      </span>
+    </div>
+    <div class="ingest-body">
+      <vk-phase-picker [(skipped)]="skipped" />
+      <button class="btn-primary" type="button" [disabled]="busy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
+        {{ busy() ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
+      </button>
+    </div>
+  </section>
   <section class="panel">
     <div class="panel-head">
       <span class="eyebrow">uploads</span>
@@ -184,24 +213,6 @@
     }
   </section>
 
-  <section class="panel ingest">
-    <div class="panel-head">
-      <span class="eyebrow">ingest selection</span>
-      <!-- Ticking a box changes this and nothing else; without a live region it is silent. -->
-      <span class="mono sm" role="status" [class.warn]="overLimit()">
-        {{ pickedCount() }} selected
-        @if (overLimit()) {
-          · over the {{ maxPerRun }}-video limit for one run
-        }
-      </span>
-    </div>
-    <div class="ingest-body">
-      <vk-phase-picker [(skipped)]="skipped" />
-      <button class="btn-primary" type="button" [disabled]="busy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
-        {{ busy() ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
-      </button>
-    </div>
-  </section>
 } @else {
   <p class="quiet muted mono">Loading channel…</p>
 }

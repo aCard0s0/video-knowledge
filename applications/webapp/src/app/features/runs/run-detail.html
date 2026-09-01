@@ -44,7 +44,7 @@
   <!-- Always in the DOM, so a screen reader has a live region to announce into rather than one that
        appears with its own text already in it. A queued retry takes the run back to PENDING and the
        Retry button out of the head, which on its own looks exactly like a press that did nothing.
-       The same line the runs board carries for the same action. -->
+       A per-phase re-run repaints its own row; the count of rows it wrote lands here. -->
   <p class="said mono muted" role="status">{{ said() }}</p>
 
   @if (retryable()) {
@@ -65,7 +65,7 @@
 
   <section class="panel">
     <div class="panel-head">
-      <span class="eyebrow">items — click a phase to filter the trail</span>
+      <span class="eyebrow">items — click a phase to open it in the trail</span>
       @if (auditTruncated()) {
         <span class="mono warn sm">
           newest {{ events().length }} of {{ auditTotal() }} events — earlier phases are missing
@@ -119,79 +119,156 @@
   <section class="panel">
     <div class="panel-head">
       <span class="trail-head">
-        <span class="eyebrow">trail</span>
+        <span class="eyebrow">trail — one row per phase</span>
         @if (selected(); as item) {
           <span class="mono sm muted trail-url" [title]="item.url">{{ item.url }}</span>
         }
-        @if (phaseFilter(); as phase) {
-          <span class="mono sm">{{ phase }}</span>
-        }
       </span>
       <span class="trail-actions">
-        @if (phaseFilter()) {
-          <button class="btn-sm" type="button" (click)="phaseFilter.set('')">Clear phase filter</button>
-        }
-        <!-- The trail here is one item's, newest attempt, capped. The audit screen is all of it,
-             paged and filterable — the way out when this panel is not enough. -->
+        <!-- The trail here is one item's ten phases, newest attempt. The audit screen is every
+             event of every item, paged and filterable — the way out when a phase's own events,
+             one press below, are not enough. -->
         <a class="mono sm" [routerLink]="['/audit']" [queryParams]="{ runId: detail.id }">full audit →</a>
       </span>
     </div>
 
-    @if (timeline().length === 0) {
-      @if (phaseFilter(); as phase) {
-        <p class="quiet muted">No {{ phase }} events on this item — only the newest attempt is drawn.</p>
-      } @else {
-        <p class="quiet muted">No events recorded for this item yet.</p>
-      }
+    @if (phaseRows().length === 0) {
+      <p class="quiet muted">No item selected.</p>
     } @else {
       <div class="table-scroll">
-        <table class="grid" translate="no">
+        <table class="grid phases" translate="no">
           <thead>
             <tr>
-              <th scope="col" class="st">Status</th>
-              <th scope="col" class="err-col"><span class="sr-only">Error</span></th>
-              <th scope="col">Event</th>
               <th scope="col">Phase</th>
-              <th scope="col" class="from">From</th>
-              <th scope="col" class="num">Gap</th>
-              <th scope="col">When</th>
+              <th scope="col" class="st">Status</th>
+              <th scope="col" class="num">Took</th>
+              <th scope="col" class="when">Started</th>
+              <th scope="col" class="act"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
-            @for (event of timeline(); track event.id; let i = $index) {
-              <tr>
-                <td class="st"><vk-status [status]="event.status" /></td>
-                <!-- The code in a column beside the status it qualifies, and it is what opens the
-                     message: as a row of its own that message took the width under every event that
-                     had one, and most of this trail has nothing to say there. -->
-                <td class="err-col">
-                  <vk-error-code
-                    [code]="event.errorCode || (blank(event.error) ? '' : 'no code')"
-                    [cancelled]="event.status === 'CANCELLED'"
-                    [open]="disclosure.isOpen(event.id)"
-                    [controls]="'evt-' + event.id"
-                    (toggled)="disclosure.toggle(event.id)"
-                  />
+            @for (row of phaseRows(); track row.seg.phase) {
+              <tr
+                class="phase-row"
+                [class.on]="openPhase() === row.seg.phase"
+                [class.void]="!row.events && !row.rerun"
+              >
+                <td>
+                  <!-- The name is the disclosure. A phase that never ran and was never re-run has
+                       nothing behind it, so opening it could only show an empty list; it stays
+                       plain text instead. -->
+                  @if (row.events || row.rerun) {
+                    <button
+                      class="ph-open mono"
+                      type="button"
+                      [attr.aria-expanded]="openPhase() === row.seg.phase"
+                      [attr.aria-controls]="'ph-' + row.seg.phase"
+                      (click)="togglePhase(row.seg.phase)"
+                    >
+                      <span class="caret" aria-hidden="true">{{ openPhase() === row.seg.phase ? '▾' : '▸' }}</span>
+                      {{ row.seg.phase }}
+                      <span class="n muted">{{ row.events }}</span>
+                      <!-- The Took and Started beside this are then the re-run's, not the run's.
+                           Without the tag the row claims the pipeline took 37.8s at 02:57 when
+                           what it is reporting happened three days later, by hand. -->
+                      @if (row.rerun) {
+                        <span class="tag">re-run</span>
+                      }
+                    </button>
+                  } @else {
+                    <span class="mono ph-flat">{{ row.seg.phase }}</span>
+                  }
                 </td>
-                <td class="mono sm" [class.failed]="event.eventType === 'ITEM_FAILED'">{{ event.eventType }}</td>
-                <!-- ITEM_RETRY_REQUESTED carries no phase, and "" is how this API says absent. -->
-                <td class="mono sm">{{ event.phase || '—' }}</td>
-                <td class="mono sm muted from">{{ event.previousPhase || '—' }}</td>
-                <td class="num sm muted">{{ gap(event, i) }}</td>
-                <td class="mono sm when" [title]="absoluteTime(event.occurredAt)">{{ clockTime(event.occurredAt) }}</td>
+                <td class="st"><vk-status [status]="row.status" /></td>
+                <td class="num sm">{{ row.seg.ms === null ? '—' : humanDuration(row.seg.ms) }}</td>
+                <td class="mono sm when" [title]="absoluteTime(row.seg.at)">
+                  {{ row.seg.at ? clockTime(row.seg.at) : '—' }}
+                </td>
+                <td class="act">
+                  @if (selected(); as item) {
+                    @if (rerunnable(item, row.seg)) {
+                      <span class="row-actions">
+                        <button
+                          class="btn-sm"
+                          type="button"
+                          [class.armed]="armedPhase() === row.seg.phase"
+                          [disabled]="runningPhase() !== null"
+                          (click)="confirmRerun(item, row.seg.phase)"
+                        >
+                          {{ rerunLabel(row.seg.phase) }}
+                        </button>
+                        @if (armedPhase() === row.seg.phase) {
+                          <button class="btn-sm" type="button" (click)="armedPhase.set(null)">Cancel</button>
+                        }
+                      </span>
+                    }
+                  }
+                </td>
               </tr>
-              <!-- Under the row, not in a seventh column: as a column the message is squeezed on a
-                   desktop and past the right edge of a phone, and every event without one pays for
-                   the width anyway. Most rows have nothing to say here. -->
-              @if ((!blank(event.errorCode) || !blank(event.error)) && disclosure.isOpen(event.id)) {
-                <tr class="detail-row" [id]="'evt-' + event.id">
-                  <td colspan="7">
-                    <vk-fault
-                      [hideCode]="true"
-                      [errorCode]="event.errorCode"
-                      [error]="event.error"
-                      [cancelled]="event.status === 'CANCELLED'"
-                    />
+
+              <!-- The events that made the row above, on demand. This is the detail the panel used
+                   to show unconditionally for every phase at once. -->
+              @if (openPhase() === row.seg.phase) {
+                <tr class="detail-row" [id]="'ph-' + row.seg.phase">
+                  <td colspan="5">
+                    <ul class="events mono sm">
+                      @if (row.rerun; as rerun) {
+                        <li class="ev-rerun">
+                          <span class="ev-when" [title]="absoluteTime(rerun.at)">{{ clockTime(rerun.at) }}</span>
+                          <span class="ev-gap muted"></span>
+                          <span class="ev-type" [class.failed]="rerun.failed">
+                            {{ rerun.ms === null ? 'RE-RUN RUNNING' : rerun.failed ? 'RE-RUN FAILED' : 'RE-RUN' }}
+                          </span>
+                          <span class="muted">
+                            @if (rerun.ms !== null) {
+                              {{ humanDuration(rerun.ms) }}@if (rerun.rows !== undefined) {, {{ rerun.rows }} row(s)}
+                              · the events below are the original run's
+                            } @else {
+                              in flight — this endpoint writes no audit events
+                            }
+                          </span>
+                        </li>
+                      }
+                      @for (event of timeline(); track event.id; let i = $index) {
+                        <li>
+                          <span class="ev-when" [title]="absoluteTime(event.occurredAt)">
+                            {{ clockTime(event.occurredAt) }}
+                          </span>
+                          <span class="ev-gap muted">{{ gap(event, i) }}</span>
+                          <span class="ev-type" [class.failed]="event.eventType === 'ITEM_FAILED'">
+                            {{ event.eventType }}
+                          </span>
+                          @if (event.previousPhase) {
+                            <span class="muted">from {{ event.previousPhase }}</span>
+                          }
+                          <vk-error-code
+                            [code]="event.errorCode || (blank(event.error) ? '' : 'no code')"
+                            [cancelled]="event.status === 'CANCELLED'"
+                            [open]="disclosure.isOpen(event.id)"
+                            [controls]="'evt-' + event.id"
+                            (toggled)="disclosure.toggle(event.id)"
+                          />
+                        </li>
+                        @if ((!blank(event.errorCode) || !blank(event.error)) && disclosure.isOpen(event.id)) {
+                          <li class="ev-fault" [id]="'evt-' + event.id">
+                            <vk-fault
+                              [hideCode]="true"
+                              [errorCode]="event.errorCode"
+                              [error]="event.error"
+                              [cancelled]="event.status === 'CANCELLED'"
+                            />
+                          </li>
+                        }
+                      } @empty {
+                        <!-- Three markers carry no lane phase and so appear on no row: ITEM_CREATED
+                             and ITEM_COMPLETED say what the head already says, and
+                             ITEM_RETRY_REQUESTED is the attempt number on the item above. The full
+                             audit has all three. -->
+                        @if (!row.rerun) {
+                          <li class="muted">No events on this phase.</li>
+                        }
+                      }
+                    </ul>
                   </td>
                 </tr>
               }

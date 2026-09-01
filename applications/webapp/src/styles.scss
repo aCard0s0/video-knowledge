@@ -202,7 +202,10 @@ label {
 }
 
 /*
-  A table wider than its panel scrolls, and says so.
+  Anything wider than its panel scrolls, and says so.
+
+  Named for the tables it was written for; the videos status-chip row uses it too, and the rules
+  below are about horizontal overflow, not about tables.
 
   Below 767px the channel list's own actions sit past the right edge with nothing to suggest it.
   Right edge only: a table never loads already scrolled, so the left end has nothing to announce.

@@ -133,12 +133,12 @@ export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number];
 /**
  * Which pane on the video screen shows what a phase produced.
  *
- * An item that died in OCR should land the operator on the frames pane, where the per-phase rerun
- * button already lives. Re-running one phase is deliberately *not* offered from the run screen:
- * the endpoint takes a video id, a run item carries one only while that video row still exists
- * (`ON DELETE SET NULL`), and the video screen can show what the phase produced. Deep-linking the
- * pane removes the only part of that trip that was actually a hunt. CONTEXT is absent on purpose:
- * search chunks have no pane, so there is nowhere honest to land.
+ * An item that died in OCR should land the operator on the frames pane, where the rerun sits
+ * beside the artifacts it rebuilds. The run screen's phase trail offers the same rerun without
+ * leaving the run — it is the same endpoint, gated on the item still carrying a video id
+ * (`ON DELETE SET NULL`) — so this link is now for seeing what the phase *produced*, which the run
+ * screen cannot show. CONTEXT is absent on purpose: search chunks have no pane, so there is
+ * nowhere honest to land.
  */
 export const PHASE_PANE: Partial<Record<OptionalPhase, string>> = {
   TRANSCRIBE: 'transcript',
