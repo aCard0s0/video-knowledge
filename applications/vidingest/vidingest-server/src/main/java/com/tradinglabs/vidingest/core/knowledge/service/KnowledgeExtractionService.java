@@ -226,7 +226,7 @@ public class KnowledgeExtractionService {
                     .video(video)
                     .type(d.type())
                     .title(truncate(d.title(), 512))
-                    .content(stripEmptySlotLines(d.content()))
+                    .content(stripMetaOpening(stripEmptySlotLines(d.content())))
                     .metadata(buildMetadata(d))
                     .startSeconds(d.startSeconds())
                     .endSeconds(d.endSeconds())
@@ -271,6 +271,48 @@ public class KnowledgeExtractionService {
         String result = kept.toString().strip();
         return result.isEmpty() ? content : result;
     }
+
+    /**
+     * Turn "The video explains a trend continuation strategy…" into "A trend continuation
+     * strategy…".
+     *
+     * <p>The prompt forbids this twice — the SUMMARY contract says "never begin with 'The video' or
+     * 'This video'" and gives a worked example of the failure — and the model does it anyway in
+     * roughly a third of runs. At 14B/4-bit that instruction is a preference, not a constraint.
+     *
+     * <p>Fixed here for the same reason {@link #stripEmptySlotLines} is: the measured cost of
+     * telling the model harder is more prompt for less coverage, and a regex costs nothing. It
+     * matters beyond tidiness because a unit is supposed to <em>stand alone</em> — "the video
+     * explains X" is about the video, while "X" is the knowledge, and the content field is what
+     * gets embedded and what search returns.
+     *
+     * <p>Only strips a leading clause of the exact shape {@code "(The|This) video <verb>s "}, where
+     * the verb is one of a closed list of describing verbs. Anything else is left alone: a unit
+     * whose second sentence mentions the video keeps it, and "The videos are compared" is not a
+     * match. Re-capitalises what is left, since the remainder was mid-sentence.
+     */
+    static String stripMetaOpening(String content) {
+        if (content == null || content.isBlank()) return content;
+        var m = META_OPENING.matcher(content);
+        if (!m.lookingAt()) return content;
+        String rest = content.substring(m.end());
+        if (rest.isBlank()) return content;
+        return Character.toUpperCase(rest.charAt(0)) + rest.substring(1);
+    }
+
+    /**
+     * {@code "The video explains "} and its close relatives, anchored at the start only.
+     *
+     * <p>The verb list is closed on purpose. A wider pattern ("The video ...") would eat
+     * "The video was recorded on a 5m chart", which is content about the material rather than a
+     * description of it.
+     */
+    private static final java.util.regex.Pattern META_OPENING = java.util.regex.Pattern.compile(
+            "\\s*(?:the|this)\\s+video\\s+"
+                    + "(?:explains|describes|discusses|covers|teaches|demonstrates|shows|presents"
+                    + "|outlines|introduces|walks\\s+through|goes\\s+over)\\s+"
+                    + "(?:how\\s+to\\s+|that\\s+|a\\s+|an\\s+|the\\s+)?",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
 
     /**
      * {@code "<Label>: <non-answer>"}, where the label is a word or two and the value says nothing.

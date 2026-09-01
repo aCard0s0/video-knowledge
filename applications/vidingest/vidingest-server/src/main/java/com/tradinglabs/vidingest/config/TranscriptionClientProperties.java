@@ -67,10 +67,13 @@ public class TranscriptionClientProperties {
      *   <li><em>break of structure</em> — fully fixed. "breaker structure" ×3 disappeared and the
      *       correct form went 12 → 15 occurrences.</li>
      *   <li>the garbled "where we can will close" → "where we can close" — fixed.</li>
-     *   <li><em>fib retracement</em> — <b>not</b> fixed. "fiber tracement" became "fiber
-     *       retracement": closer, still wrong, and still 3 occurrences. Listing the term in the
-     *       hint did not make the decoder prefer the token "fib", so a shorter surface form may
-     *       simply lose to a common English word. Unsolved.</li>
+     *   <li><em>fib retracement</em> — <b>not</b> fixed, and not fixable this way. "fiber tracement"
+     *       became "fiber retracement": closer, still wrong. Emphasising the token — adding
+     *       {@code "fib, the fib, fib retracement, fib sweep"} to the hint — produced a
+     *       <b>byte-identical</b> transcript, so the decoder is not choosing between candidates it
+     *       could be nudged between; it hears "fiber". Do not retry by reweighting the vocabulary.
+     *       A different ASR model, or accepting the term and normalising downstream, are the
+     *       remaining options.</li>
      * </ul>
      *
      * <p>This matters more than a transcript typo normally would, because the KNOWLEDGE phase's

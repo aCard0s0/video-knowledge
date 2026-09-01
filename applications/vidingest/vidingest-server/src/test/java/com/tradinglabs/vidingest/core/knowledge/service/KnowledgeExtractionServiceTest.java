@@ -451,4 +451,60 @@ class KnowledgeExtractionServiceTest {
         String allFiller = "Stop/abort: None specified.\nTarget: N/A";
         assertThat(KnowledgeExtractionService.stripEmptySlotLines(allFiller)).isEqualTo(allFiller);
     }
+
+    // ---- stripMetaOpening ----
+
+    /**
+     * Real openings taken from eval runs. The prompt forbids this twice and the model does it in
+     * roughly a third of runs anyway, so it is stripped rather than argued about — the same trade
+     * as {@code stripEmptySlotLines}, for the same measured reason.
+     */
+    @Test
+    void stripMetaOpeningTurnsADescriptionOfTheVideoIntoTheKnowledge() {
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "The video explains a trend continuation trading strategy that involves identifying a trend."))
+                .isEqualTo("Trend continuation trading strategy that involves identifying a trend.");
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "The video teaches how to sharpen a knife on a whetstone."))
+                .isEqualTo("Sharpen a knife on a whetstone.");
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "This video covers the use of trading indicators to identify liquidity."))
+                .isEqualTo("Use of trading indicators to identify liquidity.");
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(
+                "The video walks through configuring the indicator."))
+                .isEqualTo("Configuring the indicator.");
+    }
+
+    /**
+     * The pattern is anchored and its verb list is closed, so it only removes a clause that is
+     * purely <em>about</em> the video. Everything else keeps its text — including a unit that
+     * mentions the video after the first clause, and a sentence where "video" is the subject of
+     * something real.
+     */
+    @Test
+    void stripMetaOpeningLeavesAnythingThatIsNotAPureDescription() {
+        for (String untouched : List.of(
+                "Short entries are taken after a liquidity sweep confirms a downside shift.",
+                "The video was recorded on a 5m NASDAQ chart.",
+                "The videos are compared side by side.",
+                "A liquidity sweep is required; the video explains why.",
+                "The host explains a trend continuation strategy.")) {
+            assertThat(KnowledgeExtractionService.stripMetaOpening(untouched))
+                    .withFailMessage("should have been left alone: %s", untouched)
+                    .isEqualTo(untouched);
+        }
+
+        assertThat(KnowledgeExtractionService.stripMetaOpening(null)).isNull();
+        assertThat(KnowledgeExtractionService.stripMetaOpening("")).isEmpty();
+    }
+
+    /** A unit that is nothing but the meta clause keeps its body rather than becoming blank. */
+    @Test
+    void stripMetaOpeningNeverEmptiesTheBody() {
+        assertThat(KnowledgeExtractionService.stripMetaOpening("The video explains "))
+                .isEqualTo("The video explains ");
+    }
 }

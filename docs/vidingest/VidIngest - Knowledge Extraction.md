@@ -244,11 +244,78 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   `finish_reason: length` and returns no JSON at all — the phase fails rather than improves. The
   connections API will accept the model name (it validates the *provider*, not the model's
   behaviour), so this is not caught before a run.
+- **OCR reaching this phase is filtered upstream, in FUSE — for cost, not for quality.** On the
+  reference video OCR was **54% of the input** (5852 chars against 4938 of transcript): a screen
+  recording picks up the browser, the price axis and the sponsor watermark along with the content,
+  and under v2 the model made that watermark its ENTITY and the ad copy its CLAIM.
+  `SegmentFusionService` drops two classes, taking OCR to **43% of the input** and the whole prompt
+  down 17% (11435 → 9448 chars).
+
+  **It does not recover more rules.** Measured at 13.8 of 19 filtered against 14.8 unfiltered, four
+  interleaved reps each — inside the ±3 noise floor, so no effect. The plausible theory (the model
+  is attention-limited, so a smaller prompt should extract more) was tested and did not hold.
+  Reproduce with `v3-baseline.txt@knowledge-fixture-ocr-filtered.json`. Kept because a sixth off
+  the prompt for no measured loss is worth having, especially where
+  `max-input-chars-per-batch` binds on a long video. The two classes:
+  - `carriesMeaning` — a line with no letter in it is a chart price axis, a number with nothing
+    saying what it refers to, and 27% of the raw OCR characters. A labelled level (`BOS (29360.75`,
+    `NQ129,679.500.68%`) keeps its letters and survives.
+  - `chromeOcrLines` — a line present in ≥ `vidingest.fusion.ocr-chrome-window-ratio` of a video's
+    windows is interface furniture, since chrome is static and content is not. Worth only ~2% here,
+    because OCR garbling means the same watermark reads differently in nearly every frame, but it
+    is the right rule for videos with stable overlays.
+
+  Two wider filters were **measured and rejected**, which is worth not re-proposing:
+  - **OCR confidence.** Garbled brand overlays median 0.840 against 0.943 for everything else, but
+    the distributions overlap: a 0.9 threshold drops 36 chrome lines and 133 content lines. Net
+    loss at every threshold.
+  - **Fixed screen position.** Chrome is spatially static, so a grid cell occupied in most frames
+    should be furniture — but on a short cutting between chart, browser and landing page, only the
+    watermark stays put: 11 of 51 chrome lines for 5 content lines. A fifth of the problem for a
+    bbox-quantising pass.
+
+  What survives both filters is unstructured noise — ad copy, site navigation, clickbait overlay
+  text — that no cheap structural rule separates from content. That is what the prompt's exclusion
+  list is for, and why it stays. Taken together with the null result above, the honest summary is
+  that **OCR noise on a monetised screen recording is a prompt problem, not an input problem**: the
+  exclusion list is what handles it, and filtering the input buys tokens rather than accuracy.
+- **`stripMetaOpening` and `stripEmptySlotLines` clean the output in code, not in the prompt.** The
+  model opens a SUMMARY with "The video explains…" in about a third of runs despite being told twice
+  not to, and answers all nine rule-kind slots including the ones the video never stated. Both are
+  deterministic and free to fix in `KnowledgeExtractionService`; telling the model harder measured
+  *worse* (see the noise floor above).
 - **Filtering**: drops drafts below `vidingest.knowledge.min-salience` (0.2) and types
   outside `vidingest.knowledge.types`. Caps total persisted to `max-units-per-video`.
 - **Embedding**: each surviving unit's content is embedded via the existing
   `EmbeddingsClient` (1536-d, same shape as `context_chunks`). Embedding failure is soft —
   rows persist with `embedding=null` so they remain queryable by type/time.
+- **`GET /api/v1/knowledge/stale` says which videos need re-extracting.** `metadata.prompt_version`
+  was written on every unit and nothing read it, so a prompt upgrade was unactionable: v2 → v3
+  changed what extraction *means*, so older rows are not comparable with newer ones. The endpoint
+  reports rather than re-extracts — one video is ~2.5 minutes of LLM time, so a bulk version would
+  hold a request open for hours — and pairs with the existing per-video regenerate:
+
+  ```bash
+  curl -s localhost:8051/vidingest/api/v1/knowledge/stale | jq -r '.videos[].videoId' \
+    | while read id; do curl -s -X POST "localhost:8051/vidingest/api/v1/videos/$id/knowledge/regenerate"; done
+  ```
+
+  `truncated` says the limit cut the list short, so a short list is not mistaken for finished. This
+  is the **first query in the schema that reads JSONB by content**, and it still adds no GIN index
+  on `metadata` — the rule is to add one alongside the query that needs it, and an operator action
+  over thousands of rows does not.
+- **Reproducible prompt evaluation**: `scripts/eval-knowledge-prompt.py` scores prompt files against
+  `scripts/eval/knowledge-fixture.json` (the reference video's eight fused segments plus its 19-rule
+  ground truth). Arms are `PROMPT[@FIXTURE]`, so an input-side change — a FUSE filter, different OCR
+  — is measured the same way as a prompt change, and arms run **interleaved** rather than blocked.
+  `KnowledgeExtractionPromptTest.baselineEvalPromptIsInSyncWithTheCode` keeps the committed baseline
+  equal to what `systemMessage()` renders and rewrites it under `-DupdateEvalBaseline=true`.
+- **A batch that cannot be read now fails the phase.** `KnowledgeUnitJson.parseUnitsArray` used to
+  answer an unparseable payload with an empty list, but the service counts a batch as failed only
+  when `extract` throws — so the phase reported success having extracted nothing and replaced a
+  complete extraction with a partial one. A well-formed `{"units": []}` is still an empty success.
+  Failure messages carry the content length and name `max-output-tokens`, because a truncating
+  output cap is the likely trigger.
 - **Idempotent**: wipe-then-save on each run, both in one short transaction *after* the LLM
   batch loop. The loop itself still holds no pooled connection — one transaction across it would
   pin a connection for every chat round-trip — but the wipe no longer commits ahead of it, so
