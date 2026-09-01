@@ -52,7 +52,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | Progress | **Polled.** The REST API has no SSE and no websocket |
 | Corpus scale | Thousands of videos/runs — server-side paging everywhere |
 | Video playback | Yes; the player drives the artifact panes |
-| Deployment | Angular build baked into `classpath:/static` at Docker image build time (multi-stage, not Maven). Dev: `ng serve` + proxy |
+| Deployment | Its own nginx image (`applications/webapp/Dockerfile`), built with `--base-href=/vidingest/`, proxying the API to `vidingest:8051`. It used to be baked into the server's `classpath:/static`; that and its `SpaStaticResourceConfig` are both gone. Dev: `ng serve` + proxy |
 | Not built | A search screen (`/api/v1/search`, `/api/v1/knowledge/search`) — another system queries the knowledge |
 
 ## Screens

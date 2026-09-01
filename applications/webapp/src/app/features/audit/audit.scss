@@ -68,10 +68,16 @@
 }
 
 .filter input[type='search'] {
-  // The placeholder is now the field's name *and* the format it takes — "run id — " plus a whole
+  // The placeholder is the field's name *and* the format it takes — "run id — " plus a whole
   // 36-character uuid, 45 in all. At the old 37ch it clipped to `…-9d61…`, which is the truncated
   // id the placeholder exists to stop anyone pasting.
-  width: 46ch;
+  //
+  // The chrome added on top of the characters, because the reset is `border-box`: a bare `46ch` is
+  // 46 characters *including* everything around them, so it never actually held 46 — measured at 42
+  // against the padding this screen now inherits. 22px is the global input rule's side padding plus
+  // its border; the other 16 is the clear button Chromium reserves inside a `type="search"`, which
+  // was still eating the uuid's last character on its own.
+  width: calc(46ch + 38px);
   max-width: 100%;
 }
 

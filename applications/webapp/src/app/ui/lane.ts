@@ -152,6 +152,19 @@ import { humanDuration } from '../core/time';
       letter-spacing: 0.04em;
       white-space: nowrap;
       overflow: hidden;
+      /* The hide-below-48px rule further down covers the segments too narrow to say anything; this
+         is the band above it. FRAME_SAMPLE wants ~90px and TRANSCRIBE ~76px, so a phase that took
+         5% of a four-minute run lands between the two and hard-clipped to TRANSCRI — which reads
+         as a rendering fault, the same thing the 48px rule exists to stop. Truncated with an
+         ellipsis it reads as truncated. Backticks are deliberately absent: this comment lives
+         inside the styles template literal, and one would end it.
+
+         min-width is what makes the ellipsis possible at all. These are flex items of the column
+         button above, so min-width:auto resolves to their min-content size — the whole word, for
+         nowrap text. The box was never narrower than its own text, so nothing overflowed *it*: the
+         button clipped instead, which is a cut, not an ellipsis. */
+      min-width: 0;
+      text-overflow: ellipsis;
     }
 
     .ph {

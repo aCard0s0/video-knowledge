@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
@@ -26,6 +26,19 @@ import { PhasePicker } from '../../ui/phase-picker';
 import { syncQueryParams } from '../../core/url-state';
 import { clampPage } from '../../core/paging';
 
+/**
+ * Whether a sticky element has left the flow and is riding the top edge.
+ *
+ * Exported and taking only the rect so the trap is executable: the usual way to write this is
+ * `entry.intersectionRatio < 1`, and that is wrong on first observe — an element still below the
+ * fold has ratio 0 as well, so the shadow appeared on load for any channel whose watch panel had
+ * pushed the ingest bar off screen. The top edge answers only the question being asked, and every
+ * observer firing carries a fresh rect.
+ */
+export function pinnedToTop(rect: { top: number }): boolean {
+  return rect.top <= 0;
+}
+
 const PAGE_SIZE = 50;
 const MAX_PER_RUN = 100; // CreatePipelineRunFromYoutubeVideosRequest: @Size(max = 100)
 
@@ -34,6 +47,8 @@ const MAX_PER_RUN = 100; // CreatePipelineRunFromYoutubeVideosRequest: @Size(max
   imports: [RouterLink, StatusBadge, Pager, Empty, Problem, PhasePicker, Lane, Fault, Rejects],
   templateUrl: './channel-detail.html',
   styleUrl: './channel-detail.scss',
+  // The table's sticky header offset keys off this — see `--ingest-h` in the stylesheet.
+  host: { '[class.pinned]': 'stuck()' },
 })
 export class ChannelDetail {
   readonly channelId = input.required<string>();
@@ -42,6 +57,25 @@ export class ChannelDetail {
   protected readonly poller = inject(Poller);
   private readonly capabilities = inject(Capabilities);
   private readonly router = inject(Router);
+
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly ingestPanel = viewChild<ElementRef<HTMLElement>>('ingestPanel');
+
+  /**
+   * True once the ingest panel has left the flow and is riding the top edge.
+   *
+   * There is no `:stuck` selector — it is proposed, not shipped — so the panel observes itself
+   * against a viewport inset by a pixel, which is what makes it clip the moment it pins and gives
+   * the observer something to fire on. No sentinel element and no scroll listener, which on a
+   * zoneless app would be a signal write per frame. The answer itself is {@link pinnedToTop}.
+   *
+   * The same callback publishes the panel's height as `--ingest-h`, because the uploads table's
+   * own sticky `th` is also pinned to `top` and would otherwise slide underneath it — the column
+   * headers vanishing behind the panel exactly while you scroll the rows you are picking from.
+   * `offsetHeight` is read here rather than by a second observer: the intersection geometry changes
+   * on resize too, so this fires whenever the height could have moved.
+   */
+  protected readonly stuck = signal(false);
 
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
@@ -72,6 +106,22 @@ export class ChannelDetail {
         if (this.runId()) this.watch.reload();
       },
     );
+
+    // Re-observes when the panel enters the tree, which is only once the channel has loaded.
+    effect((onCleanup) => {
+      const panel = this.ingestPanel()?.nativeElement;
+      if (!panel) return;
+      const host = this.host.nativeElement;
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          this.stuck.set(pinnedToTop(entry.boundingClientRect));
+          host.style.setProperty('--ingest-h', `${panel.offsetHeight}px`);
+        },
+        { threshold: [0, 1], rootMargin: '-1px 0px 0px 0px' },
+      );
+      observer.observe(panel);
+      onCleanup(() => observer.disconnect());
+    });
   }
 
   protected readonly channel = rxResource({
