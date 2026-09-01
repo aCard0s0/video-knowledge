@@ -87,6 +87,16 @@ public class TranscriptionClientProperties {
      * <p>Sent only by the {@code openai-compatible} client. The whisper-asr sidecar's
      * {@code POST /asr} takes no equivalent part, so the value is ignored under that provider
      * rather than silently changing behaviour.
+     *
+     * <p><b>Deliberately not on the connections API</b>, and that is a judgement call rather than a
+     * consequence of the rule that keeps timeouts off it. Timeouts are excluded because a transport
+     * consumes them once, so a runtime edit could not reach the client; this value <em>is</em> read
+     * per call, so an edit would reach it. It stays environment-only for three other reasons: it is
+     * scoped to the <em>domain</em> being ingested rather than to the connection, so it does not
+     * change when the runtime does; storing it needs a column on {@code vidingest_connections} and
+     * therefore a migration, for a string set once per deployment; and a prompt that does not match
+     * the audio is a hallucination vector, which is a poor fit for a field an operator can change in
+     * one click. Revisit if a deployment starts ingesting several unrelated domains at once.
      */
     private String prompt = "";
 
