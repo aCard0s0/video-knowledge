@@ -280,10 +280,18 @@ causal-LM embedder by looking for `embed` in the **directory name** (so `gte-Qwe
 is filed as an LLM despite being 1536-wide), and its embedding engine has no `qwen2` support at all,
 so overriding the type does not rescue it.
 
-**Five connections are editable at runtime**: `GET/PUT/DELETE /api/v1/connections/{name}` and
-`POST .../test`, over `EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `OCR`
+**Six connections are editable at runtime**: `GET/PUT/DELETE /api/v1/connections/{name}` and
+`POST .../test`, over `EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `FRAME_SAMPLE`, `OCR`
 (`connections/`, table `vidingest_connections`, console screen `features/settings/`). A row is an
-**override**, not the configuration: absent, the environment value applies. `ConnectionSettingsService`
+**override**, not the configuration: absent, the environment value applies.
+
+`FRAME_SAMPLE` is the odd one and is deliberately here: it is local ffmpeg, so it carries a phase
+toggle and nothing else — `supportsBaseUrl` is false, `base_url` is nullable since `009`, and the
+probe answers "no endpoint" rather than "unreachable". It is on this API because OCR's toggle is
+meaningless without it: `OcrPhase.applies` now requires `vidingest.frames.enabled` as well as its
+own, so a screen that could flip OCR but not frames was one click from a run that entered OCR and
+read an empty frame set. `supportsBaseUrl`/`supportsModel`/`supportsEnabled` are served per row so
+the console renders only the controls the server would honour — mirror none of it client-side. `ConnectionSettingsService`
 snapshots the environment values before applying rows, which is the only reason `DELETE` can mean
 "back to what `.env` said". It applies on `ApplicationReadyEvent`, **not** `@PostConstruct` — the
 table does not exist yet at bean-init time.

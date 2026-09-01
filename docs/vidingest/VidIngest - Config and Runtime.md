@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-29
+last_reviewed: 2026-09-01
 ---
 
 # VidIngest - Config and Runtime
@@ -294,7 +294,7 @@ Notes:
   process has to **bind `0.0.0.0`**: a container arrives on the bridge address, so a
   `127.0.0.1`-only listener refuses the connection. This is the single most common cause of
   "connection refused" after the move off the `llm` container.
-- Every one of these is a *starting* value. All five connections are editable at runtime — see
+- Every one of these is a *starting* value. All six connections are editable at runtime — see
   [Connections API](#connections-api-runtime-editable) below.
 - **oMLX decides a model is an embedding model by its directory name.** `_is_causal_lm_embedding`
   looks for `embed`/`embedding` in the name, because a causal-LM embedder's `config.json` is
@@ -327,26 +327,32 @@ Notes:
 
 ## Connections API (runtime-editable)
 
-Everything above is bound from the environment at startup. The five *connections* — where the
-server reaches its model runtimes and sidecars — are additionally editable while it runs, from
-`GET/PUT/DELETE /api/v1/connections/{name}` or the console's **Settings** screen.
+Everything above is bound from the environment at startup. The six *connections* — where the
+server reaches its model runtimes and sidecars, plus the one phase that runs locally — are
+additionally editable while it runs, from `GET/PUT/DELETE /api/v1/connections/{name}` or the
+console's **Settings** screen.
 
 Code:
 [connections/](../../applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/connections),
-changeset `008-connections.sql`, console
+changesets `008-connections.sql` and `009-connections-nullable-base-url.sql`, console
 [features/settings/](../../applications/webapp/src/app/features/settings).
 
-| Name | Config bean | Providers | Model? | Enable toggle? |
-|------|-------------|-----------|--------|----------------|
-| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `disabled` | yes | no |
-| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible` | yes | yes |
-| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible` | yes | no |
-| `DIARIZATION` | `vidingest.diarization.*` | `diarize-asr` | no | yes |
-| `OCR` | `vidingest.ocr.*` | `paddleocr` | no | yes |
+| Name | Config bean | Providers | Base URL? | Model? | Enable toggle? |
+|------|-------------|-----------|-----------|--------|----------------|
+| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `disabled` | yes | yes | no |
+| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible` | yes | yes | yes |
+| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible` | yes | yes | no |
+| `DIARIZATION` | `vidingest.diarization.*` | `diarize-asr` | yes | no | yes |
+| `FRAME_SAMPLE` | `vidingest.frames.*` | `ffmpeg` | **no** | no | yes |
+| `OCR` | `vidingest.ocr.*` | `paddleocr` | yes | no | yes |
+
+The three `supports*` columns are served per row (`supportsBaseUrl`, `supportsModel`,
+`supportsEnabled`) so the console renders only the controls the server would honour. Mirror none of
+it client-side — a new connection then needs no console change.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/api/v1/connections` | All five, with their effective values |
+| `GET` | `/api/v1/connections` | All six, with their effective values |
 | `GET` | `/api/v1/connections/{name}` | |
 | `PUT` | `/api/v1/connections/{name}` | Stores the override **and** applies it immediately |
 | `DELETE` | `/api/v1/connections/{name}` | 204; reverts to the value the server started with |
@@ -383,6 +389,14 @@ Things worth knowing before you rely on it:
 - **The provider is validated on the way in**, against the same list the router uses at call time
   (served back as `supportedProviders`). An unrecognised value would otherwise fail the phase
   rather than the request.
+- **`FRAME_SAMPLE` is a connection with no connection.** It is local ffmpeg, so it carries only the
+  phase toggle: `supportsBaseUrl` is false, `base_url` is nullable (changeset `009`), a `PUT` that
+  sends no `baseUrl` is accepted, and `POST .../test` answers `reachable: false` with *"runs locally
+  and has no endpoint to probe"* rather than pretending to have tried. It is on this API because
+  `vidingest.ocr.enabled` is meaningless without it — `OcrPhase.applies` requires
+  `vidingest.frames.enabled` too, since frame sampling writes the only input OCR has, so a settings
+  screen that could flip OCR but not frames was one click from a run that entered OCR and found
+  nothing. Every other connection still requires an absolute `http(s)` base URL.
 
 ## Docker configuration
 

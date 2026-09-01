@@ -1,6 +1,6 @@
 ---
 type: reference
-last_reviewed: 2026-08-29
+last_reviewed: 2026-09-01
 ---
 
 # VidIngest — Web UI
@@ -69,15 +69,24 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | **Settings** | `GET /connections`, `PUT /connections/{name}`, `DELETE /connections/{name}`, `POST /connections/{name}/test` |
 
 **Settings** stopped being a placeholder in Aug 2026. It is a card per connection — EMBEDDINGS,
-KNOWLEDGE, TRANSCRIPTION, DIARIZATION, OCR — each with the provider, base URL, model and API key,
-plus save / test / reset. Cards rather than a table because every row carries five fields and three
-actions, which is a horizontal scroll at any width where the card grid still reads.
+KNOWLEDGE, TRANSCRIPTION, DIARIZATION, FRAME_SAMPLE, OCR — each with the provider, base URL, model
+and API key, plus save / test / reset. Cards rather than a table because every row carries five
+fields and three actions, which is a horizontal scroll at any width where the card grid still reads.
 
-Three things the screen deliberately does not decide for itself: the provider dropdown, whether a
-model field appears, and whether an enable toggle appears all come from the row
-(`supportedProviders`, `supportsModel`, `supportsEnabled`). Mirroring those client-side is how a
-console drifts from what the server will accept. The API key box is write-only — the server never
-returns a key, so it starts empty even when one is stored and staying empty means "keep it".
+Four things the screen deliberately does not decide for itself: the provider dropdown, and whether a
+base-URL box, a model field or an enable toggle appears, all come from the row
+(`supportedProviders`, `supportsBaseUrl`, `supportsModel`, `supportsEnabled`). Mirroring those
+client-side is how a console drifts from what the server will accept. The API key box is
+write-only — the server never returns a key, so it starts empty even when one is stored and staying
+empty means "keep it".
+
+FRAME_SAMPLE is why `supportsBaseUrl` exists (Sep 2026). It is local ffmpeg, so its card is a
+provider and a toggle: no base-URL box, and no **test** button, because a probe against nothing
+would report a fault where there is none. It is on this screen at all because OCR's toggle does not
+mean anything without it — `OcrPhase` needs frames — so a Settings page that could enable OCR alone
+was one click from a run that entered the phase and read an empty frame set. Note the flag is
+served rather than inferred from a null `baseUrl`: `VIDINGEST_EMBEDDINGS_BASE_URL` legitimately
+defaults to empty, and inferring would hide the box exactly when an operator needs to fill it in.
 
 ## Design direction
 

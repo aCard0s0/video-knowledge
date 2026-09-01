@@ -3,6 +3,7 @@ package com.tradinglabs.vidingest.integration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradinglabs.vidingest.api.connections.ConnectionName;
+import com.tradinglabs.vidingest.config.FrameSamplingConfig;
 import com.tradinglabs.vidingest.config.OcrConfig;
 import com.tradinglabs.vidingest.config.VideoSearchConfig;
 import com.tradinglabs.vidingest.connections.repo.ConnectionRepository;
@@ -39,6 +40,9 @@ class ConnectionsApiIntegrationTest extends BaseVidingestIntegrationTest {
 
     @Autowired
     private OcrConfig ocrConfig;
+
+    @Autowired
+    private FrameSamplingConfig frameSamplingConfig;
 
     private final HttpClient http = HttpClient.newHttpClient();
 
@@ -180,6 +184,58 @@ class ConnectionsApiIntegrationTest extends BaseVidingestIntegrationTest {
                 .build()).statusCode()).isEqualTo(400);
 
         // Neither rejection may leave the live bean holding a value the database does not have.
+        assertThat(connectionRepository.findById(ConnectionName.OCR)).isEmpty();
+    }
+
+    /**
+     * FRAME_SAMPLE is the one connection with no connection. It is on this API because OCR's
+     * toggle is a trap without it — {@code OcrPhase} needs frames and has no way to produce them —
+     * and the whole point is that it takes no base URL anywhere: not in the request, not in the
+     * column, not in the probe.
+     */
+    @Test
+    void theFrameSamplingToggleIsSavedWithNoBaseUrlAtAll() throws Exception {
+        boolean original = frameSamplingConfig.isEnabled();
+
+        HttpResponse<String> updated = send(request("/FRAME_SAMPLE")
+                .PUT(HttpRequest.BodyPublishers.ofString("""
+                        {"provider": "ffmpeg", "enabled": true}
+                        """))
+                .header("Content-Type", "application/json")
+                .build());
+
+        assertThat(updated.statusCode()).isEqualTo(200);
+        assertThat(frameSamplingConfig.isEnabled()).isTrue();
+
+        JsonNode body = objectMapper.readTree(updated.body());
+        // What tells the console not to render a base-URL box or a test button.
+        assertThat(body.get("supportsBaseUrl").asBoolean()).isFalse();
+        assertThat(body.get("supportsModel").asBoolean()).isFalse();
+        assertThat(body.get("supportsEnabled").asBoolean()).isTrue();
+        assertThat(body.get("baseUrl").isNull()).isTrue();
+        assertThat(connectionRepository.findById(ConnectionName.FRAME_SAMPLE)
+                .orElseThrow().getBaseUrl()).isNull();
+
+        // Probing it is not an error and not "unreachable" — there is nothing there to reach.
+        JsonNode probe = objectMapper.readTree(send(request("/FRAME_SAMPLE/test")
+                .POST(HttpRequest.BodyPublishers.noBody()).build()).body());
+        assertThat(probe.get("reachable").asBoolean()).isFalse();
+        assertThat(probe.get("error").asText()).contains("no endpoint");
+
+        assertThat(send(request("/FRAME_SAMPLE").DELETE().build()).statusCode()).isEqualTo(204);
+        assertThat(frameSamplingConfig.isEnabled()).isEqualTo(original);
+    }
+
+    /** Dropping @NotBlank for FRAME_SAMPLE must not let a real connection lose its endpoint. */
+    @Test
+    void aConnectionThatIsReachedOverHttpStillCannotBeSavedWithoutOne() throws Exception {
+        assertThat(send(request("/OCR")
+                .PUT(HttpRequest.BodyPublishers.ofString("""
+                        {"provider": "paddleocr", "enabled": true}
+                        """))
+                .header("Content-Type", "application/json")
+                .build()).statusCode()).isEqualTo(400);
+
         assertThat(connectionRepository.findById(ConnectionName.OCR)).isEmpty();
     }
 

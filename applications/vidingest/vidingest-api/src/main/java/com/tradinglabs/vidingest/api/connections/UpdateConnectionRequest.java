@@ -12,15 +12,18 @@ import jakarta.validation.constraints.Size;
  * cannot read the current key back could never save any other field without wiping it.
  *
  * <p>{@code enabled} is nullable so that omitting it leaves the phase toggle alone. Only
- * KNOWLEDGE, DIARIZATION and OCR have one; sending it for EMBEDDINGS or TRANSCRIPTION is
- * ignored, since those phases have no master switch of their own.
+ * KNOWLEDGE, DIARIZATION, FRAME_SAMPLE and OCR have one; sending it for EMBEDDINGS or
+ * TRANSCRIPTION is ignored, since those phases have no master switch of their own.
+ *
+ * <p>{@code baseUrl} carries no {@code @NotBlank}: FRAME_SAMPLE is a local process and has none.
+ * For every other connection it is still required — {@code ConnectionSettingsService} rejects a
+ * blank or non-absolute value, which it has to do anyway to catch a URL with no scheme.
  */
 public record UpdateConnectionRequest(
         @NotBlank
         @Size(max = 64)
         String provider,
 
-        @NotBlank
         @Size(max = 2000)
         String baseUrl,
 

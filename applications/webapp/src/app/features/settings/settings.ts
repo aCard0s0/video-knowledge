@@ -27,7 +27,7 @@ export interface ConnectionFormValue {
 /**
  * Turn the card's form into the request body.
  *
- * Pulled out of the component because it is the part with rules rather than markup, and all three
+ * Pulled out of the component because it is the part with rules rather than markup, and all of them
  * have a wrong version that looks identical on screen: an empty api-key box must be *omitted* (the
  * server reads `""` as "clear the stored key"), and a field the connection does not support must be
  * omitted rather than sent as an empty string the server would store.
@@ -38,7 +38,9 @@ export function buildUpdate(
 ): UpdateConnectionRequest {
   return {
     provider: raw.provider,
-    baseUrl: raw.baseUrl.trim(),
+    // FRAME_SAMPLE is local ffmpeg and has no endpoint. Sending `''` would be a blank base URL
+    // the server rejects, so the card that has no box must send no field.
+    baseUrl: row.supportsBaseUrl ? raw.baseUrl.trim() : undefined,
     model: row.supportsModel ? raw.model.trim() || undefined : undefined,
     apiKey: raw.apiKey === '' ? undefined : raw.apiKey,
     enabled: row.supportsEnabled ? raw.enabled : undefined,
@@ -58,15 +60,19 @@ type ConnectionForm = FormGroup<{
  * Settings — the connections to the model runtimes and the sidecars.
  *
  * The screen existed as a placeholder for the console's own preferences. This is the first thing
- * on it that is not a preference: the five connections are server state, editable at runtime, and
+ * on it that is not a preference: the connections are server state, editable at runtime, and
  * the alternative to this screen is editing `.env` and recreating the container.
+ *
+ * FRAME_SAMPLE is on the list despite having no endpoint, because what an operator manages here is
+ * which enrichment this deployment does — and its toggle is what makes OCR's mean anything.
  *
  * One card per connection rather than a table. Every row has five fields and three actions, and a
  * table of those is a horizontal scroll on any width where the card grid is still comfortable.
  *
  * Nothing here mirrors a server enum by hand: springdoc emits `ConnectionName` as a real enum
- * schema, and `supportedProviders` / `supportsModel` / `supportsEnabled` come off the summary. A
- * new connection or a new provider therefore shows up here with no client change at all.
+ * schema, and `supportedProviders` / `supportsBaseUrl` / `supportsModel` / `supportsEnabled` come
+ * off the summary. A new connection or a new provider therefore shows up here with no client
+ * change at all — FRAME_SAMPLE needed only the two `@if`s its missing endpoint implies.
  */
 @Component({
   selector: 'vk-settings',
@@ -111,7 +117,7 @@ export class Settings {
         provider: new FormControl(row.provider ?? '', { nonNullable: true }),
         baseUrl: new FormControl(row.baseUrl ?? '', {
           nonNullable: true,
-          validators: [Validators.required],
+          validators: row.supportsBaseUrl ? [Validators.required] : [],
         }),
         model: new FormControl(row.model ?? '', { nonNullable: true }),
         // Never populated from the server — it is never sent. Empty means "keep what is stored".
@@ -148,8 +154,13 @@ export class Settings {
         // The key box is cleared because its value now lives on the server and cannot come back.
         form.controls.apiKey.setValue('');
         // Nothing on the card necessarily changes — saving the value that was already there is a
-        // no-op on screen — so the confirmation has to be said rather than shown.
-        this.said.set(`Saved ${name}. Now ${saved.provider} at ${saved.baseUrl}.`);
+        // no-op on screen — so the confirmation has to be said rather than shown. A card with no
+        // endpoint would otherwise read "at null", which is the one thing it must not say.
+        this.said.set(
+          saved.supportsBaseUrl
+            ? `Saved ${name}. Now ${saved.provider} at ${saved.baseUrl}.`
+            : `Saved ${name}. Phase ${saved.enabled ? 'enabled' : 'disabled'}.`,
+        );
         this.list.reload();
       },
       error: (err: unknown) => this.fail(err),
