@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLane, buildLanes, laneTotalMs } from './lane';
+import { LaneSegment, buildLane, buildLanes, laneTotalMs, paintRerun } from './lane';
 import { RunItem, RunItemAuditEvent } from '../api/generated';
 
 // Offset-carrying, like every server timestamp since the entities became OffsetDateTime.
@@ -174,5 +174,39 @@ describe('buildLanes', () => {
     // i2 never completed METADATA, so it must not borrow i1's ITEM_PHASE_COMPLETED.
     expect(second[0].state).not.toBe('done');
     expect(second[1]).toMatchObject({ phase: 'DOWNLOAD', state: 'failed' });
+  });
+});
+
+/**
+ * The per-phase rerun endpoint writes no audit event, so nothing it does can reach `buildLane`.
+ * Without this overlay a re-run left the lane and the trail reporting the original run's duration
+ * and start for a phase that had just been re-run by hand, and showed no in-progress state at all.
+ */
+describe('paintRerun', () => {
+  const done: LaneSegment = { phase: 'OCR', state: 'done', ms: 197, at: '2026-08-26T14:41:54.175Z' };
+  const startedMs = Date.parse('2026-08-29T09:00:00Z');
+
+  it('leaves a segment alone — identity included — when the phase was never re-run', () => {
+    expect(paintRerun(done, undefined, startedMs)).toBe(done);
+  });
+
+  it('puts the segment in progress while the request is still open, timing against now', () => {
+    const live = paintRerun(done, { at: '2026-08-29T09:00:00Z', startedMs, ms: null }, startedMs + 4200);
+    expect(live.state).toBe('live');
+    expect(live.ms).toBe(4200);
+  });
+
+  it('reports the re-run rather than the run once it answers', () => {
+    const after = paintRerun(done, { at: '2026-08-29T09:00:00Z', startedMs, ms: 37800 }, 0);
+    expect(after.state).toBe('done');
+    expect(after.ms).toBe(37800);
+    // The regression: the Started column kept saying 14:41 for work that ran three days later.
+    expect(after.at).toBe('2026-08-29T09:00:00Z');
+  });
+
+  it('keeps a failed re-run failed rather than restoring the success underneath it', () => {
+    expect(paintRerun(done, { at: '2026-08-29T09:00:00Z', startedMs, ms: 900, failed: true }, 0).state).toBe(
+      'failed',
+    );
   });
 });

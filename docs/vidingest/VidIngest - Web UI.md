@@ -62,7 +62,7 @@ A session succeeds when every submitted URL is either `COMPLETED` or explained (
 | **Ingest** (home) | `POST /pipelines`, `GET /pipelines/{runId}`, `/audit`, `POST /{runId}/retry`, `GET /pipelines/capabilities`, `GET /health/ready`, `/health/llm` |
 | **Channels** | `GET/POST /youtube/channels`, `DELETE /{id}`, `POST /{id}/sync`, `GET /{id}/videos?notIngestedOnly`, `POST /{id}/pipelines`, `GET /pipelines/{runId}`, `/audit`, `GET /pipelines/capabilities` |
 | **Runs board** | `GET /pipelines?status&live&page&size` |
-| **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `GET /pipelines/capabilities` |
+| **Run detail** | `GET /pipelines/{runId}`, `/audit`, `/items/{itemId}/audit`, `POST /retry`, `POST /items/{itemId}/retry`, `POST /videos/{videoId}/phases/{phase}/run`, `GET /pipelines/capabilities` |
 | **Videos** | `GET /videos?status&source&channelName&page&size`, `DELETE /videos/{videoId}` |
 | **Video detail** | `/detail`, `/file`, `/transcription/segments`, `/ocr/frames`, `/frames/{frameId}/image`, `/multimodal-timeline/page`, `/knowledge`, `/speakers`, `PATCH /speakers/{speakerId}`, `POST /phases/{phase}/run`, `/context/regenerate`, `/knowledge/regenerate` |
 | **Audit feed** | `GET /audit/events?runId&eventType&status&phase&errorCode&fromDate&toDate&page&size` |

@@ -11,9 +11,9 @@ import { humanDuration } from '../core/time';
  * size, when in practice DOWNLOAD and OCR eat the run and PERSIST takes 300ms. Reading one lane
  * answers where the item is, where it died, and whether a phase is hung or merely slow.
  *
- * Segments are buttons: clicking one filters the audit timeline to that phase, which is also why
- * a 26px floor matters — a 200ms phase still has to be clickable. Voids are not: a phase that
- * never ran has no events, so filtering to it can only ever empty the trail.
+ * Segments are buttons: clicking one opens that phase's row in the trail below, which is also why
+ * a 22px floor matters — a 200ms phase still has to be clickable. Voids are not: a phase that
+ * never ran has no events, so opening it can only ever show an empty trail.
  */
 @Component({
   selector: 'vk-lane',
@@ -55,42 +55,52 @@ import { humanDuration } from '../core/time';
     </ul>
   `,
   styles: `
+    /* One continuous rail rather than ten loose chips. The gaps used to make the lane read as a
+       row of unrelated buttons; a single track with hairline dividers reads as one run advancing
+       left to right, which is the only thing this component is trying to say. */
     .lane {
       display: flex;
       align-items: stretch;
-      gap: 2px;
       list-style: none;
       margin: 0;
       padding: 0;
       min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--muted);
+      overflow: hidden;
     }
 
     .seg {
+      position: relative;
       flex-shrink: 1;
       flex-basis: 0;
-      min-width: 26px;
-      overflow: hidden;
+      min-width: 22px;
       /* A 300ms phase only has room for one line; clipping "52ms" to "52i" looks like a bug. */
       container-type: inline-size;
     }
 
+    .seg + .seg {
+      border-left: 1px solid var(--border);
+    }
+
     /* Width is proportional to duration, which buries the one thing the lane exists to show: a
-       75ms OCR failure beside a successful 18.5s DIARIZE gets 26px and 3% of the track. Every
+       75ms OCR failure beside a successful 18.5s DIARIZE gets 22px and 3% of the track. Every
        other segment stays proportional — the outcome ones just get a floor wide enough to read
        their own label, which is also the width the container query needs to keep the duration. */
     .seg.failed,
     .seg.cancelled,
     .seg.live {
-      min-width: 76px;
+      min-width: 78px;
     }
 
     .seg.skipped,
     .seg.pending {
-      flex: 0 0 26px;
+      flex: 0 0 22px;
     }
 
     .seg.pending.many {
-      flex: 0 0 44px;
+      flex: 0 0 40px;
     }
 
     .merged {
@@ -101,18 +111,30 @@ import { humanDuration } from '../core/time';
     }
 
     button {
+      position: relative;
       display: flex;
       flex-direction: column;
       justify-content: center;
       gap: 1px;
       width: 100%;
-      height: 40px;
-      padding: 0 5px;
-      border: 1px solid var(--border);
-      border-radius: 2px;
-      background: var(--muted);
+      height: 42px;
+      padding: 6px 6px 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
       text-align: left;
       overflow: hidden;
+    }
+
+    /* The state cap. Colour rides a 3px bar along the top of every segment instead of a border
+       box around it, so a 22px phase still declares its outcome at full strength — the border it
+       replaced was the first thing a narrow segment lost. */
+    button::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 3px;
+      background: var(--cap, transparent);
     }
 
     /* A void is not a broken control, so it does not get the "not-allowed" cursor, and the global
@@ -149,21 +171,49 @@ import { humanDuration } from '../core/time';
       }
     }
 
+    /* Below this the phase name cannot be read, only guessed at: PERSIST rendered as "PE" beside
+       DOWNLOAD as "DO" is noise that looks like a rendering fault. The cap and the tooltip carry
+       the segment instead — the accessible name on the button is unchanged either way. */
+    @container (max-width: 48px) {
+      .ph {
+        display: none;
+      }
+    }
+
+    /* Fills go left-to-right so the eye reads direction along the track, not ten flat blocks. */
     .done button {
-      background: color-mix(in srgb, var(--st-done) 12%, transparent);
-      border-color: color-mix(in srgb, var(--st-done) 35%, transparent);
+      --cap: var(--st-done);
+      background: linear-gradient(
+        to right,
+        color-mix(in srgb, var(--st-done) 16%, transparent),
+        color-mix(in srgb, var(--st-done) 9%, transparent)
+      );
     }
 
     .live button {
+      --cap: var(--st-running);
       background: color-mix(in srgb, var(--st-running) 16%, transparent);
-      border-color: var(--st-running);
-      animation: breathe 2s ease-in-out infinite alternate;
+    }
+
+    /* A sweep along the segment, not the whole box pulsing: opacity breathing dimmed the label
+       it was drawing attention to, and on a lane of ten it read as a repaint glitch. */
+    .live button::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--st-running) 22%, transparent),
+        transparent
+      );
+      animation: sweep 1.8s ease-in-out infinite;
     }
 
     .failed button {
+      --cap: var(--st-failed-fill);
       background: color-mix(in srgb, var(--st-failed-fill) 18%, transparent);
-      border-color: var(--st-failed-fill);
-      border-right-width: 3px;
+      box-shadow: inset -3px 0 0 var(--st-failed-fill);
     }
 
     .failed .ph {
@@ -171,9 +221,9 @@ import { humanDuration } from '../core/time';
     }
 
     .cancelled button {
+      --cap: var(--st-cancelled);
       background: color-mix(in srgb, var(--st-cancelled) 20%, transparent);
-      border-color: var(--st-cancelled);
-      border-right-width: 3px;
+      box-shadow: inset -3px 0 0 var(--st-cancelled);
     }
 
     .cancelled .ph {
@@ -188,12 +238,10 @@ import { humanDuration } from '../core/time';
         transparent 3px,
         transparent 6px
       );
-      border-style: dashed;
     }
 
     .pending button {
       background: transparent;
-      border-color: var(--st-skipped);
     }
 
     .skipped .ph,
@@ -206,12 +254,12 @@ import { humanDuration } from '../core/time';
     /* Stopped before the first drawn phase: no segment can carry the outcome, so the whole track
        does. The row's own "never started" text is what actually says it — this is the echo. */
     .lane.dead .pending button {
-      border-color: var(--st-failed-fill);
+      --cap: var(--st-failed-fill);
       background: color-mix(in srgb, var(--st-failed-fill) 10%, transparent);
     }
 
     .lane.dead.stopped-cancelled .pending button {
-      border-color: var(--st-cancelled);
+      --cap: var(--st-cancelled);
       background: color-mix(in srgb, var(--st-cancelled) 14%, transparent);
     }
 
@@ -219,17 +267,17 @@ import { humanDuration } from '../core/time';
       color: var(--fg);
     }
 
-    @keyframes breathe {
+    @keyframes sweep {
       from {
-        opacity: 0.72;
+        transform: translateX(-100%);
       }
       to {
-        opacity: 1;
+        transform: translateX(100%);
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .live button {
+      .live button::after {
         animation: none;
       }
     }

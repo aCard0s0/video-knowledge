@@ -13,6 +13,8 @@ import { rxResource } from '@angular/core/rxjs-interop';
 
 import {
   KnowledgeService,
+  OcrFrameGroup,
+  OcrResultDto,
   SpeakerDto,
   SpeakersService,
   VideoMultimodalService,
@@ -32,6 +34,22 @@ import { Empty } from '../../ui/empty';
 import { Icon } from '../../ui/icon';
 import { Problem } from '../../ui/problem';
 import { syncQueryParams } from '../../core/url-state';
+import { rowDisclosure } from '../../core/disclosure';
+
+/**
+ * OCR lines shown per frame before "show more".
+ *
+ * paddleocr returns *every* string it found on the frame, so a slide of a pricing page is 26 reads
+ * and a talking head is two — and the row grew to whatever it was handed, making the pane a
+ * column of 120px rows with an occasional 1000px one that pushed the rest off screen. Eight is
+ * roughly the thumbnail's own height, so the frame is what sets the row height and nothing in the
+ * list is taller than it needs to be.
+ *
+ * Counted, not measured: an item cap needs no ResizeObserver and cannot disagree with itself
+ * across a resize. A long line still wraps past the cap, which is the right trade — clipping the
+ * text would defeat the pane, whose whole job is checking a read against the frame it came from.
+ */
+const OCR_LINE_CAP = 8;
 
 const PANE_KEYS = ['transcript', 'frames', 'fused', 'knowledge', 'speakers'] as const;
 type Pane = (typeof PANE_KEYS)[number];
@@ -154,6 +172,19 @@ export class VideoDetail {
     params: () => (this.pane() === 'frames' ? { id: this.videoId(), page: this.page() } : undefined),
     stream: ({ params }) => this.artifacts.ocrResultsByFramePage(params.id, params.page, FRAME_SIZE),
   });
+
+  /** Which frame has its full OCR read open. One at a time — see `core/disclosure.ts`. */
+  protected readonly openFrame = rowDisclosure();
+
+  /** Capped unless this frame is the open one. See {@link OCR_LINE_CAP}. */
+  protected ocrLines(frame: OcrFrameGroup): OcrResultDto[] {
+    const lines = frame.lines ?? [];
+    return this.openFrame.isOpen(frame.frameId) ? lines : lines.slice(0, OCR_LINE_CAP);
+  }
+
+  protected hiddenOcrLines(frame: OcrFrameGroup): number {
+    return Math.max(0, (frame.lines?.length ?? 0) - OCR_LINE_CAP);
+  }
 
   protected readonly fused = rxResource({
     params: () => (this.pane() === 'fused' ? { id: this.videoId(), page: this.page() } : undefined),

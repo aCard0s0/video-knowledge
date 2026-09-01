@@ -205,8 +205,8 @@
                     />
                     <span class="tc mono">{{ timecode(frame.timestampSeconds) }}</span>
                   </button>
-                  <ul class="lines">
-                    @for (line of frame.lines ?? []; track line.id) {
+                  <ul class="lines" [id]="'ocr-' + frame.frameId">
+                    @for (line of ocrLines(frame); track line.id) {
                       <li class="mono sm">
                         {{ line.text }}
                         <!-- A line OCR read at 0% confidence is the one most worth flagging, and
@@ -217,6 +217,21 @@
                       </li>
                     } @empty {
                       <li class="muted sm">No text read from this frame.</li>
+                    }
+                    <!-- Inside the list, so the control sits under the reads it extends rather than
+                         in a third grid column no other row would use. -->
+                    @if (hiddenOcrLines(frame); as hidden) {
+                      <li>
+                        <button
+                          class="more mono sm"
+                          type="button"
+                          [attr.aria-expanded]="openFrame.isOpen(frame.frameId)"
+                          [attr.aria-controls]="'ocr-' + frame.frameId"
+                          (click)="openFrame.toggle(frame.frameId)"
+                        >
+                          {{ openFrame.isOpen(frame.frameId) ? 'Show less' : 'Show ' + hidden + ' more' }}
+                        </button>
+                      </li>
                     }
                   </ul>
                 </li>
