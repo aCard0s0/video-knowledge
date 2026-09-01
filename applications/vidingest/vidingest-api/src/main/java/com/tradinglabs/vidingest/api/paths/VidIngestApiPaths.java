@@ -43,6 +43,7 @@ public final class VidIngestApiPaths {
     // --- Multi-modal knowledge extraction (M1 stubs; endpoints implemented in later milestones) ---
     public static final String KNOWLEDGE = API_V1 + "/knowledge";
     public static final String KNOWLEDGE_SEARCH = KNOWLEDGE + "/search";
+    public static final String KNOWLEDGE_STALE = KNOWLEDGE + "/stale";
 
     public static final String VIDEO_KNOWLEDGE = VIDEO + "/knowledge";
     public static final String VIDEO_KNOWLEDGE_REGENERATE = VIDEO_KNOWLEDGE + "/regenerate";

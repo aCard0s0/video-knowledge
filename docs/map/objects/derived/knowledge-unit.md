@@ -36,6 +36,18 @@ a time span and a 1536-dim embedding.
   `embedding` `vector(1536)` — `:47`–`:76`
 - Indexes `(video_id, type)` and HNSW on `embedding` — `004-knowledge.sql:48-49`
 
+- **`metadata.prompt_version` is now read, not just written.** `GET /api/v1/knowledge/stale`
+  reports videos whose units came from an older prompt than the server sends, because a prompt
+  upgrade changes what extraction means (v2 → v3: 4.3 of 19 stated rules recovered, against 14.7).
+  It reports rather than re-extracts — one video is minutes of LLM time — and pairs with the
+  per-video regenerate. **The first query in the schema that reads JSONB by content**, and
+  deliberately still without a GIN index on `metadata`.
+- **`content` is post-processed after the LLM returns it.** `stripEmptySlotLines` removes rule-kind
+  lines the model filled in with "None specified", and `stripMetaOpening` turns "The video explains
+  X" into "X". Both are in code rather than the prompt because instructing the model measured
+  *worse* — see `KnowledgeExtractionPrompt`'s noise-floor note. A test asserting on stored content
+  must expect the cleaned form.
+
 ## Connected to
 
 - **owned-by:** [Video](../media/video.md) (`CASCADE`)

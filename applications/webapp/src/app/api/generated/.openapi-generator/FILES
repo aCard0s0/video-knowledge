@@ -60,6 +60,8 @@ model/run-video-phase-result.ts
 model/search-chunk-result.ts
 model/search-knowledge-hit.ts
 model/speaker-dto.ts
+model/stale-knowledge-report.ts
+model/stale-knowledge-video.ts
 model/transcription-segment-summary.ts
 model/update-connection-request.ts
 model/video-artifact-counts.ts
