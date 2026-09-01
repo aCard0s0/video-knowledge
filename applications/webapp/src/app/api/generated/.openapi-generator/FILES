@@ -4,6 +4,7 @@ api.base.service.ts
 api.module.ts
 api/api.ts
 api/audit.service.ts
+api/connections.service.ts
 api/frame-artifacts.service.ts
 api/health.service.ts
 api/knowledge.service.ts
@@ -19,6 +20,8 @@ configuration.ts
 encoder.ts
 git_push.sh
 index.ts
+model/connection-summary.ts
+model/connection-test-result.ts
 model/create-pipeline-run-from-youtube-videos-request.ts
 model/create-pipeline-run-request.ts
 model/create-pipeline-run-response.ts
@@ -58,6 +61,7 @@ model/search-chunk-result.ts
 model/search-knowledge-hit.ts
 model/speaker-dto.ts
 model/transcription-segment-summary.ts
+model/update-connection-request.ts
 model/video-artifact-counts.ts
 model/video-detail.ts
 model/video-summary.ts

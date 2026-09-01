@@ -1,0 +1,9 @@
+# The build context is this directory, so the repo-root .dockerignore does not apply here —
+# these have to be repeated rather than inherited.
+node_modules
+dist
+.angular
+out-tsc
+openapi
+*.md
+.DS_Store

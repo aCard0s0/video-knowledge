@@ -6,8 +6,9 @@ docs
 *.md
 .DS_Store
 data
-applications/webapp/node_modules
-applications/webapp/dist
+# The whole console, not just its build output: no image built from the repo root needs it any
+# more now that the server stopped baking it in. It has its own context and its own .dockerignore.
+applications/webapp
 # Anywhere, not just under the webapp: `ng` had also written a 7.1 MB cache at the repo root,
 # and every image build was shipping it into the context.
 **/.angular

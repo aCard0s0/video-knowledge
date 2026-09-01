@@ -67,6 +67,21 @@ public class VideoSearchConfig {
         private int expectedDimensions = 1536;
 
         /**
+         * Value of the OpenAI {@code dimensions} request field — Matryoshka truncation, for a model
+         * trained to stay meaningful when its vector is cut short.
+         *
+         * <p>Null means "do not send the field", which is the default because it is not universally
+         * supported: OpenAI and oMLX honour it, some llama.cpp builds reject an unknown field
+         * outright. Set it only when the model's native width is *wider* than the column — MRL
+         * truncates, it never pads, so asking a 1024-dim model for 1536 fails at the server.
+         *
+         * <p>Deliberately separate from {@link #expectedDimensions}, which they will usually equal:
+         * that one is what the column requires and is checked on the way back, this one is what the
+         * request asks for. A natively-correct model needs the check without the field.
+         */
+        private Integer dimensions;
+
+        /**
          * Configuration for Ollama embeddings.
          */
         private Ollama ollama = new Ollama();
@@ -75,9 +90,10 @@ public class VideoSearchConfig {
         @Setter
         public static class Ollama {
             /**
-             * Base URL of an Ollama server.
-             * Example (docker): http://ollama:11434
+             * Base URL of an Ollama server. There is no ollama container any more — this points
+             * at one on the host or on another machine.
              * Example (host): http://localhost:11434
+             * Example (from a container): http://host.docker.internal:11434
              */
             private String baseUrl = "";
 

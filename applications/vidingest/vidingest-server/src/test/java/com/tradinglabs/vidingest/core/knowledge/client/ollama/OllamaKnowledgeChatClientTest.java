@@ -45,7 +45,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
                 }
                 """);
 
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         List<KnowledgeUnitDraft> drafts = client.extract("system prompt", "user prompt");
 
@@ -77,7 +77,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
                 }
                 """);
 
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         List<KnowledgeUnitDraft> drafts = client.extract("sys", "user");
 
@@ -96,7 +96,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
                 }
                 """);
 
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         List<KnowledgeUnitDraft> drafts = client.extract("sys", "user");
 
@@ -110,7 +110,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
         // Use a port that wouldn't bind even if we tried; if the client reaches the
         // network we'd get a connect-refused. Empty user prompt should short-circuit.
         OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(
-                new ObjectMapper(), config(), restClient("http://localhost:1"));
+                new ObjectMapper(), config("http://localhost:1"), restClient());
 
         assertThat(client.extract("sys", "")).isEmpty();
         assertThat(client.extract("sys", null)).isEmpty();
@@ -121,7 +121,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
     void extractThrowsOnHttp500() throws Exception {
         startServer(500, "{\"error\":\"model not found\"}");
 
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         assertThatThrownBy(() -> client.extract("sys", "user"))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)
@@ -141,7 +141,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
                 }
                 """);
 
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         assertThat(client.extract("sys", "user")).isEmpty();
     }
@@ -150,7 +150,7 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
     void extractThrowsWhenEnvelopeIsMissingMessageContent() throws Exception {
         startServer(200, "{\"model\":\"qwen2.5\",\"done\":true}");
 
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
         assertThatThrownBy(() -> client.extract("sys", "user"))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)
@@ -164,11 +164,11 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
                 {"message": {"content": "{\\"units\\": []}"}}
                 """, captured);
 
-        KnowledgeExtractionConfig cfg = config();
+        KnowledgeExtractionConfig cfg = config(baseUrl());
         cfg.setChatModel("qwen2.5:14b-instruct");
         cfg.setTemperature(0.1);
         cfg.setMaxOutputTokens(2048);
-        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), cfg, restClient(baseUrl()));
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), cfg, restClient());
 
         client.extract("system says hi", "user says hello");
 
@@ -195,10 +195,10 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
         // Accept the request, send headers, then never send the body: the client blocks on read.
         startStallingServer();
 
-        KnowledgeExtractionConfig cfg = config();
+        KnowledgeExtractionConfig cfg = config(baseUrl());
         cfg.setReadTimeout(Duration.ofMillis(600));
         OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(
-                new ObjectMapper(), cfg, shortReadRestClient(baseUrl()));
+                new ObjectMapper(), cfg, shortReadRestClient());
 
         assertThatThrownBy(() -> client.extract("sys", "user"))
                 .isInstanceOf(KnowledgeExtractionFailureException.class)

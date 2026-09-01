@@ -18,10 +18,15 @@ holds the full text and provider; the child holds the timed lines.
 - **`speaker_id` on a segment is nullable and `ON DELETE SET NULL`** because DIARIZE wipes and
   repopulates speakers for a video: re-running it alone recreates every speaker row under a new
   uuid, and the segment must survive that (`002-transcription.sql:47-49`).
-- **`fullText` is stored alongside the segments**, not derived from them — the whisper sidecar
-  returns both, and re-joining segments loses its punctuation decisions.
-- Provider is a plain string, not an enum: whisper is the only caller today, so the constraint
-  would be a guess.
+- **`fullText` is stored alongside the segments**, not derived from them — both wire protocols
+  return both, and re-joining segments loses their punctuation decisions.
+- Provider is a plain string, not an enum. Two clients write it now:
+  `whisper-asr` (`{base}/asr?output=json`) and `openai-compatible`
+  (`{base}/audio/transcriptions`, `response_format=verbose_json`), picked per call by
+  `TranscriptionClientRouter` from the runtime-editable
+  [Connection](../runtime/connection.md). Both envelopes are the same shape, which is why one
+  parser in `AbstractTranscriptionClient` serves both — `verbose_json` is mandatory on the OpenAI
+  path because the default `json` carries no segments at all.
 
 ## Shape
 
@@ -45,7 +50,8 @@ holds the full text and provider; the child holds the timed lines.
 
 - **Hits:** `TranscribePhase` and its wipe-then-repopulate, `DiarizePhase` (writes `speaker_id`
   back onto segments), `FusePhase` (reads segments), the whisper artifact endpoints
-  (`/transcription/whisper.txt`, `/whisper.json`), `TranscriptionStatus` in `core/domain.ts`.
+  (`/transcription/whisper.txt`, `/whisper.json` — named for the format, which both providers
+  produce), `TranscriptionStatus` in `core/domain.ts`.
 - **Does not hit:** [ContextChunk](context-chunk.md). CONTEXT chunks the fused segments, not the
   raw transcript.
 
@@ -53,7 +59,7 @@ holds the full text and provider; the child holds the timed lines.
 
 | Surface | Role |
 |---|---|
-| `TranscribePhase` | writes (wipe + repopulate, one transaction after the sidecar call) |
+| `TranscribePhase` | writes (wipe + repopulate, one transaction after the ASR call) |
 | `DiarizePhase` | updates `speaker_id` |
 | console video detail | reads |
 

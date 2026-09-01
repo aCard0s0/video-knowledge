@@ -13,3 +13,5 @@ databaseChangeLog:
       file: classpath:db/changelog/changesets/006-youtube-channels.sql
   - include:
       file: classpath:db/changelog/changesets/007-run-created-at-index.sql
+  - include:
+      file: classpath:db/changelog/changesets/008-connections.sql

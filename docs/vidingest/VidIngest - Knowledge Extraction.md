@@ -6,7 +6,7 @@ last_reviewed: 2026-08-29
 # VidIngest — Knowledge Extraction
 
 - **Owner**: TradingLabs Platform
-- **Last reviewed**: 2026-08-27
+- **Last reviewed**: 2026-08-29
 - **Status**: stable, all phases default to disabled
 - **Applies to**: `vidingest-server`, `vidingest-mcp`, `vidingest-cli`, `vidingest-api`,
   `vidingest-client`
@@ -33,12 +33,12 @@ METADATA → DOWNLOAD → PERSIST → TRANSCRIBE → DIARIZE → FRAME_SAMPLE �
 
 | Phase | Default | Inputs | Outputs | External deps |
 |-------|---------|--------|---------|---------------|
-| TRANSCRIBE   | on  | downloaded video file        | `vidingest_transcriptions` + `vidingest_transcription_segments`   | `whisper` sidecar |
+| TRANSCRIBE   | on  | downloaded video file        | `vidingest_transcriptions` + `vidingest_transcription_segments`   | host ASR runtime (whisper-asr or OpenAI audio API) |
 | DIARIZE      | off | transcription + audio        | `vidingest_speakers`; `transcription_segments.speaker_id` populated | `diarize-asr` sidecar (HF token) |
 | FRAME_SAMPLE | off | downloaded video file        | `vidingest_video_frames` + JPGs at `{baseName}/frames/NNNN.jpg`   | ffmpeg (already in image) |
 | OCR          | off | sampled frames                | `vidingest_ocr_results`                                          | `paddleocr-server` sidecar |
 | FUSE         | on  | transcript + speakers + OCR  | `vidingest_multimodal_segments` (one row per fusion window)      | — pure Java |
-| KNOWLEDGE    | off | multimodal segments           | `vidingest_knowledge_units` + embeddings                         | chat LLM — the `llm` service by default, any OpenAI-compatible server otherwise |
+| KNOWLEDGE    | off | multimodal segments           | `vidingest_knowledge_units` + embeddings                         | chat LLM on the host — OpenAI-compatible by default, ollama otherwise |
 | CONTEXT      | off (semantic-search-gated) | multimodal segments → transcript fallback | `vidingest_context_chunks` (richer content) | embeddings client |
 
 Per-run opt-outs travel as one `skipPhases` list naming the phases to skip, exposed on
@@ -59,18 +59,22 @@ to skip.
 
 ```
                   ┌──────────────────────────┐
-              ┌──▶│ whisper      (port 9000) │── TRANSCRIBE
-              │   └──────────────────────────┘
-              │   ┌──────────────────────────┐
-              ├──▶│ diarize-asr  (port 9001) │── DIARIZE   (pyannote.audio 3.x)
-              │   └──────────────────────────┘
+              ┌──▶│ diarize-asr  (port 9001) │── DIARIZE   (pyannote.audio 3.x)
+              │   └──────────────────────────┘   compose sidecar, opt-in
 vidingest ────┤   ┌──────────────────────────┐
   server      ├──▶│ paddleocr-server (8002)  │── OCR       (PaddleOCR)
-              │   └──────────────────────────┘
+              │   └──────────────────────────┘   compose sidecar, opt-in
               │   ┌──────────────────────────┐
-              └──▶│ llm         (port 11434) │── KNOWLEDGE + embeddings
-                  └──────────────────────────┘
+              └──▶│ model runtime on the HOST│── TRANSCRIBE, KNOWLEDGE, embeddings
+                  │ host.docker.internal:8000│
+                  └──────────────────────────┘   not a container — see below
 ```
+
+The three model connections point outside compose on purpose: a Linux container on Docker Desktop
+cannot reach Apple Silicon's GPU, and the measurements under
+[The default chat model does not fit CPU-only Docker](#the-default-chat-model-does-not-fit-cpu-only-docker)
+are what that costs. All five connections (the two sidecars included) are repointable at runtime —
+see [Connections API](VidIngest%20-%20Config%20and%20Runtime.md#connections-api-runtime-editable).
 
 Frames live inside the per-video folder on disk
 (`{videoPath}/{channelName}/{baseName}/frames/`) and cascade on delete (handled by
@@ -257,7 +261,7 @@ VIDINGEST_KNOWLEDGE_ENABLED=true
 # Sidecar URLs
 VIDINGEST_DIARIZATION_BASE_URL=http://diarize-asr:9001
 VIDINGEST_OCR_BASE_URL=http://paddleocr-server:8002
-VIDINGEST_KNOWLEDGE_BASE_URL=http://llm:11434
+VIDINGEST_KNOWLEDGE_BASE_URL=http://host.docker.internal:8000/v1
 
 # Diarization
 HUGGINGFACE_TOKEN=<your-token>   # required by the diarize-asr sidecar
@@ -332,8 +336,9 @@ EOF
 
 # 2. Pull the models. The embed model is required by CONTEXT whenever semantic search is
 #    on (the default) — the schema pins VECTOR(1536), so this model, not a 768-dim one.
-./scripts/tradey.sh llm pull rjmalagon/gte-qwen2-1.5b-instruct-embed-f16
-./scripts/tradey.sh llm pull qwen2.5:14b-instruct
+# The models live on the host runtime now — pull them with whatever it provides
+# (oMLX's admin UI, `ollama pull`, `mlx_lm.convert`, ...) and check what it serves:
+curl -s http://localhost:8000/v1/models | jq '.data[].id'
 
 # 3. Build and start the sidecars, then restart the server onto the new .env
 ./scripts/tradey.sh start sidecars --build
@@ -401,7 +406,11 @@ WHERE video_id = '<videoId>' GROUP BY type;
 
 ### The default chat model does not fit CPU-only Docker
 
-Measured on this repo's compose stack (Docker Desktop, Apple Silicon, 10 CPUs, no GPU):
+**Resolved Aug 2026 by removing the `llm` container.** Kept because it is the measurement that
+justified the move, and because anyone tempted to put the runtime back in compose should read it
+first.
+
+Measured on this repo's old compose stack (Docker Desktop, Apple Silicon, 10 CPUs, no GPU):
 
 | | `qwen2.5:14b-instruct` | `qwen2.5:0.5b-instruct` |
 |---|---|---|
@@ -409,24 +418,22 @@ Measured on this repo's compose stack (Docker Desktop, Apple Silicon, 10 CPUs, n
 | one batch, 360 input chars | timed out at 600 s | 415 s |
 | result | phase FAILED | 1 unit, phase OK |
 
-`ollama ps` reports `size_vram 0.0 GB` — **Docker Desktop gives Linux containers no access to
-Apple Silicon's Metal GPU**, so all inference is CPU-only. The `qwen2.5:14b-instruct` default
-in `application.properties` therefore cannot complete a batch inside the 10-minute read
-timeout, and no amount of raising that timeout makes a 14b model on CPU practical for
-ingestion. `OLLAMA_KEEP_ALIVE=30s` compounds it: the chat and embed models evict each other,
-so a run pays a fresh load for each.
+`ollama ps` reported `size_vram 0.0 GB` — **Docker Desktop gives Linux containers no access to
+Apple Silicon's Metal GPU**, so all inference was CPU-only. The `qwen2.5:14b-instruct` default
+could not complete a batch inside the 10-minute read timeout, and no amount of raising that
+timeout makes a 14b model on CPU practical for ingestion. `OLLAMA_KEEP_ALIVE=30s` compounded it:
+the chat and embed models evicted each other, so a run paid a fresh load for each.
 
-Options, in the order worth trying:
+The fix was option 1 below, applied to the default rather than left as advice:
 
-1. **Run ollama on the host instead of in the container** and point
-   `VIDINGEST_KNOWLEDGE_BASE_URL` / `VIDINGEST_LLM_BASE_URL` at
-   `http://host.docker.internal:11434`. Host ollama uses Metal; this is the only option that
-   makes a 14b model viable on a Mac.
-2. **Use a small chat model** — `qwen2.5:3b-instruct` is a reasonable floor for structured
-   extraction. `0.5b` proves the wiring but its output is poor: on the sample above it
-   emitted `entity_type: ORGANIZATION` for the entity `elephant`.
-3. **Leave KNOWLEDGE off** for local work, as it is by default, and enable it only where a
-   GPU is available.
+1. **Run the model runtime on the host** and point the connections at it. This is now what compose
+   does — `VK_HOST_LLM_URL`, default `http://host.docker.internal:8000/v1`. The host process must
+   bind `0.0.0.0`; a container reaches it on the bridge address, so a loopback-only listener
+   refuses the connection.
+2. **Use a small chat model** if the host is modest — `qwen2.5:3b-instruct` is a reasonable floor
+   for structured extraction. `0.5b` proves the wiring but its output is poor: on the sample above
+   it emitted `entity_type: ORGANIZATION` for the entity `elephant`.
+3. **Leave KNOWLEDGE off** for local work, as it is by default.
 
 ## Future work
 

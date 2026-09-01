@@ -56,7 +56,8 @@ automatically as a dependency of the server):
 ./scripts/tradey.sh cli
 ```
 
-Optional footprints: `start sidecars` (paddleocr-server, diarize-asr), `start mcp`.
+Infra is postgres and nothing else — the model runtimes run on the host, see below. Optional
+footprints: `start sidecars` (paddleocr-server, diarize-asr), `start mcp`.
 `down --volumes` wipes data. Host ports live in [compose/ports.env](compose/ports.env);
 everything binds `127.0.0.1` (`VK_BIND_ADDR`). `scripts/compose.sh` is the raw
 `docker compose` escape hatch with the same file layering.
@@ -245,16 +246,56 @@ volume major-version-specific.
 
 Feature packages under `core/` follow `client → service → domain/repo → mapper → dto`
 (MapStruct mappers, Lombok everywhere). External dependencies, all HTTP or process calls:
-yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), whisper (:9000),
-diarize-asr (:9001), and the `llm` compose service (:11434, the ollama image) for both
-embeddings and knowledge-extraction chat. **Neither LLM caller is Ollama-only**: embeddings
-and knowledge chat each have an `ollama` and an `openai-compatible` implementation, picked by
-`vidingest.search.embeddings.provider` / `vidingest.knowledge.provider`, so LM Studio,
-llama.cpp, mlx-lm, vLLM or a remote host is a property change. The provider-named classes and
-packages (`OllamaEmbeddingsClient`, `core/knowledge/client/ollama/`) are honest — they speak
-that wire protocol — while every neutral surface is named `llm` (`/api/v1/health/llm`,
-`LlmStatus`, `VIDINGEST_LLM_BASE_URL`). Embeddings additionally has a `Disabled*` floor;
-integration tests use `vidingest.search.embeddings.provider=disabled`.
+yt-dlp + ffmpeg as local processes (`core/download`, `core/frames`), the two optional sidecars
+diarize-asr (:9001) and paddleocr-server (:8002), and **a model runtime on the host** for
+embeddings, knowledge chat and transcription.
+
+**There is no `llm` container and no `whisper` container** (removed Aug 2026). Both ran on CPU
+inside the Docker VM, which is the one thing an Apple-Silicon host is good at and a Linux VM on it
+is not; compose now defaults all three model connections to `${VK_HOST_LLM_URL}`
+(`http://host.docker.internal:8000/v1`, an oMLX server). The host process must bind `0.0.0.0` — a
+container arrives on the bridge address, so a loopback-only listener refuses it. Don't reintroduce
+the containers to "make the stack self-contained": the reason they went is measured, not tidiness.
+
+**No LLM caller is single-protocol.** Embeddings, knowledge chat and transcription each have two
+implementations — `ollama`/`openai-compatible` for the first two, `whisper-asr`/`openai-compatible`
+for the third — and **a router picks per call**, not `@ConditionalOnProperty` at startup
+(`EmbeddingsClientRouter`, `QueryEmbeddingProviderRouter`, `KnowledgeChatClientRouter`,
+`TranscriptionClientRouter`). Per call because the provider is runtime-editable (below); a bean
+chosen at startup cannot follow a property that changes afterwards. The cost is that a bad provider
+value fails the *phase* rather than the context — the connections API validates it on the way in
+instead. The provider-named classes and packages (`OllamaEmbeddingsClient`,
+`core/knowledge/client/ollama/`, `core/transcription/client/whisper/`) are honest — they speak that
+wire protocol — while every neutral surface is named for the role (`/api/v1/health/llm`,
+`LlmStatus`, `VIDINGEST_LLM_BASE_URL`, `vidingest.transcription.*`). Embeddings additionally has a
+`Disabled*` floor; integration tests use `vidingest.search.embeddings.provider=disabled`.
+
+**Embedding width is a column type, not a preference.** `VECTOR(1536)` is what the schema declares
+and `expectedDimensions` is checked on every response. No oMLX-supported embedding architecture is
+natively 1536, so `vidingest.search.embeddings.dimensions` sends the OpenAI `dimensions` field
+(Matryoshka truncation) and `Qwen3-Embedding-4B` is cut from 2560 down to it. Sent only when set —
+some OpenAI-compatible servers reject an unknown field — and it only ever truncates, so a model
+narrower than the column cannot be padded up to it. Two oMLX traps behind that: it decides a
+causal-LM embedder by looking for `embed` in the **directory name** (so `gte-Qwen2-1.5B-instruct-...`
+is filed as an LLM despite being 1536-wide), and its embedding engine has no `qwen2` support at all,
+so overriding the type does not rescue it.
+
+**Five connections are editable at runtime**: `GET/PUT/DELETE /api/v1/connections/{name}` and
+`POST .../test`, over `EMBEDDINGS`, `KNOWLEDGE`, `TRANSCRIPTION`, `DIARIZATION`, `OCR`
+(`connections/`, table `vidingest_connections`, console screen `features/settings/`). A row is an
+**override**, not the configuration: absent, the environment value applies. `ConnectionSettingsService`
+snapshots the environment values before applying rows, which is the only reason `DELETE` can mean
+"back to what `.env` said". It applies on `ApplicationReadyEvent`, **not** `@PostConstruct` — the
+table does not exist yet at bean-init time.
+
+The mechanism is that `@ConfigurationProperties` beans are mutable singletons and **every client
+reads its base URL per call**. So the four transports (`transcriptionRestClient`,
+`diarizationRestClient`, `ocrRestClient`, `knowledgeChatRestClient`) deliberately have **no
+`.baseUrl(...)`** — they contribute only the request factory. Adding one back silently pins the URL
+to startup and the settings API goes quiet. Timeouts *are* still startup-bound for that reason, and
+are deliberately absent from the API rather than shown as a value the client is not using.
+API keys are stored plaintext and **never returned** — `ConnectionSummary` carries `hasApiKey`, and
+an absent `apiKey` on update keeps the stored one while `""` clears it.
 
 ### Tests
 
@@ -319,6 +360,10 @@ What the generator cannot give us, and therefore lives by hand in `src/app/core/
   all: their values reach the UI only as cases in `statusVar()`, so a new constant there needs a
   new `case`, not a new array. **Update this file when any of the eight gains a constant** — nothing
   fails if you don't, the console just renders the value as unknown.
+  `ConnectionName` is deliberately **not** here: springdoc emits it as a real enum schema, so the
+  generated client already types it as a literal union. Nor is the provider list — the connections
+  API serves `supportedProviders`, `supportsModel` and `supportsEnabled` per row precisely so the
+  settings screen cannot drift from what the server accepts. Mirror only what the spec loses.
 - `problem.ts` — the RFC 9457 `ProblemDetail` envelope. No operation in the spec documents a
   4xx/5xx, so error bodies generate as `any`. `errorCode` is a *pipeline* field, never an HTTP one;
   the two are rendered by different components and never merged.
@@ -376,10 +421,21 @@ any more: entities are `OffsetDateTime` and every `now()` is `OffsetDateTime.now
 so the stored instant and the wire format are the same whatever zone the JVM is in. That is
 asserted from a JVM pinned to `America/Los_Angeles` in `MetadataExtractorTest`.
 
-Production serving is one jar: the Dockerfile builds the console in a node stage with
-`--base-href=/vidingest/` and copies it into `resources/static/`, and
-`config/SpaStaticResourceConfig` forwards client routes to `index.html` while leaving `api/`,
-`actuator`, `v3/` and `swagger-ui` to 404 as JSON.
+**The console is its own image.** [applications/webapp/Dockerfile](applications/webapp/Dockerfile)
+builds the bundle with `--base-href=/vidingest/` and serves it from nginx on `WEBAPP_PORT` (8052),
+proxying the API to `vidingest:8051`. The server used to bake the bundle into `classpath:/static`
+and serve it through a `SpaStaticResourceConfig`; both are gone, so the vidingest image is the API
+alone and there is exactly one console.
+
+nginx proxies rather than the app knowing where the server is, because **every console request is
+relative** (`API_BASE = '/vidingest'`) and the server has no CORS config — the two must stay
+same-origin. The proxied prefixes in [nginx.conf](applications/webapp/nginx.conf) (`api/`,
+`actuator`, `v3/`, `swagger-ui`) are now the **only** record of the server's surface: a path that
+should reach the server but matches none of them falls into the SPA branch and returns
+`index.html` with a **200**, which looks like a blank screen, not a 404. Two traps already paid for
+and commented where they live: `return 302` needs `absolute_redirect off` or it sends the browser
+to the container's internal port, and the healthcheck must use `127.0.0.1` because `localhost`
+resolves to `::1` first while nginx listens on IPv4 only.
 
 Design tokens are [applications/webapp/src/styles/_tokens.scss](applications/webapp/src/styles/_tokens.scss).
 **Two themes live there**, dark and a separately measured light ramp — not an inversion, since the

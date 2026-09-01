@@ -1,3 +1,5 @@
+export * from './connection-summary';
+export * from './connection-test-result';
 export * from './create-pipeline-run-from-youtube-videos-request';
 export * from './create-pipeline-run-request';
 export * from './create-pipeline-run-response';
@@ -36,6 +38,7 @@ export * from './search-chunk-result';
 export * from './search-knowledge-hit';
 export * from './speaker-dto';
 export * from './transcription-segment-summary';
+export * from './update-connection-request';
 export * from './video-artifact-counts';
 export * from './video-detail';
 export * from './video-summary';

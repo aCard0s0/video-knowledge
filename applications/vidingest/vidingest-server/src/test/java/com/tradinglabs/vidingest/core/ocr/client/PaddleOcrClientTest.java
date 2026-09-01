@@ -66,7 +66,7 @@ class PaddleOcrClientTest {
                 }
                 """);
 
-        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path jpg = Files.createTempFile("vidingest-ocr-test", ".jpg");
         Files.write(jpg, fakeJpeg());
 
@@ -99,9 +99,9 @@ class PaddleOcrClientTest {
         AtomicReference<String> capturedQuery = new AtomicReference<>();
         startServerWithQueryCapture(200, "{\"lines\": []}", capturedQuery);
 
-        OcrConfig cfg = config();
+        OcrConfig cfg = config(baseUrl());
         cfg.setLanguages(List.of("fr"));
-        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), cfg, restClient(baseUrl()));
+        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), cfg, restClient());
         Path jpg = Files.createTempFile("vidingest-ocr-test", ".jpg");
         Files.write(jpg, fakeJpeg());
 
@@ -114,7 +114,7 @@ class PaddleOcrClientTest {
     void ocrThrowsTypedExceptionOnHttp500() throws Exception {
         startServer(500, "{\"detail\":\"engine load failed\"}");
 
-        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path jpg = Files.createTempFile("vidingest-ocr-test", ".jpg");
         Files.write(jpg, fakeJpeg());
 
@@ -128,7 +128,7 @@ class PaddleOcrClientTest {
     void ocrThrowsTypedExceptionOnMalformedJson() throws Exception {
         startServer(200, "not-json{");
 
-        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path jpg = Files.createTempFile("vidingest-ocr-test", ".jpg");
         Files.write(jpg, fakeJpeg());
 
@@ -139,7 +139,7 @@ class PaddleOcrClientTest {
 
     @Test
     void ocrRejectsMissingImageFile() {
-        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(), restClient("http://localhost:1"));
+        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config("http://localhost:1"), restClient());
         Path doesNotExist = Path.of("/tmp/vidingest/this-file-does-not-exist.jpg");
 
         assertThatThrownBy(() -> client.ocr(doesNotExist))
@@ -164,7 +164,7 @@ class PaddleOcrClientTest {
                 }
                 """);
 
-        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(), restClient(baseUrl()));
+        PaddleOcrClient client = new PaddleOcrClient(new ObjectMapper(), config(baseUrl()), restClient());
         Path jpg = Files.createTempFile("vidingest-ocr-test", ".jpg");
         Files.write(jpg, fakeJpeg());
 
@@ -228,18 +228,23 @@ class PaddleOcrClientTest {
         return "http://localhost:" + server.getAddress().getPort();
     }
 
-    private static OcrConfig config() {
+    /**
+     * The base URL now rides on the config, not the {@code RestClient}: the client resolves an
+     * absolute URI per call so a settings change takes effect without recreating the transport.
+     */
+    private static OcrConfig config(String baseUrl) {
         OcrConfig cfg = new OcrConfig();
+        cfg.setBaseUrl(baseUrl);
         cfg.setLanguages(List.of("en"));
         cfg.setMinConfidence(0.0);  // client-side parsing doesn't filter — that's OcrService's job
         return cfg;
     }
 
-    private static RestClient restClient(String baseUrl) {
+    private static RestClient restClient() {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(Math.toIntExact(Duration.ofSeconds(2).toMillis()));
         rf.setReadTimeout(Math.toIntExact(Duration.ofSeconds(5).toMillis()));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
+        return RestClient.builder().requestFactory(rf).build();
     }
 
     private static byte[] fakeJpeg() {

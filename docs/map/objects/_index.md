@@ -1,6 +1,7 @@
 # Noun index
 
-18 cards. Scan this; open one. `verified` cards were checked against `0a40fa2` on 2026-08-28.
+19 cards. Scan this; open one. `verified` cards were checked against `0a40fa2` on 2026-08-28,
+except [Connection](runtime/connection.md), added 2026-08-29.
 
 ## run — execution state
 
@@ -30,6 +31,12 @@
 | [MultimodalSegment](derived/multimodal-segment.md) | FUSE output; what KNOWLEDGE and CONTEXT actually read | verified |
 | [KnowledgeUnit](derived/knowledge-unit.md) | LLM-extracted entity/topic/summary/claim/question + embedding | verified |
 | [ContextChunk](derived/context-chunk.md) | CONTEXT output; what `/api/v1/search` searches | verified |
+
+## runtime — where the server reaches its dependencies
+
+| Noun | One line | Status |
+|---|---|---|
+| [Connection](runtime/connection.md) | the five external runtimes, editable without a restart; a row is an override, not the config | verified |
 
 ## console — why the UI shows that
 

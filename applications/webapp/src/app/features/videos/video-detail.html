@@ -38,7 +38,9 @@
   <vk-problem [failure]="failure()" />
 
   <div class="split">
-    <section class="panel player-panel">
+    <!-- The video and everything that acts on it share one row; the artifacts panel gets the full
+         width below. At 16/9 across the whole page the player alone was a screenful. -->
+    <div class="player-panel">
       <!-- Range requests are served (verified 206 + Content-Range), so seeking works on the
            original file with no transcode. -->
       <video
@@ -52,7 +54,9 @@
       ></video>
 
       <p class="cursor mono sm muted">at {{ timecode(cursor()) }} — click any row to jump</p>
+    </div>
 
+    <section class="panel side">
       <div class="reruns" (keydown.escape)="armed.set(null)">
         <span class="eyebrow">re-run a phase</span>
         <div class="phase-buttons">

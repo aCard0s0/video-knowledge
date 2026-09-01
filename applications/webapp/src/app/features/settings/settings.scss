@@ -1,0 +1,142 @@
+.cards {
+  display: grid;
+  // Five cards, each holding ~40ch of URL. `auto-fill` rather than `auto-fit` so the card on a
+  // wrap row keeps its width instead of stretching across the viewport on its own.
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 32ch), 1fr));
+  gap: var(--space-md);
+
+  // `.panel + .panel` in styles.scss puts a margin between stacked panels. In a grid the gap is
+  // the only spacing, and that margin fell on cards 2..5 but not on the first — so the row of
+  // cards sat 20px lower than the one card beside it, which read as a rendering glitch.
+  > * {
+    margin-top: 0;
+  }
+}
+
+// Head bar, padded body, action bar. The head and the actions are full-bleed and bracket the
+// fields between them; before this the fields sat flush against the card's border on the left and
+// ran to its edge on the right, while the head above them was inset by var(--space-md).
+.card {
+  display: flex;
+  flex-direction: column;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  // Takes the slack, so the action bar sits on the card's floor and the five bars line up whether
+  // a connection has four fields or two.
+  flex: 1;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-width: 0;
+}
+
+// The global `label` is an uppercase mono eyebrow, which is what every other label in the console
+// is; this one only drops the block margin, since `.field` already carries the gap. It used to
+// force lowercase, so `provider` sat under `EMBEDDINGS` and above `PHASE ENABLED` — three cases in
+// one card.
+.lbl {
+  margin-bottom: 0;
+}
+
+// The head is exactly one line, always. `.panel-head` wraps by default, and a wrapped head is
+// 13px taller than its neighbours' — which pushes that one card's fields out of line with the rest
+// of the row, the same misalignment the margin above caused. TRANSCRIPTION + OVERRIDDEN is the
+// widest pair the five connections can produce, and it clears a 236px card; a longer name ellipsises
+// rather than taking a second line.
+.card .panel-head {
+  flex-wrap: nowrap;
+}
+
+.card .panel-head .eyebrow {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// One chip shape for both states of the head, so the two never disagree about what a state looks
+// like: muted for the environment value, the running blue for a stored override.
+.badge {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 1px var(--space-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+
+  &.on {
+    border-color: var(--st-running);
+    color: var(--st-running);
+    // Over the token, never a raw hex — a wash has to follow the theme like everything else.
+    background: color-mix(in srgb, var(--st-running) 14%, transparent);
+  }
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  // A `label` is an 11px uppercase eyebrow by default, and this one is a control, not a caption.
+  margin-bottom: 0;
+  font-size: var(--fs-sm);
+  text-transform: none;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.toggle input {
+  // The checkbox is the one control that keeps its native look: it is the only binary here, and
+  // the browser's own is both accessible and instantly readable.
+  margin: 0;
+}
+
+.probe {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  background: var(--muted);
+  // A probe result can be a full exception message; let it wrap rather than clip the reason.
+  overflow-wrap: anywhere;
+  border-left: 2px solid currentcolor;
+}
+
+.probe.ok {
+  color: var(--st-done);
+}
+
+.probe.bad {
+  // --st-failed, not --st-failed-fill: the ramp reserves the -fill variant for fills and borders
+  // because it does not carry a text contrast ratio.
+  color: var(--st-failed);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

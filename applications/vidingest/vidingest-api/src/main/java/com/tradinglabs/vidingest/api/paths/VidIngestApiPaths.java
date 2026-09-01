@@ -63,6 +63,11 @@ public final class VidIngestApiPaths {
     public static final String VIDEO_PHASES = VIDEO + "/phases";
     public static final String VIDEO_PHASE_RUN = VIDEO_PHASES + "/{phase}/run";
 
+    // --- External runtime connections (LLM + sidecars), managed at runtime ---
+    public static final String CONNECTIONS = API_V1 + "/connections";
+    public static final String CONNECTION = CONNECTIONS + "/{name}";
+    public static final String CONNECTION_TEST = CONNECTION + "/test";
+
     public static final String ACTUATOR_HEALTH = "/actuator/health";
 
     private VidIngestApiPaths() {

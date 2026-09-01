@@ -15,8 +15,10 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -92,13 +94,7 @@ public class PaddleOcrClient {
         String raw;
         try {
             raw = restClient.post()
-                    .uri(uriBuilder -> {
-                        var b = uriBuilder.path("/ocr");
-                        if (lang != null && !lang.isBlank()) {
-                            b = b.queryParam("lang", lang);
-                        }
-                        return b.build();
-                    })
+                    .uri(ocrUri(lang))
                     .body(parts)
                     .retrieve()
                     .body(String.class);
@@ -239,5 +235,22 @@ public class PaddleOcrClient {
             return trimmed;
         }
         return trimmed.substring(0, 500) + "...";
+    }
+
+    /**
+     * Built from the live {@code ocrConfig.getBaseUrl()} on every call rather than baked into the
+     * {@code RestClient}, so repointing the OCR connection at runtime takes effect without a
+     * restart.
+     */
+    private URI ocrUri(String lang) {
+        String baseUrl = ocrConfig.getBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new OcrFailureException("No OCR base URL configured (vidingest.ocr.base-url)");
+        }
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(baseUrl.trim()).path("/ocr");
+        if (lang != null && !lang.isBlank()) {
+            b = b.queryParam("lang", lang);
+        }
+        return b.build().toUri();
     }
 }

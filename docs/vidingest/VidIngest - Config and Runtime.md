@@ -6,7 +6,7 @@ last_reviewed: 2026-08-29
 # VidIngest - Config and Runtime
 
 - **Primary packages**: `com.tradinglabs.vidingest.config`
-- **Last reviewed**: 2026-08-27
+- **Last reviewed**: 2026-08-29
 - **Status**: stable
 
 ## Quickstart (for agents)
@@ -123,11 +123,82 @@ connection, and warns (`HHH90000025`) if it is named anyway.
 Compose sets `VIDEO_KNOWLEDGE_ROOT=/app` for exactly that last case — the runtime image ships
 no `pom.xml`, so the walk always failed and warned twice on every boot.
 
-### Whisper transcription (`vidingest.whisper.*`)
+### Transcription (`vidingest.transcription.*`)
+
+Renamed from `vidingest.whisper.*` (Aug 2026) when TRANSCRIBE stopped being tied to
+openai-whisper-asr-webservice. Code pointers:
+[TranscriptionClientProperties.java](../../applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/config/TranscriptionClientProperties.java),
+[core/transcription/client/](../../applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/core/transcription/client).
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `vidingest.whisper.base-url` | `http://localhost:9000` | Whisper ASR webservice base URL (`http://whisper:9000` in docker) |
+| `vidingest.transcription.provider` | `whisper-asr` (base), `openai-compatible` (docker/dev) | Wire protocol: `whisper-asr` posts `{base}/asr?output=json` with an `audio_file` part; `openai-compatible` posts `{base}/audio/transcriptions` with `file` + `model` + `response_format=verbose_json` |
+| `vidingest.transcription.base-url` | `http://localhost:9000` (base), `${VK_HOST_LLM_URL}` (docker) | Must include the API prefix (usually `/v1`) for `openai-compatible` |
+| `vidingest.transcription.model` | `whisper-1` | Required by `openai-compatible`; ignored by whisper-asr-webservice, whose model is fixed by the image's `ASR_MODEL` |
+| `vidingest.transcription.api-key` | *(empty)* | Sent as `Authorization: Bearer` whenever set, for either provider |
+| `vidingest.transcription.connect-timeout` | `5s` | Startup-bound — not editable through the connections API |
+| `vidingest.transcription.read-timeout` | `30m` | Startup-bound |
+
+The client always sends `response_format=verbose_json` on the OpenAI path: the spec only promises
+segments for that format, and the phase persists one row per segment. Individual servers are looser
+— oMLX returns segments for plain `json` too — which is why the request asks explicitly instead of
+depending on which server is answering. Both providers return the same envelope shape
+(`{text, language, segments[{start,end,text}]}`), which is why one parser in
+`AbstractTranscriptionClient` serves both.
+
+The docker profile used to hardcode `http://whisper:9000` with no `${...}` indirection, so
+`VIDINGEST_WHISPER_BASE_URL` had never had any effect under compose. The replacement
+`VIDINGEST_TRANSCRIPTION_BASE_URL` does.
+
+#### Getting an ASR model into oMLX
+
+Two traps, both hit while setting this up. Neither is guessable from the error alone.
+
+- **`mlx-community/whisper-*` repos ship only `config.json` + `weights.safetensors`** — the older
+  mlx-whisper layout. oMLX refuses to load them:
+  *"missing the HuggingFace processor / feature-extractor configuration"*. The weights are fine; only
+  the tokenizer/processor JSON is absent. Copy it from the upstream OpenAI repo into the model
+  directory and `POST /admin/api/reload`:
+
+  ```bash
+  D=~/.omlx/models/mlx-community/whisper-large-v3-turbo
+  for f in preprocessor_config.json tokenizer.json special_tokens_map.json \
+           tokenizer_config.json added_tokens.json normalizer.json generation_config.json; do
+    curl -sL -o "$D/$f" "https://huggingface.co/openai/whisper-large-v3-turbo/resolve/main/$f"
+  done
+  ```
+
+- **Do not reach for Parakeet.** oMLX detects `mlx-community/parakeet-tdt-0.6b-v3` and loads it, but
+  mlx-audio's Parakeet returns `AlignedResult.sentences` while oMLX's STT engine reads
+  `getattr(result, "segments")` — so every transcription comes back with an **empty** segment list.
+  TRANSCRIBE persists one row per segment, so the phase would store a bare blob and FUSE would have
+  nothing to align against. Whisper is the only supported family that emits
+  `{"start", "end", "text"}`.
+
+Measured on this box with `whisper-large-v3-turbo` (1.6 GB): 27.7 s for the first call including the
+model load, then **1.65 s for 5.3 s of audio** warm — roughly 3× realtime on the GPU, against a
+CPU-only `ASR_MODEL=small` container before.
+
+#### End-to-end, all ten phases (2026-08-29)
+
+One ingest of a 19 s video through the compose stack, every optional phase on, the three model
+connections pointed at the host and the two sidecars in containers. **73 s wall clock**, run
+`COMPLETED`, all ten phases entered and completed in the audit trail.
+
+| Phase | Result |
+|---|---|
+| TRANSCRIBE | 5 segments, `language=en`, **2.3 s** for 19 s of audio via `host.docker.internal:8000/v1/audio/transcriptions` |
+| DIARIZE | 2 speakers, assigned to 5/5 segments |
+| FRAME_SAMPLE | 2 frames |
+| OCR | ran on both frames, 0 results — correct, the source has no on-screen text |
+| FUSE | 1 multimodal segment |
+| KNOWLEDGE | 1 unit, **24 s** on `Qwen2.5-14B-Instruct-4bit` |
+| CONTEXT | 1 chunk, embedding non-null |
+
+The KNOWLEDGE number is the point of the whole move: the same 14B model in the CPU-only container
+took 384 s just to load and then **timed out at 600 s on one batch**. Semantic search over the
+result returns the chunk for *"what animal has a long trunk"* against a transcript that says
+*"long fronts"* — no shared keyword, so the 1536-wide vector really is doing the work.
 
 ### Download (`vidingest.download.*`)
 
@@ -166,22 +237,47 @@ When semantic search is enabled, VidIngest also requires a `QueryEmbeddingProvid
 
 #### Docker (recommended) env vars
 
-When running VidIngest via the platform Docker stack (`SPRING_PROFILES_ACTIVE=docker`), semantic search is enabled by default and embeddings use the **Ollama-native** client against
-the `llm` service. Switch `VIDINGEST_EMBEDDINGS_PROVIDER` to `openai-compatible` for LM Studio,
-`llama-server`, mlx-lm or vLLM.
+When running VidIngest via the Docker stack (`SPRING_PROFILES_ACTIVE=docker`), semantic search is
+enabled by default and embeddings use the **OpenAI-compatible** client against the model runtime on
+the host. Switch `VIDINGEST_EMBEDDINGS_PROVIDER` to `ollama` to talk to an ollama daemon instead —
+on the host or on another machine, since there is no ollama container any more.
 
 - `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`
-- `VIDINGEST_EMBEDDINGS_PROVIDER=ollama`
-- `VIDINGEST_LLM_BASE_URL=http://llm:11434`
-- `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL=rjmalagon/gte-qwen2-1.5b-instruct-embed-f16`
-- `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536`
-- `VIDINGEST_EMBEDDINGS_TIMEOUT=30s` — one var now; the old `VIDINGEST_OLLAMA_TIMEOUT` used to
+- `VIDINGEST_EMBEDDINGS_PROVIDER=openai-compatible`
+- `VIDINGEST_EMBEDDINGS_BASE_URL=${VK_HOST_LLM_URL}` → `http://host.docker.internal:8000/v1`
+- `VIDINGEST_EMBEDDINGS_MODEL=Qwen3-Embedding-4B-4bit-DWQ` — must name a model the host serves
+  **as an embedding model**; see the oMLX note below, which is not obvious
+- `VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS=1536` — the pgvector column is `VECTOR(1536)`, checked
+  on every response
+- `VIDINGEST_EMBEDDINGS_DIMENSIONS=1536` — the OpenAI `dimensions` request field (Matryoshka
+  truncation). Sent only when set; leave it unset for a model that is natively the right width,
+  because not every OpenAI-compatible server tolerates the field
+- `VIDINGEST_EMBEDDINGS_TIMEOUT=180s` — one var; the old `VIDINGEST_OLLAMA_TIMEOUT` used to
   shadow it even when the provider was `openai-compatible`
-- `VIDINGEST_EMBEDDINGS_OLLAMA_TRUNCATE=true`
+- `VIDINGEST_OLLAMA_BASE_URL=http://host.docker.internal:11434` and
+  `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL=...` — used only when the provider is switched back to `ollama`
 
 Notes:
 
-- `VIDINGEST_LLM_BASE_URL` must be reachable **from inside the container**; use `http://llm:11434` for the docker stack.
+- The base URL must be reachable **from inside the container**. `host.docker.internal` resolves to
+  the host (compose adds the matching `extra_hosts` entry so it works on Linux too), but the host
+  process has to **bind `0.0.0.0`**: a container arrives on the bridge address, so a
+  `127.0.0.1`-only listener refuses the connection. This is the single most common cause of
+  "connection refused" after the move off the `llm` container.
+- Every one of these is a *starting* value. All five connections are editable at runtime — see
+  [Connections API](#connections-api-runtime-editable) below.
+- **oMLX decides a model is an embedding model by its directory name.** `_is_causal_lm_embedding`
+  looks for `embed`/`embedding` in the name, because a causal-LM embedder's `config.json` is
+  identical to a plain LLM's. So `gte-Qwen2-1.5B-instruct-MLX-Q8` — natively 1536-wide, exactly the
+  column's width — is filed as an `llm` and answers `/v1/embeddings` with
+  *"Model ... is not an embedding model"*. Forcing it with `model_type_override: "embedding"` does
+  not help either: oMLX's embedding engine supports `bert`, `modernbert`, `xlm_roberta`, `qwen3`
+  and `gemma3_text`, **not `qwen2`**, so the load fails with *"Model type qwen2 not supported"*.
+- **No oMLX-supported embedding architecture is natively 1536-wide**, which is why
+  `VIDINGEST_EMBEDDINGS_DIMENSIONS` exists. `Qwen3-Embedding-4B` is 2560 and Matryoshka-trained, so
+  the server truncates to 1536 on request. Truncation only ever goes **down** — asking the 1024-wide
+  `Qwen3-Embedding-0.6B` or `bge-m3` for 1536 fails at the server. Measured on this box: 2560
+  native, 1536 with the field, unit-normalised, cosine 0.49 between two distinct inputs.
 - Semantic search results depend on context-chunk generation during ingestion; ingest without `TRANSCRIBE` or `CONTEXT` in `skipPhases`.
 - For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`.
 
@@ -192,11 +288,71 @@ Notes:
   - Fix: set `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true`.
 - **409 Conflict: no query embedding provider configured**
   - Cause: embeddings provider is misconfigured or inactive.
-  - Fix (Ollama): set `VIDINGEST_EMBEDDINGS_PROVIDER=ollama` and configure `VIDINGEST_LLM_BASE_URL` + `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL`.
+  - Fix (Ollama): set `VIDINGEST_EMBEDDINGS_PROVIDER=ollama` and configure `VIDINGEST_OLLAMA_BASE_URL` + `VIDINGEST_EMBEDDINGS_OLLAMA_MODEL`.
+  - Or fix it without a restart: `PUT /api/v1/connections/EMBEDDINGS`, then `POST /api/v1/connections/EMBEDDINGS/test` to confirm.
   - Fix (OpenAI-compatible): set `VIDINGEST_EMBEDDINGS_PROVIDER=openai-compatible` and configure `VIDINGEST_EMBEDDINGS_BASE_URL` + `VIDINGEST_EMBEDDINGS_MODEL` (+ `VIDINGEST_EMBEDDINGS_API_KEY` if needed).
 - **Upstream embeddings failure**
   - Cause: embeddings call failed (network, auth, model mismatch, timeout).
   - Fix: verify provider URLs, model name, and connectivity from inside the container; increase timeout via `VIDINGEST_EMBEDDINGS_TIMEOUT`.
+
+## Connections API (runtime-editable)
+
+Everything above is bound from the environment at startup. The five *connections* — where the
+server reaches its model runtimes and sidecars — are additionally editable while it runs, from
+`GET/PUT/DELETE /api/v1/connections/{name}` or the console's **Settings** screen.
+
+Code:
+[connections/](../../applications/vidingest/vidingest-server/src/main/java/com/tradinglabs/vidingest/connections),
+changeset `008-connections.sql`, console
+[features/settings/](../../applications/webapp/src/app/features/settings).
+
+| Name | Config bean | Providers | Model? | Enable toggle? |
+|------|-------------|-----------|--------|----------------|
+| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `disabled` | yes | no |
+| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible` | yes | yes |
+| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible` | yes | no |
+| `DIARIZATION` | `vidingest.diarization.*` | `diarize-asr` | no | yes |
+| `OCR` | `vidingest.ocr.*` | `paddleocr` | no | yes |
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/api/v1/connections` | All five, with their effective values |
+| `GET` | `/api/v1/connections/{name}` | |
+| `PUT` | `/api/v1/connections/{name}` | Stores the override **and** applies it immediately |
+| `DELETE` | `/api/v1/connections/{name}` | 204; reverts to the value the server started with |
+| `POST` | `/api/v1/connections/{name}/test` | Always 200 — an unreachable dependency is a successful answer, carried as `reachable: false` |
+
+```bash
+curl -s localhost:8051/vidingest/api/v1/connections | jq '.[] | {name, provider, baseUrl, overridden}'
+```
+
+```bash
+curl -s -XPUT localhost:8051/vidingest/api/v1/connections/KNOWLEDGE -H 'Content-Type: application/json' -d '{"provider":"openai-compatible","baseUrl":"http://host.docker.internal:8000/v1","model":"Qwen2.5-14B-Instruct-4bit","enabled":true}'
+```
+
+Things worth knowing before you rely on it:
+
+- **A row is an override, not the configuration.** Absent, the environment value applies. The
+  service snapshots the environment values at startup *before* applying rows, which is the only
+  reason `DELETE` can mean "back to what `.env` said" — nothing else in the process remembers them.
+- **It takes effect without a restart** because the `@ConfigurationProperties` beans are mutable
+  singletons and every client resolves its base URL per call. The four `RestClient` beans therefore
+  carry **no** `.baseUrl(...)`; adding one back silently re-pins the URL to startup.
+- **Timeouts are not exposed.** They are consumed once when each request factory is built, so a
+  value shown here would not be the one in use. Change them in the environment and restart.
+- **API keys are write-only.** `GET` returns `hasApiKey`, never the key. On `PUT`, an absent
+  `apiKey` keeps the stored one and `""` clears it — without that distinction the console could not
+  save any other field without wiping the key. At rest the column is plaintext; encrypt it if this
+  database ever leaves the operator's own host.
+- **`model` is a full replacement, `apiKey` and `enabled` are not.** A `PUT` that omits `model`
+  drops the model override, so the value reverts to what the environment configured — which is the
+  "a field the row does not carry is not overridden" rule applied consistently, but it will surprise
+  you from `curl`: changing only the base URL silently puts an ollama tag back where you had an oMLX
+  model id. The console always sends the field. `apiKey` is exempt because it cannot be read back,
+  and `enabled` because omitting it should leave a phase toggle alone.
+- **The provider is validated on the way in**, against the same list the router uses at call time
+  (served back as `supportedProviders`). An unrecognised value would otherwise fail the phase
+  rather than the request.
 
 ## Docker configuration
 
@@ -207,8 +363,8 @@ the named volumes; services live in split files layered on top of it:
 
 | File | Services |
 |------|----------|
-| `compose/infra/infra.yml` | `postgres`, `llm`, `whisper`, `paddleocr-server`, `diarize-asr` |
-| `compose/services.yml` | `vidingest` (REST server) |
+| `compose/infra/infra.yml` | `postgres`, `paddleocr-server`, `diarize-asr` |
+| `compose/services.yml` | `vidingest` (REST server), `webapp` (console behind nginx) |
 | `compose/cli.yml` | `vidingest-cli` |
 | `compose/mcp.yml` | `vidingest-mcp` |
 
@@ -216,6 +372,27 @@ the named volumes; services live in split files layered on top of it:
 `docker compose` from the repo root sees only the empty base file. Host ports come from
 `compose/ports.env` and everything publishes to `127.0.0.1` unless `VK_BIND_ADDR` says
 otherwise.
+
+**The console is a separate image.** `webapp` (nginx, `WEBAPP_PORT` 8052) serves the Angular
+bundle and proxies the API to `vidingest:8051`. The server image used to build the bundle in a node
+stage and bake it into `classpath:/static`, served by a `SpaStaticResourceConfig`; both were removed
+once the container existed, so the vidingest image is the API alone and `http://localhost:8051/vidingest/`
+no longer serves a page. One console, one place.
+
+nginx proxies rather than the app being told where the server is, because **every request the
+console makes is relative** and the server has no CORS configuration — the two must stay
+same-origin. The four proxied prefixes in `applications/webapp/nginx.conf` (`api/`, `actuator`,
+`v3/`, `swagger-ui`) are the server's whole surface and now live only there; a path that should
+reach the server but matches none of them falls into the SPA branch and returns `index.html` with a
+**200**, which reads as a blank screen rather than a 404.
+
+**The `llm` and `whisper` services are gone** (Aug 2026). Both ran CPU-only inside the Docker VM,
+which cannot reach the GPU; inference now runs as a host process and compose points at it via
+`VK_HOST_LLM_URL` (default `http://host.docker.internal:8000/v1`, an oMLX server).
+`GROUP_INFRA` in `tradey.sh` is therefore just `postgres`, and `tradey.sh llm` is gone with the
+container it exec'd into. After upgrading, compose will report the two old containers as orphans;
+clear them with `./scripts/compose.sh down --remove-orphans` and reclaim the model volume by hand
+once you are sure: `docker volume rm video-knowledge_ollama_data`.
 
 ### Storage in containers
 
@@ -228,8 +405,7 @@ a container. `package/` is only used when the server runs on the host, where
 | `vidingest_data` | `/data/videos` | `vidingest` (rw) — `application-docker.properties` sets `vidingest.storage.video-path=/data/videos`; also `paddleocr-server` as `:ro` so OCR reads frames in place |
 | `app_logs` | `/app/logs` | `vidingest`, `vidingest-mcp` (`LOG_DIR=/app/logs`) |
 | `postgres_data` | `/var/lib/postgresql/data` | `postgres` |
-| `ollama_data` | `/root/.ollama` | `llm` — volume keeps the `ollama_` prefix on purpose: it holds ollama's own on-disk layout, and renaming it orphans the pulled models |
-| `ai_models` | `/models` | shared model cache for `llm`, `whisper` (`ASR_MODEL_PATH=/models/whisper`), `paddleocr-server`, `diarize-asr` |
+| `ai_models` | `/models` | shared model cache for `paddleocr-server` and `diarize-asr` (the `llm` and `whisper` services that also used it are gone) |
 
 Transcript sidecars are written next to the downloaded video file, so under
 `/data/videos/...` in a container.
@@ -385,23 +561,29 @@ vidingest.knowledge.max-units-per-video=${VIDINGEST_KNOWLEDGE_MAX_UNITS_PER_VIDE
 vidingest.knowledge.min-salience=${VIDINGEST_KNOWLEDGE_MIN_SALIENCE:0.2}
 vidingest.knowledge.embed-content=${VIDINGEST_KNOWLEDGE_EMBED_CONTENT:true}
 ```
-Defaults to the `llm` compose service — the same daemon the embeddings client uses, just a
-different model. Pull it once with `./scripts/tradey.sh llm pull qwen2.5:14b-instruct` (or
-whatever model you configure).
+Defaults to the host model runtime — the same server the embeddings client uses, just a different
+model. The model must already exist there, under the id the runtime uses: oMLX names the same
+weights `Qwen2.5-14B-Instruct-4bit` where ollama calls them `qwen2.5:14b-instruct`.
+
+```bash
+curl -s http://localhost:8000/v1/models | jq '.data[].id'
+```
 
 `provider` selects the wire protocol: `ollama` (`/api/chat`) or `openai-compatible`
-(`/chat/completions`). Use the latter for LM Studio, `llama-server`, mlx-lm, vLLM, or a remote
-host — and give `base-url` the `/v1` suffix those servers expect:
+(`/chat/completions`). Use the latter for oMLX, LM Studio, `llama-server`, mlx-lm, vLLM, or a
+remote host — and give `base-url` the `/v1` suffix those servers expect:
 
 ```properties
 VIDINGEST_KNOWLEDGE_PROVIDER=openai-compatible
-VIDINGEST_KNOWLEDGE_BASE_URL=http://host.docker.internal:1234/v1
+VIDINGEST_KNOWLEDGE_BASE_URL=http://host.docker.internal:8000/v1
 VIDINGEST_KNOWLEDGE_API_KEY=            # only hosted endpoints need one
 ```
 
-An unrecognised `provider` fails the context at startup rather than degrading silently — there
-is no `Disabled` chat client, since `vidingest.knowledge.enabled=false` already turns the phase
-off.
+`KnowledgeChatClientRouter` reads `provider` **per call**, because it is runtime-editable through
+`PUT /api/v1/connections/KNOWLEDGE`. An unrecognised value therefore fails the KNOWLEDGE phase
+rather than the context at startup, which is what it used to do — the API validates it on the way
+in so the typo is still caught before any run. There is no `Disabled` chat client, since
+`vidingest.knowledge.enabled=false` already turns the phase off.
 
 ### Docker-compose sidecars
 - `diarize-asr` (built from `compose/infra/diarize-asr/`, port 9001) —
@@ -420,7 +602,8 @@ Tradey wiring (`scripts/tradey.sh`):
   them up. They are deliberately *not* `depends_on` of `vidingest`, so the server starts
   without them; the matching `VIDINGEST_OCR_ENABLED` / `VIDINGEST_DIARIZATION_ENABLED`
   flags gate whether it calls them.
-- `llm` is part of the `infra` group and starts automatically with `vidingest`.
+- The model runtimes are **not** compose services at all — see
+  [Connections API](#connections-api-runtime-editable). `infra` is postgres alone.
 - Probe endpoints: `:9001/health` and `:8002/health` respectively.
 
 ### PaddleOCR memory, and why OCR time tracks text density
@@ -463,35 +646,22 @@ real ceiling on the work, not a post-hoc trim — `OcrService` tests it before e
 stops. At the ~0.28s per line above, though, 10000 rows is still ~45 minutes for a single video, so
 lower it for text-dense sources rather than relying on it as a safety net.
 
-### Ollama memory tuning
+### Model-runtime memory (host, not compose)
 
-Knowledge extraction (chat model, e.g. `qwen2.5:14b-instruct` ~9 GB) runs alongside the
-embed model (`gte-qwen2-1.5b-embed-f16` ~3.6 GB). Defaults in
-`compose/infra/infra.yml`:
+The old section here tuned `OLLAMA_KEEP_ALIVE` and `mem_limit` on the `llm` container, where the
+chat model (~9 GB) and the embed model (~3.2 GB) fought over the Docker VM's headroom and a 30 s
+keep-alive was the compromise that stopped the OOM heuristic firing
+(`"model requires more system memory than is currently available"`). It measured a CONTEXT phase at
+**57.8 s cold against 2.4 s warm**, nearly all of it reloading the embed model.
 
-```yaml
-mem_limit: 16G          # bumped from 4G for the 14b chat model
-mem_reservation: 4G
-environment:
-  - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30s}   # unload after 30s so chat and embed alternate
-```
-
-With `OLLAMA_KEEP_ALIVE=30s`, the chat model unloads soon after each batch so the embed
-call can load without hitting the OOM heuristic (`"model requires more system memory than
-is currently available"`). Trade-off: ~10–30 s reload cost per swap.
-
-**That default only pays for itself while KNOWLEDGE is on.** With it off, the embed model is
-the only resident model, there is nothing to swap with, and the unload is pure cost — measured
-on a 19 s video, the CONTEXT phase took **57.8 s cold against 2.4 s warm**, nearly all of it
-reloading 3.2 GB (12.1 s of that when the file was still in the host page cache; the rest is a
-cold read off disk). Raise it in the gitignored `.env` at the repo root for that case:
+None of that applies now: the runtime is a host process with the whole machine's unified memory and
+the GPU, and it manages its own residency. What is left of the trade-off is the same in shape —
+loading a second model can evict the first — so if a phase suddenly gets slow, check what the host
+is holding. For oMLX:
 
 ```bash
-OLLAMA_KEEP_ALIVE=4h
+curl -s http://localhost:8000/api/status | jq '{loaded_models, models_loaded, models_loading}'
 ```
-
-Drop it back to `30s` before enabling KNOWLEDGE — `qwen2.5:14b` (~9 GB) plus the embed model
-(~3.2 GB) needs the churn.
 
 ### Ollama embeddings client gotchas
 
@@ -584,7 +754,7 @@ leaves the run FAILED rather than moving it out of the only state from which it 
 | `relation "vidingest_videos" does not exist` | Liquibase migration not run | Check `spring.liquibase.enabled=true` and DB connectivity |
 | `yt-dlp failed with exit code` | yt-dlp not installed or network issue | Install yt-dlp (`pip install yt-dlp`), check network |
 | `yt-dlp timed out after N seconds` | Command exceeded configured timeout | Increase `vidingest.download.timeout-seconds` or disable timeout with `0` |
-| `Whisper request failed` / `TRANSCRIPTION_FAILURE` | Whisper service not running, model still downloading, or ffmpeg missing | Start infra `whisper`, persist cache, verify `http://localhost:9000/docs` |
+| `... transcription request failed` / `TRANSCRIPTION_FAILURE` | Transcription runtime unreachable, wrong provider for the URL, no ASR model on the host, or ffmpeg missing | `POST /api/v1/connections/TRANSCRIPTION/test`. If the host binds `127.0.0.1` only, a container cannot reach it — bind `0.0.0.0`. On `openai-compatible`, the base URL must end in `/v1` and the `model` must be one the host serves |
 | `Connection refused` on startup | PostgreSQL not running | Start PostgreSQL on the configured host/port |
 | `Ingestion failed: Video already ingested` | Duplicate video URL | Expected behavior; the same source+videoId pair cannot be ingested twice |
 | `Semantic search is disabled` | Search feature flag off | Set `VIDINGEST_SEARCH_SEMANTIC_ENABLED=true` and configure embeddings (see Semantic search section above) |

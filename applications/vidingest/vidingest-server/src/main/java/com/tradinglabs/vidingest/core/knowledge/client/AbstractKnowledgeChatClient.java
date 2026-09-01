@@ -10,8 +10,10 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +48,21 @@ public abstract class AbstractKnowledgeChatClient implements KnowledgeChatClient
 
     /** Path appended to the configured base URL. */
     protected abstract String uri();
+
+    /**
+     * Resolved against {@code config.getBaseUrl()} on every call, so that repointing the
+     * connection at runtime takes effect without a restart. {@code UriComponentsBuilder} rather
+     * than concatenation because the base usually carries a path of its own ({@code /v1}) and a
+     * trailing slash must not produce a double one.
+     */
+    private URI absoluteUri() {
+        String baseUrl = config.getBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new KnowledgeExtractionFailureException(
+                    "No knowledge chat base URL configured (vidingest.knowledge.base-url)");
+        }
+        return UriComponentsBuilder.fromUriString(baseUrl.trim()).path(uri()).build().toUri();
+    }
 
     /** Where the content string sits in the envelope, for the "missing content" failure message. */
     protected abstract String contentPath();
@@ -117,7 +134,7 @@ public abstract class AbstractKnowledgeChatClient implements KnowledgeChatClient
      */
     private byte[] post(Map<String, Object> body) {
         RestClient.RequestBodySpec spec = restClient.post()
-                .uri(uri())
+                .uri(absoluteUri())
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON);
 

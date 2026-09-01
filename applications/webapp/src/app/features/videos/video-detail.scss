@@ -24,14 +24,43 @@
   gap: var(--space-md);
 }
 
-// One column at every width: the player above the artifacts, not beside them. Two columns gave the
-// transcript, the frames and the knowledge units — the things being read — a little over half the
-// screen, while a 460px video sat next to whitespace for the length of the page.
+// Two columns for the player row, one full-width row for the artifacts. Full-width was worse in the
+// other direction: at `aspect-ratio: 16 / 9` across the page the player is 56.25vw tall, so the
+// screen opened on a video and nothing else, and the rerun row and the dossier sat below the fold.
+// The artifacts stay full width — the transcript, the frames and the knowledge units are the things
+// being read, and half a screen is not enough for them.
 .split {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-areas:
+    'player side'
+    'artifacts artifacts';
   gap: var(--space-md);
   align-items: start;
+
+  // `.panel + .panel` in styles.scss adds a margin between stacked panels; in a grid the gap is
+  // the only spacing, and the margin would double it on the artifacts row.
+  > * {
+    margin-top: 0;
+  }
+}
+
+// Not a `.panel`: the video carries its own border and radius, and a square 100%-wide video inside
+// a rounded panel just paints over its corners.
+.player-panel {
+  grid-area: player;
+}
+
+.side {
+  grid-area: side;
+  padding: var(--space-md);
+}
+
+@media (max-width: 767px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'player' 'side' 'artifacts';
+  }
 }
 
 .player {
@@ -159,6 +188,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+// Each pane scrolls inside its own box, so the page stays about one screen and the player never
+// leaves the viewport — every artifact row is a seek, and a ~6000px page moved the player a screen
+// above the fold on every tap. The one-column layout answered that with a sticky player instead;
+// half-width, sticky would float the video over the left half of the text being read.
 .rows,
 .units,
 .frames-list {
@@ -294,51 +327,4 @@
     overflow-wrap: anywhere;
     padding: 1px 0;
   }
-}
-
-// One column, so the panel cannot ride beside the list any more — but the *player* still has to.
-// Every artifact row is a seek, and with the whole panel static the transcript became a ~6000px
-// page whose taps moved a player a full screen above the viewport: audio started and nothing on
-// screen said where it had gone.
-//
-// `display: contents` is what makes it work. A sticky element is bounded by its containing
-// block, so `position: sticky` on the video inside the panel sticks only until the *panel*
-// scrolls past — measured at -701px with the list still going. Dropping the panel's own box
-// promotes its children to grid items of `.split`, which spans the artifacts too, and the video
-// sticks against that instead.
-//
-// Deliberately no `order` on the children. Moving the rerun row and the dossier below the list
-// reads better, but `order` moves only the paint: tab order stays in DOM order, so focus would
-// leave the player, skip the whole list, land on a rerun chip painted underneath it, and come
-// back up. A screen that looks reordered and tabs unreordered is worse than one extra scroll.
-.player-panel {
-  display: contents;
-}
-
-.player {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  border-radius: 0;
-}
-
-// Out of the panel's box, so the gutter it used to inherit has to be restated.
-.cursor,
-.reruns,
-.dossier {
-  padding-inline: var(--space-md);
-}
-
-.rows,
-.units,
-.frames-list {
-  max-height: none;
-}
-
-// A sticky element must not cover the thing focus just moved to. Every control in this panel is
-// a `<button>`, which `styles.scss` already gives a `scroll-margin-top`; only the value changes
-// here. `56.25vw` is the player's own height at `aspect-ratio: 16 / 9` across the one-column
-// width, plus a gap.
-.artifacts button {
-  scroll-margin-top: calc(56.25vw + var(--space-md));
 }

@@ -40,17 +40,42 @@ services:
       VIDINGEST_RECONCILER_ITEMSTALEAFTER: ${VIDINGEST_RECONCILER_ITEMSTALEAFTER:-PT1H}
       VIDINGEST_RECONCILER_INTERVALMS: ${VIDINGEST_RECONCILER_INTERVALMS:-300000}
       VIDINGEST_LEASE_TTL: ${VIDINGEST_LEASE_TTL:-PT10M}
-      # Semantic search + embeddings (Ollama-native by default; openai-compatible for LM Studio et al.)
+      # --- Model runtimes -----------------------------------------------------------------
+      # Everything below is a *starting* value. All of it is editable at runtime through
+      # PUT /api/v1/connections/{name}, and an override stored there wins over these on restart.
+      #
+      # The default is the host runtime (oMLX and friends speak the OpenAI wire format), because a
+      # container cannot reach the GPU. See VK_HOST_LLM_URL in compose/ports.env for the two things
+      # the host process has to get right: bind 0.0.0.0, and serve a real embedding model.
+      VIDINGEST_LLM_BASE_URL: ${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}
+
+      # Semantic search + embeddings.
       VIDINGEST_SEARCH_SEMANTIC_ENABLED: ${VIDINGEST_SEARCH_SEMANTIC_ENABLED:-true}
-      VIDINGEST_EMBEDDINGS_PROVIDER: ${VIDINGEST_EMBEDDINGS_PROVIDER:-ollama}
+      VIDINGEST_EMBEDDINGS_PROVIDER: ${VIDINGEST_EMBEDDINGS_PROVIDER:-openai-compatible}
       VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS: ${VIDINGEST_EMBEDDINGS_EXPECTED_DIMENSIONS:-1536}
-      VIDINGEST_EMBEDDINGS_BASE_URL: ${VIDINGEST_EMBEDDINGS_BASE_URL:-}
-      VIDINGEST_EMBEDDINGS_MODEL: ${VIDINGEST_EMBEDDINGS_MODEL:-text-embedding-3-small}
+      VIDINGEST_EMBEDDINGS_BASE_URL: ${VIDINGEST_EMBEDDINGS_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
+      # Must name a model the host serves *as an embedding model*. oMLX classifies a causal-LM
+      # embedder by looking for "embed" in the directory name, so gte-Qwen2 is filed as an LLM and
+      # rejected on /v1/embeddings whatever its width.
+      VIDINGEST_EMBEDDINGS_MODEL: ${VIDINGEST_EMBEDDINGS_MODEL:-Qwen3-Embedding-4B-4bit-DWQ}
+      # Qwen3-Embedding-4B is natively 2560-wide; the pgvector column is VECTOR(1536). The model is
+      # Matryoshka-trained, so the server truncates on request. Only ever downward — asking a
+      # 1024-wide model for 1536 fails at the server.
+      VIDINGEST_EMBEDDINGS_DIMENSIONS: ${VIDINGEST_EMBEDDINGS_DIMENSIONS:-1536}
       VIDINGEST_EMBEDDINGS_API_KEY: ${VIDINGEST_EMBEDDINGS_API_KEY:-}
       VIDINGEST_EMBEDDINGS_TIMEOUT: ${VIDINGEST_EMBEDDINGS_TIMEOUT:-180s}
-      VIDINGEST_LLM_BASE_URL: ${VIDINGEST_LLM_BASE_URL:-http://llm:11434}
+      # Used only when the EMBEDDINGS connection is switched back to provider=ollama, which is
+      # still supported — it just is not a container any more.
+      VIDINGEST_OLLAMA_BASE_URL: ${VIDINGEST_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       VIDINGEST_EMBEDDINGS_OLLAMA_MODEL: ${VIDINGEST_EMBEDDINGS_OLLAMA_MODEL:-rjmalagon/gte-qwen2-1.5b-instruct-embed-f16}
       VIDINGEST_EMBEDDINGS_OLLAMA_TRUNCATE: ${VIDINGEST_EMBEDDINGS_OLLAMA_TRUNCATE:-true}
+
+      # Transcription (TRANSCRIBE). whisper-asr points at an openai-whisper-asr-webservice;
+      # openai-compatible posts /audio/transcriptions and needs a base URL ending in /v1.
+      VIDINGEST_TRANSCRIPTION_PROVIDER: ${VIDINGEST_TRANSCRIPTION_PROVIDER:-openai-compatible}
+      VIDINGEST_TRANSCRIPTION_BASE_URL: ${VIDINGEST_TRANSCRIPTION_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
+      VIDINGEST_TRANSCRIPTION_MODEL: ${VIDINGEST_TRANSCRIPTION_MODEL:-whisper-large-v3-turbo}
+      VIDINGEST_TRANSCRIPTION_API_KEY: ${VIDINGEST_TRANSCRIPTION_API_KEY:-}
       # Speaker diarization (optional). Flip enabled + start the diarize-asr sidecar (needs
       # HUGGINGFACE_TOKEN) to opt in. Intentionally NOT a depends_on so vidingest starts without it.
       VIDINGEST_DIARIZATION_ENABLED: ${VIDINGEST_DIARIZATION_ENABLED:-false}
@@ -69,12 +94,13 @@ services:
       VIDINGEST_OCR_LANGUAGES: ${VIDINGEST_OCR_LANGUAGES:-en}
       VIDINGEST_OCR_MIN_CONFIDENCE: ${VIDINGEST_OCR_MIN_CONFIDENCE:-0.5}
       VIDINGEST_OCR_MAX_RESULTS_PER_VIDEO: ${VIDINGEST_OCR_MAX_RESULTS_PER_VIDEO:-10000}
-      # Knowledge extraction (optional). Chat + embeddings on the llm service; pull the chat model first.
-      # For LM Studio / llama.cpp / mlx / vLLM: PROVIDER=openai-compatible and a BASE_URL ending in /v1.
+      # Knowledge extraction (optional). Chat on the host runtime; the model must already be
+      # available there. CHAT_MODEL is the id the host uses, not an ollama tag — oMLX names it
+      # e.g. Qwen2.5-14B-Instruct-4bit, ollama names the same weights qwen2.5:14b-instruct.
       VIDINGEST_KNOWLEDGE_ENABLED: ${VIDINGEST_KNOWLEDGE_ENABLED:-false}
-      VIDINGEST_KNOWLEDGE_PROVIDER: ${VIDINGEST_KNOWLEDGE_PROVIDER:-ollama}
-      VIDINGEST_KNOWLEDGE_CHAT_MODEL: ${VIDINGEST_KNOWLEDGE_CHAT_MODEL:-qwen2.5:14b-instruct}
-      VIDINGEST_KNOWLEDGE_BASE_URL: ${VIDINGEST_KNOWLEDGE_BASE_URL:-http://llm:11434}
+      VIDINGEST_KNOWLEDGE_PROVIDER: ${VIDINGEST_KNOWLEDGE_PROVIDER:-openai-compatible}
+      VIDINGEST_KNOWLEDGE_CHAT_MODEL: ${VIDINGEST_KNOWLEDGE_CHAT_MODEL:-Qwen2.5-14B-Instruct-4bit}
+      VIDINGEST_KNOWLEDGE_BASE_URL: ${VIDINGEST_KNOWLEDGE_BASE_URL:-${VK_HOST_LLM_URL:-http://host.docker.internal:8000/v1}}
       VIDINGEST_KNOWLEDGE_API_KEY: ${VIDINGEST_KNOWLEDGE_API_KEY:-}
       VIDINGEST_KNOWLEDGE_TEMPERATURE: ${VIDINGEST_KNOWLEDGE_TEMPERATURE:-0.2}
       VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS: ${VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS:-4096}
@@ -90,10 +116,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      llm:
-        condition: service_started
-      whisper:
-        condition: service_healthy
+    # The LLM runtime lives on the host, so it cannot be a depends_on. Neither can the two
+    # optional sidecars, deliberately — vidingest starts without them and the phases that need
+    # them are opt-in. Check any of them with POST /api/v1/connections/{name}/test.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     # 768M left ~22M of slack once the 75%-of-limit heap and 151M of committed non-heap were
     # counted, and OCR buffers whole frames for multipart upload in native memory that neither
     # of those numbers covers. 1G gives the same 75% split real headroom; the JVM re-scales on
@@ -101,3 +128,33 @@ services:
     mem_limit: 1G
     mem_reservation: 256M
     restart: "no"
+
+  # The operator console as its own container. The same bundle is also baked into the vidingest jar
+  # (that is what makes the jar deployable alone), so with this service running the console is
+  # reachable two ways: here on WEBAPP_PORT, and from the server itself on VIDINGEST_PORT. This one
+  # can be rebuilt and restarted without touching the server, which is the reason it exists.
+  #
+  # nginx proxies the API rather than the app being told where the server is: every request the
+  # console makes is relative and there is no CORS config on the server, so the two must stay
+  # same-origin. See applications/webapp/nginx.conf.
+  webapp:
+    build:
+      context: applications/webapp
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
+    image: video-knowledge/webapp:${VK_IMAGE_TAG:-latest}
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${WEBAPP_PORT:-8052}:8080'
+    depends_on:
+      # Only for start order — nginx proxies lazily, so the console still loads and reports the
+      # failure itself if the server goes away later.
+      vidingest:
+        condition: service_healthy
+    networks:
+      - video-knowledge
+    mem_limit: 128M
+    mem_reservation: 32M
+    restart: unless-stopped
+

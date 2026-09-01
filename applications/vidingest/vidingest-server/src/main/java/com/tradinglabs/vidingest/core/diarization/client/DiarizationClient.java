@@ -16,8 +16,10 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,7 +50,7 @@ public class DiarizationClient {
     // Explicit constructor (not @RequiredArgsConstructor) so the @Qualifier sits on the
     // constructor parameter where Spring is guaranteed to honour it — Lombok's copying of
     // field-level @Qualifier annotations is unreliable when more than one matching bean
-    // exists (we now have whisperRestClient + diarizationRestClient).
+    // exists (transcriptionRestClient, diarizationRestClient, ocrRestClient, knowledgeChatRestClient).
     public DiarizationClient(
             ObjectMapper objectMapper,
             DiarizationConfig diarizationConfig,
@@ -86,16 +88,7 @@ public class DiarizationClient {
         String raw;
         try {
             raw = restClient.post()
-                    .uri(uriBuilder -> {
-                        var b = uriBuilder.path("/diarize");
-                        if (minSpeakers != null) {
-                            b = b.queryParam("min_speakers", minSpeakers);
-                        }
-                        if (maxSpeakers != null) {
-                            b = b.queryParam("max_speakers", maxSpeakers);
-                        }
-                        return b.build();
-                    })
+                    .uri(diarizeUri(minSpeakers, maxSpeakers))
                     .body(parts)
                     .retrieve()
                     .body(String.class);
@@ -247,5 +240,26 @@ public class DiarizationClient {
             return trimmed;
         }
         return trimmed.substring(0, 500) + "...";
+    }
+
+    /**
+     * Built from the live {@code diarizationConfig.getBaseUrl()} on every call rather than baked into the
+     * {@code RestClient}, so repointing the DIARIZATION connection at runtime takes effect without
+     * a restart.
+     */
+    private URI diarizeUri(Integer minSpeakers, Integer maxSpeakers) {
+        String baseUrl = diarizationConfig.getBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new DiarizationFailureException(
+                    "No diarization base URL configured (vidingest.diarization.base-url)");
+        }
+        UriComponentsBuilder b = UriComponentsBuilder.fromUriString(baseUrl.trim()).path("/diarize");
+        if (minSpeakers != null) {
+            b = b.queryParam("min_speakers", minSpeakers);
+        }
+        if (maxSpeakers != null) {
+            b = b.queryParam("max_speakers", maxSpeakers);
+        }
+        return b.build().toUri();
     }
 }
