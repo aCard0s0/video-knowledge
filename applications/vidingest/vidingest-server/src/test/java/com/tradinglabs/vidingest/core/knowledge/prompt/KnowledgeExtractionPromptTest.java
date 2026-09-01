@@ -1,10 +1,13 @@
 package com.tradinglabs.vidingest.core.knowledge.prompt;
 
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
+import com.tradinglabs.vidingest.config.KnowledgeExtractionConfig;
 import com.tradinglabs.vidingest.core.fusion.domain.MultimodalSegment;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -192,6 +195,50 @@ class KnowledgeExtractionPromptTest {
         // (1000 + 500 = 1500) plus the same overhead. ≥ 1500 is a robust check.
         assertThat(tinyEst).isLessThan(100);
         assertThat(bigEst).isGreaterThanOrEqualTo(1500);
+    }
+
+    /**
+     * The eval baseline in {@code scripts/eval/prompts/v3-baseline.txt} must be the prompt this code
+     * actually sends.
+     *
+     * <p>{@code scripts/eval-knowledge-prompt.py} scores prompt files, and a baseline that has
+     * drifted from the code makes every comparison against it meaningless — the failure this
+     * session already paid for once, when a candidate was measured and something else was shipped.
+     * A drifted file is silent otherwise, so it is asserted here rather than trusted.
+     *
+     * <p>This test also <em>writes</em> the file, so it is its own regenerator and there is no
+     * second tool to keep in step — the eval is a Python script and cannot call this method. After
+     * a prompt edit:
+     *
+     * <p>{@code ./mvnw -pl applications/vidingest/vidingest-server test \
+     * -Dtest=KnowledgeExtractionPromptTest -DupdateEvalBaseline=true}
+     *
+     * <p>The types are the {@code KnowledgeExtractionConfig} defaults, because that is what a
+     * default deployment sends.
+     */
+    @Test
+    void baselineEvalPromptIsInSyncWithTheCode() throws Exception {
+        Path baseline = Path.of("..", "..", "..", "scripts", "eval", "prompts", "v3-baseline.txt");
+        String fromCode = KnowledgeExtractionPrompt.systemMessage(new KnowledgeExtractionConfig().getTypes());
+
+        if (Boolean.getBoolean("updateEvalBaseline")) {
+            Files.createDirectories(baseline.getParent());
+            Files.writeString(baseline, fromCode);
+            return;
+        }
+
+        assertThat(baseline)
+                .withFailMessage("eval baseline not found at %s — surefire runs from the module "
+                        + "directory, so this path is relative to vidingest-server. Create it with "
+                        + "-DupdateEvalBaseline=true", baseline.toAbsolutePath())
+                .exists();
+
+        assertThat(Files.readString(baseline))
+                .withFailMessage("scripts/eval/prompts/v3-baseline.txt has drifted from "
+                        + "KnowledgeExtractionPrompt, so every eval scored against it is measuring "
+                        + "a prompt the server does not send. Re-run this test with "
+                        + "-DupdateEvalBaseline=true.")
+                .isEqualTo(fromCode);
     }
 
     /**
