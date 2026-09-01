@@ -4,19 +4,6 @@
      pixel on the card, so this line is the whole confirmation. -->
 <p class="said mono muted" role="status">{{ said() }}</p>
 
-<section class="panel intro">
-  <div class="panel-head">
-    <span class="eyebrow">connections</span>
-    <span class="eyebrow">{{ rows().length }} runtimes</span>
-  </div>
-  <p class="quiet muted">
-    Where the server reaches its model runtimes and sidecars. Saved changes apply immediately — no
-    restart. Reset drops the stored override and goes back to the value the server started with.
-    Timeouts are not here: they are read once at startup, so a value shown would not be the one in
-    use.
-  </p>
-</section>
-
 @if (list.error()) {
   <!-- Nothing else: the problem panel above already says what failed, and rendering an empty
        grid under it would read as "there are no connections". -->
@@ -28,80 +15,86 @@
       <form class="panel card" [formGroup]="form(row)" (ngSubmit)="save(row)">
         <div class="panel-head">
           <span class="eyebrow">{{ row.name }}</span>
+          <!-- Both states are the same chip, so the head reads as one row of two things rather
+               than a label beside a label. "from env" and not "from environment": at five cards
+               across, the longer string wrapped the head and pushed TRANSCRIPTION's fields a line
+               below every other card's. -->
           @if (row.overridden) {
-            <span class="badge mono" [title]="'overridden ' + absoluteTime(row.updatedAt)">
+            <span class="badge mono on" [title]="'overridden ' + absoluteTime(row.updatedAt)">
               overridden
             </span>
           } @else {
-            <span class="eyebrow muted">from environment</span>
+            <span class="badge mono">from env</span>
           }
         </div>
 
-        <div class="field">
-          <label class="lbl mono muted" [for]="row.name + '-provider'">provider</label>
-          <select [id]="row.name + '-provider'" formControlName="provider">
-            @for (provider of row.supportedProviders; track provider) {
-              <option [value]="provider">{{ provider }}</option>
-            }
-          </select>
-        </div>
-
-        <div class="field">
-          <label class="lbl mono muted" [for]="row.name + '-baseUrl'">base URL</label>
-          <input
-            [id]="row.name + '-baseUrl'"
-            type="url"
-            formControlName="baseUrl"
-            placeholder="http://host:port/v1"
-            autocomplete="off"
-            spellcheck="false"
-            [attr.aria-invalid]="form(row).controls.baseUrl.invalid && form(row).controls.baseUrl.touched ? true : null"
-          />
-        </div>
-
-        @if (row.supportsModel) {
+        <div class="body">
           <div class="field">
-            <label class="lbl mono muted" [for]="row.name + '-model'">model</label>
+            <label class="lbl mono muted" [for]="row.name + '-provider'">provider</label>
+            <select [id]="row.name + '-provider'" formControlName="provider">
+              @for (provider of row.supportedProviders; track provider) {
+                <option [value]="provider">{{ provider }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="lbl mono muted" [for]="row.name + '-baseUrl'">base URL</label>
             <input
-              [id]="row.name + '-model'"
-              type="text"
-              formControlName="model"
-              placeholder="model id as the runtime names it"
+              [id]="row.name + '-baseUrl'"
+              type="url"
+              formControlName="baseUrl"
+              placeholder="http://host:port/v1"
               autocomplete="off"
               spellcheck="false"
+              [attr.aria-invalid]="form(row).controls.baseUrl.invalid && form(row).controls.baseUrl.touched ? true : null"
             />
           </div>
 
-          <div class="field">
-            <label class="lbl mono muted" [for]="row.name + '-apiKey'">api key</label>
-            <!-- Write-only. The server never returns it, so this box starts empty even when one
-                 is stored, and staying empty means "keep it". -->
-            <input
-              [id]="row.name + '-apiKey'"
-              type="password"
-              formControlName="apiKey"
-              [placeholder]="apiKeyPlaceholder(row)"
-              autocomplete="off"
-            />
-          </div>
-        }
+          @if (row.supportsModel) {
+            <div class="field">
+              <label class="lbl mono muted" [for]="row.name + '-model'">model</label>
+              <input
+                [id]="row.name + '-model'"
+                type="text"
+                formControlName="model"
+                placeholder="model id as the runtime names it"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
 
-        @if (row.supportsEnabled) {
-          <label class="toggle mono">
-            <input type="checkbox" formControlName="enabled" />
-            phase enabled
-          </label>
-        }
+            <div class="field">
+              <label class="lbl mono muted" [for]="row.name + '-apiKey'">api key</label>
+              <!-- Write-only. The server never returns it, so this box starts empty even when one
+                   is stored, and staying empty means "keep it". -->
+              <input
+                [id]="row.name + '-apiKey'"
+                type="password"
+                formControlName="apiKey"
+                [placeholder]="apiKeyPlaceholder(row)"
+                autocomplete="off"
+              />
+            </div>
+          }
 
-        @if (probe(row); as p) {
-          <p class="probe mono sm" [class.ok]="p.reachable" [class.bad]="!p.reachable">
-            @if (p.reachable) {
-              answered in {{ p.latencyMs }}ms — {{ p.probedUrl }}
-            } @else {
-              {{ p.error }}
-            }
-          </p>
-        }
+          @if (row.supportsEnabled) {
+            <label class="toggle mono">
+              <input type="checkbox" formControlName="enabled" />
+              phase enabled
+            </label>
+          }
+
+          @if (probe(row); as p) {
+            <p class="probe mono sm" [class.ok]="p.reachable" [class.bad]="!p.reachable">
+              @if (p.reachable) {
+                answered in {{ p.latencyMs }}ms — {{ p.probedUrl }}
+              } @else {
+                {{ p.error }}
+              }
+            </p>
+          }
+        </div>
 
         <div class="actions">
           <button class="btn-primary mono" type="submit" [disabled]="busy() === row.name">
@@ -113,7 +106,7 @@
             test
           </button>
           @if (row.overridden) {
-            <button class="mono danger" type="button" (click)="reset(row)" [disabled]="busy() === row.name">
+            <button class="btn-danger mono" type="button" (click)="reset(row)" [disabled]="busy() === row.name">
               <vk-icon name="trash" />
               {{ armed() === row.name ? 'confirm reset' : 'reset' }}
             </button>
