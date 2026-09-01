@@ -129,10 +129,19 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
                 .hasMessageContaining("model not found");
     }
 
+    /**
+     * Inverted deliberately. This asserted that garbage inner content "should NOT throw — it should
+     * log and return empty so the batch is just dropped", which is the behaviour that made the
+     * defect invisible: {@code KnowledgeExtractionService} counts a batch as failed only when
+     * {@code extract} throws, so returning empty meant the batch was recorded as a success that
+     * extracted nothing, and the wipe-and-replace proceeded over a complete extraction.
+     *
+     * <p>"Drop the batch" was never something the caller could act on, because nothing told it a
+     * batch had been dropped. A well-formed {@code {"units": []}} is still an empty success — see
+     * {@code KnowledgeUnitJsonTest}.
+     */
     @Test
-    void extractReturnsEmptyWhenInnerContentIsUnparseable() throws Exception {
-        // A response envelope with garbage inner content should NOT throw — it should log
-        // and return empty so the batch is just dropped.
+    void extractThrowsWhenInnerContentIsUnparseable() throws Exception {
         startServer(200, """
                 {
                   "message": {
@@ -143,7 +152,22 @@ class OllamaKnowledgeChatClientTest extends KnowledgeChatClientTestBase {
 
         OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
 
-        assertThat(client.extract("sys", "user")).isEmpty();
+        assertThatThrownBy(() -> client.extract("sys", "user"))
+                .isInstanceOf(KnowledgeExtractionFailureException.class)
+                .hasMessageContaining("not parseable JSON");
+    }
+
+    @Test
+    void extractThrowsWhenInnerContentIsBlank() throws Exception {
+        // Under a schema-constrained request even "nothing salient" is {"units": []}, so a blank
+        // body is the model saying nothing rather than finding nothing.
+        startServer(200, "{\"message\":{\"content\":\"\"}}");
+
+        OllamaKnowledgeChatClient client = new OllamaKnowledgeChatClient(new ObjectMapper(), config(baseUrl()), restClient());
+
+        assertThatThrownBy(() -> client.extract("sys", "user"))
+                .isInstanceOf(KnowledgeExtractionFailureException.class)
+                .hasMessageContaining("empty message.content");
     }
 
     @Test

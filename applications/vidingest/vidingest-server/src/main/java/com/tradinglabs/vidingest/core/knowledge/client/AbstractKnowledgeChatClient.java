@@ -158,7 +158,13 @@ public abstract class AbstractKnowledgeChatClient implements KnowledgeChatClient
             }
             String content = contentNode.asText();
             if (content == null || content.isBlank()) {
-                return List.of();
+                // Not "the model found nothing" — the model said nothing. Under a JSON-schema
+                // constrained request even an empty result is `{"units": []}`, so a blank body is a
+                // failure, and returning empty here made it a batch that reported success having
+                // extracted zero. Same defect as an unparseable payload; same answer.
+                throw new KnowledgeExtractionFailureException(
+                        "Knowledge LLM returned an empty " + contentPath() + " — expected at least "
+                                + "{\"units\": []}");
             }
             return KnowledgeUnitJson.parseUnitsArray(objectMapper, content);
         } catch (IOException e) {

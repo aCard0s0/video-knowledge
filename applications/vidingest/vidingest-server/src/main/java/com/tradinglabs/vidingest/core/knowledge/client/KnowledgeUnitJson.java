@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
 import com.tradinglabs.vidingest.core.knowledge.dto.KnowledgeUnitDraft;
+import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionFailureException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -95,30 +96,77 @@ public final class KnowledgeUnitJson {
      * </ol>
      * Small open models occasionally bypass the schema and emit e.g. {@code {"knowledge_units": [...]}}
      * or {@code {"items": [...]}} — heuristics recover the units rather than dropping the batch.
+     *
+     * <p><b>An unrecoverable payload throws rather than answering empty.</b> This used to log a
+     * warning and return {@code List.of()}, described as "drop the batch rather than fail the whole
+     * video" — but {@code KnowledgeExtractionService} counts a batch as failed only when
+     * {@code extract} <em>throws</em>. So a truncated or unparseable response contributed zero
+     * drafts, left {@code batchesFailed} at zero, and the wipe-and-replace proceeded: the phase
+     * reported success having extracted nothing, and on a multi-batch video replaced a complete
+     * extraction with a partial one. That is the exact outcome the service's own policy exists to
+     * prevent — "a batch is ~40 segments of coverage, not one frame, so salvaging the rest would
+     * silently narrow the extraction".
+     *
+     * <p>The distinction that has to survive: {@code {"units": []}} is a <em>legitimate</em> empty
+     * result — the model was asked and found nothing salient — and still returns empty. Only
+     * content we could not read at all, or an array whose every element was malformed, fails.
+     *
+     * <p>The most likely trigger is the output cap truncating the JSON mid-object, so the failure
+     * message carries the content length: {@code vidingest.knowledge.max-output-tokens} being too
+     * low is otherwise indistinguishable from a broken model.
      */
     public static List<KnowledgeUnitDraft> parseUnitsArray(ObjectMapper objectMapper, String content) {
+        JsonNode tree;
         try {
-            JsonNode tree = objectMapper.readTree(content);
-            JsonNode unitsNode = locateUnitsArray(tree);
-            if (unitsNode == null || !unitsNode.isArray()) {
-                log.warn("Knowledge LLM emitted JSON without a recognisable units array; root keys={}, snippet={}",
-                        keysOf(tree), truncate(content, 200));
-                return List.of();
-            }
-
-            List<Map<String, Object>> rawUnits = objectMapper.convertValue(unitsNode, UNIT_LIST_TYPE);
-            List<KnowledgeUnitDraft> drafts = new ArrayList<>(rawUnits.size());
-            for (Map<String, Object> u : rawUnits) {
-                KnowledgeUnitDraft d = toDraft(u);
-                if (d != null) drafts.add(d);
-            }
-            return drafts;
+            tree = objectMapper.readTree(content);
         } catch (Exception e) {
-            // Soft failure: log + drop the batch rather than fail the whole video.
-            log.warn("Knowledge LLM inner content was not parseable JSON; dropping batch. snippet={}",
-                    truncate(content, 200));
-            return List.of();
+            throw new KnowledgeExtractionFailureException(
+                    "Knowledge LLM content was not parseable JSON (" + lengthOf(content)
+                            + " chars). A truncated payload usually means "
+                            + "vidingest.knowledge.max-output-tokens is too low for this prompt. Snippet: "
+                            + truncate(content, 200), e);
         }
+
+        JsonNode unitsNode = locateUnitsArray(tree);
+        if (unitsNode == null || !unitsNode.isArray()) {
+            throw new KnowledgeExtractionFailureException(
+                    "Knowledge LLM emitted JSON with no recognisable units array (" + lengthOf(content)
+                            + " chars, root keys=" + keysOf(tree) + "). Snippet: " + truncate(content, 200));
+        }
+
+        List<Map<String, Object>> rawUnits;
+        try {
+            rawUnits = objectMapper.convertValue(unitsNode, UNIT_LIST_TYPE);
+        } catch (IllegalArgumentException e) {
+            throw new KnowledgeExtractionFailureException(
+                    "Knowledge LLM units array was not a list of objects (" + lengthOf(content)
+                            + " chars). Snippet: " + truncate(content, 200), e);
+        }
+
+        List<KnowledgeUnitDraft> drafts = new ArrayList<>(rawUnits.size());
+        for (Map<String, Object> u : rawUnits) {
+            KnowledgeUnitDraft d = toDraft(u);
+            if (d != null) drafts.add(d);
+        }
+
+        // Some elements being unusable is tolerable — one bad unit is not worth a batch. Every
+        // element being unusable is the silent zero wearing a different hat.
+        if (drafts.isEmpty() && !rawUnits.isEmpty()) {
+            throw new KnowledgeExtractionFailureException(
+                    "Knowledge LLM returned " + rawUnits.size() + " units and not one of them had a "
+                            + "usable type and content (" + lengthOf(content) + " chars). Snippet: "
+                            + truncate(content, 200));
+        }
+        if (drafts.size() < rawUnits.size()) {
+            log.warn("Knowledge LLM: dropped {} of {} units as malformed", rawUnits.size() - drafts.size(),
+                    rawUnits.size());
+        }
+        return drafts;
+    }
+
+    /** Content length for the failure messages, without risking an NPE on a null payload. */
+    private static int lengthOf(String content) {
+        return content == null ? 0 : content.length();
     }
 
     /**
