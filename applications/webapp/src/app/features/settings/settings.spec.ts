@@ -5,12 +5,22 @@ import { ConnectionSummary, ConnectionSummaryNameEnum } from '../../api/generate
 
 const llm: ConnectionSummary = {
   name: ConnectionSummaryNameEnum.Knowledge,
+  supportsBaseUrl: true,
   supportsModel: true,
   supportsEnabled: true,
 };
 
 const sidecar: ConnectionSummary = {
   name: ConnectionSummaryNameEnum.Ocr,
+  supportsBaseUrl: true,
+  supportsModel: false,
+  supportsEnabled: true,
+};
+
+/** Local ffmpeg: a toggle and nothing else. */
+const frames: ConnectionSummary = {
+  name: ConnectionSummaryNameEnum.FrameSample,
+  supportsBaseUrl: false,
   supportsModel: false,
   supportsEnabled: true,
 };
@@ -50,9 +60,18 @@ describe('buildUpdate', () => {
     expect(body.enabled).toBe(false);
   });
 
+  it('omits the base URL for a connection that has no endpoint', () => {
+    // The card renders no box, so the control still holds whatever the row seeded it with.
+    // Sending that as a base URL would either save a value nothing reads, or — blank — 400.
+    const body = buildUpdate(frames, { ...form, enabled: false });
+    expect(body.baseUrl).toBeUndefined();
+    expect(body.enabled).toBe(false);
+  });
+
   it('omits enabled for a connection with no phase toggle', () => {
     const embeddings: ConnectionSummary = {
       name: ConnectionSummaryNameEnum.Embeddings,
+      supportsBaseUrl: true,
       supportsModel: true,
       supportsEnabled: false,
     };

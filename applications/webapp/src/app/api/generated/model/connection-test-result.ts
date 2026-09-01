@@ -23,6 +23,7 @@ export enum ConnectionTestResultNameEnum {
     Knowledge = 'KNOWLEDGE',
     Transcription = 'TRANSCRIPTION',
     Diarization = 'DIARIZATION',
+    FrameSample = 'FRAME_SAMPLE',
     Ocr = 'OCR'
 };
 

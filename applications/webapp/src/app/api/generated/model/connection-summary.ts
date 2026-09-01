@@ -19,6 +19,7 @@ export interface ConnectionSummary {
     overridden?: boolean;
     updatedAt?: string;
     supportedProviders?: Array<string>;
+    supportsBaseUrl?: boolean;
     supportsModel?: boolean;
     supportsEnabled?: boolean;
 }
@@ -27,6 +28,7 @@ export enum ConnectionSummaryNameEnum {
     Knowledge = 'KNOWLEDGE',
     Transcription = 'TRANSCRIPTION',
     Diarization = 'DIARIZATION',
+    FrameSample = 'FRAME_SAMPLE',
     Ocr = 'OCR'
 };
 

@@ -58,6 +58,7 @@ add the row.
 | an **LLM provider** | [Connection](../objects/runtime/connection.md). A **router** picks per call — not `@ConditionalOnProperty`, because the value is runtime-editable. Provider-named classes speak that wire protocol; every neutral surface is named for the role |
 | a **base URL, model or api key** for any runtime | [Connection](../objects/runtime/connection.md). It is a `PUT /api/v1/connections/{name}` away; only the timeouts still need a restart |
 | a **sidecar or LLM transport** (`RestClient` bean) | [Connection](../objects/runtime/connection.md). The four beans deliberately have **no** `.baseUrl(...)` — adding one back silently re-pins the URL to startup |
+| a **`vidingest.<phase>.enabled` toggle** | [Connection](../objects/runtime/connection.md) if the phase has a connection row — KNOWLEDGE, DIARIZATION, FRAME_SAMPLE, OCR are editable at runtime; FUSE and CONTEXT are still environment-only. Also [PipelineRunPhase](../objects/run/pipeline-run-phase.md): a downstream phase must gate on the upstream's toggle *and* its skip flag |
 | where **inference runs** | it is not a compose service. `VK_HOST_LLM_URL` points at a host process; the host must bind `0.0.0.0` or containers cannot reach it |
 
 ## What points INTO this tree from outside

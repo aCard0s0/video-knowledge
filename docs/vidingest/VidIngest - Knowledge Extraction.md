@@ -73,7 +73,7 @@ vidingest ────┤   ┌────────────────�
 The three model connections point outside compose on purpose: a Linux container on Docker Desktop
 cannot reach Apple Silicon's GPU, and the measurements under
 [The default chat model does not fit CPU-only Docker](#the-default-chat-model-does-not-fit-cpu-only-docker)
-are what that costs. All five connections (the two sidecars included) are repointable at runtime —
+are what that costs. All six connections (the two sidecars included) are repointable at runtime —
 see [Connections API](VidIngest%20-%20Config%20and%20Runtime.md#connections-api-runtime-editable).
 
 Frames live inside the per-video folder on disk

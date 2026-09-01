@@ -4,6 +4,7 @@ import com.tradinglabs.vidingest.api.connections.ConnectionName;
 import com.tradinglabs.vidingest.api.connections.ConnectionSummary;
 import com.tradinglabs.vidingest.api.connections.UpdateConnectionRequest;
 import com.tradinglabs.vidingest.config.DiarizationConfig;
+import com.tradinglabs.vidingest.config.FrameSamplingConfig;
 import com.tradinglabs.vidingest.config.KnowledgeExtractionConfig;
 import com.tradinglabs.vidingest.config.OcrConfig;
 import com.tradinglabs.vidingest.config.TranscriptionClientProperties;
@@ -31,15 +32,15 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Runtime management of the five external-runtime connections.
+ * Runtime management of the connections, and of the phase toggles that live on them.
  *
  * <p>The mechanism is deliberately unexciting: {@code @ConfigurationProperties} beans are
  * singletons with setters, and every client that matters now reads its base URL and provider from
  * them on each call rather than at bean creation. So "apply a setting" is a field write, and no
  * context refresh, {@code @RefreshScope} or restart is involved.
  *
- * <p>Startup order matters and is guaranteed by construction: this bean depends on all five config
- * beans, so Spring finishes binding them from the environment before {@link #applyStoredOverrides()}
+ * <p>Startup order matters and is guaranteed by construction: this bean depends on every config
+ * bean it binds, so Spring finishes binding them from the environment before {@link #applyStoredOverrides()}
  * runs. That method snapshots the environment values <em>first</em> — {@link #defaults} is the only
  * remaining record of what {@code .env} configured once a row has overwritten the bean, and it is
  * what makes reset possible.
@@ -61,6 +62,7 @@ public class ConnectionSettingsService {
                                      KnowledgeExtractionConfig knowledgeConfig,
                                      TranscriptionClientProperties transcriptionProperties,
                                      DiarizationConfig diarizationConfig,
+                                     FrameSamplingConfig frameSamplingConfig,
                                      OcrConfig ocrConfig) {
         this.repository = repository;
 
@@ -97,6 +99,7 @@ public class ConnectionSettingsService {
                 },
                 EmbeddingsClientRouter.SUPPORTED_PROVIDERS,
                 true,
+                true,
                 false));
 
         bindings.put(ConnectionName.KNOWLEDGE, new Binding(
@@ -117,6 +120,7 @@ public class ConnectionSettingsService {
                 },
                 KnowledgeChatClientRouter.SUPPORTED_PROVIDERS,
                 true,
+                true,
                 true));
 
         bindings.put(ConnectionName.TRANSCRIPTION, new Binding(
@@ -136,6 +140,7 @@ public class ConnectionSettingsService {
                 },
                 TranscriptionClientRouter.SUPPORTED_PROVIDERS,
                 true,
+                true,
                 false));
 
         // The two sidecars speak exactly one protocol each, so their provider is a constant. It is
@@ -149,6 +154,18 @@ public class ConnectionSettingsService {
                     diarizationConfig.setEnabled(values.enabled());
                 },
                 List.of("diarize-asr"),
+                true,
+                false,
+                true));
+
+        // The odd one out: local ffmpeg, so there is no URL, no model and nothing to probe. It is
+        // here because OCR's toggle is useless without it — FrameSamplePhase writes the only input
+        // OcrPhase has, and both phases gate on their own vidingest.<phase>.enabled.
+        bindings.put(ConnectionName.FRAME_SAMPLE, new Binding(
+                () -> new ConnectionValues("ffmpeg", null, null, null, frameSamplingConfig.isEnabled()),
+                values -> frameSamplingConfig.setEnabled(values.enabled()),
+                List.of("ffmpeg"),
+                false,
                 false,
                 true));
 
@@ -160,6 +177,7 @@ public class ConnectionSettingsService {
                     ocrConfig.setEnabled(values.enabled());
                 },
                 List.of("paddleocr"),
+                true,
                 false,
                 true));
     }
@@ -224,7 +242,7 @@ public class ConnectionSettingsService {
                     "Unsupported provider '" + request.provider() + "' for connection " + name
                             + "; expected one of " + binding.supportedProviders());
         }
-        String baseUrl = validateBaseUrl(request.baseUrl());
+        String baseUrl = binding.hasBaseUrl() ? validateBaseUrl(request.baseUrl()) : null;
 
         Connection row = repository.findById(name).orElseGet(() -> Connection.builder().name(name).build());
         row.setProvider(provider);
@@ -269,6 +287,11 @@ public class ConnectionSettingsService {
         return bindings.get(name).supportedProviders();
     }
 
+    /** False for a connection that is not reached over HTTP, and therefore has nothing to probe. */
+    public boolean hasBaseUrl(ConnectionName name) {
+        return bindings.get(name).hasBaseUrl();
+    }
+
     private void apply(Connection row) {
         Binding binding = bindings.get(row.getName());
         ConnectionValues fallback = defaults.get(row.getName());
@@ -296,6 +319,7 @@ public class ConnectionSettingsService {
                 stored.isPresent(),
                 stored.map(Connection::getUpdatedAt).orElse(null),
                 bindings.get(name).supportedProviders(),
+                bindings.get(name).hasBaseUrl(),
                 bindings.get(name).hasModel(),
                 bindings.get(name).hasEnabledFlag());
     }
@@ -348,12 +372,15 @@ public class ConnectionSettingsService {
      * {@code hasEnabledFlag} records whether the underlying phase has a master switch — EMBEDDINGS
      * and TRANSCRIPTION do not, so an {@code enabled} in their request body is ignored rather than
      * silently written somewhere adjacent. {@code hasModel} is false for the two sidecars, whose
-     * model is fixed by their own container image.
+     * model is fixed by their own container image. {@code hasBaseUrl} is false only for
+     * FRAME_SAMPLE, which is a local process: it turns off the URL validation, the stored column
+     * and the probe in one place rather than three {@code if (name == FRAME_SAMPLE)} branches.
      */
     private record Binding(
             Supplier<ConnectionValues> read,
             Consumer<ConnectionValues> write,
             List<String> supportedProviders,
+            boolean hasBaseUrl,
             boolean hasModel,
             boolean hasEnabledFlag
     ) {

@@ -27,9 +27,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * Runtime management of the connections to the LLM runtimes and the sidecars.
+ * Runtime management of the connections to the LLM runtimes and the sidecars, plus the phase
+ * toggles that ride alongside them.
  *
- * <p>There is no create and no delete-the-thing: the five connections always exist, so this is a
+ * <p>There is no create and no delete-the-thing: every connection always exists, so this is a
  * fixed collection of settings rather than a CRUD resource. {@code DELETE} means "drop my override
  * and go back to what the environment configured", not "remove the connection".
  *
@@ -46,7 +47,7 @@ import java.util.List;
 @RequestMapping(value = VidIngestApiPaths.CONNECTIONS, produces = MediaType.APPLICATION_JSON_VALUE)
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "connections", description = "Base URLs, providers and models for the LLM runtimes and sidecars")
+@Tag(name = "connections", description = "Providers, base URLs, models and phase toggles for the runtimes VidIngest drives")
 public class ConnectionsController {
 
     private final ConnectionSettingsService settingsService;

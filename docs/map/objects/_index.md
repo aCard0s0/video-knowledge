@@ -36,7 +36,7 @@ except [Connection](runtime/connection.md), added 2026-08-29.
 
 | Noun | One line | Status |
 |---|---|---|
-| [Connection](runtime/connection.md) | the five external runtimes, editable without a restart; a row is an override, not the config | verified |
+| [Connection](runtime/connection.md) | the six runtimes VidIngest drives, editable without a restart; a row is an override, not the config | verified |
 
 ## console — why the UI shows that
 

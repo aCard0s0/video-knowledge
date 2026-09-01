@@ -15,11 +15,17 @@ import java.util.List;
  * from "this is what the environment configured", which is what makes the reset button
  * meaningful. {@code updatedAt} is null when it is not overridden.
  *
- * <p>{@code supportedProviders}, {@code supportsModel} and {@code supportsEnabled} are served
- * rather than mirrored client-side. Which fields a connection actually has is a property of the
- * connection — a sidecar speaks one protocol, carries no model name and has a phase toggle; an
- * embeddings runtime is the other way round — and serving it is what stops the console rendering a
+ * <p>{@code supportedProviders}, {@code supportsBaseUrl}, {@code supportsModel} and
+ * {@code supportsEnabled} are served rather than mirrored client-side. Which fields a connection
+ * actually has is a property of the connection — a sidecar speaks one protocol, carries no model
+ * name and has a phase toggle; an embeddings runtime is the other way round; FRAME_SAMPLE is a
+ * local process and has only the toggle — and serving it is what stops the console rendering a
  * control the server would ignore.
+ *
+ * <p>{@code supportsBaseUrl} is a separate flag rather than "is {@code baseUrl} null", because an
+ * empty base URL is a legitimate state for a real connection: {@code VIDINGEST_EMBEDDINGS_BASE_URL}
+ * defaults to empty, and inferring from the value would hide the field exactly when the operator
+ * needs it to fill one in.
  */
 public record ConnectionSummary(
         ConnectionName name,
@@ -31,6 +37,7 @@ public record ConnectionSummary(
         boolean overridden,
         OffsetDateTime updatedAt,
         List<String> supportedProviders,
+        boolean supportsBaseUrl,
         boolean supportsModel,
         boolean supportsEnabled
 ) {
