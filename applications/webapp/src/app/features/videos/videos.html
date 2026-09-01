@@ -7,9 +7,28 @@
 <section class="panel">
   <div class="panel-head">
     <div class="filters">
+      <label class="sr-only" for="channel">Channel</label>
+      <!-- `(input)`, so the rows follow what is being typed. It covers the native clear button too:
+           the × fires `input` and defers `change` to blur, which used to empty the box while the
+           filtered rows and `?channel=` both stayed — the control contradicting its own screen. -->
+      <input
+        id="channel"
+        type="search"
+        placeholder="channel name, e.g. LuxAlgo…"
+        autocomplete="off"
+        spellcheck="false"
+        [value]="channel()"
+        (input)="setChannelLive($any($event.target).value)"
+      />
+
       <!-- Chips, not a `<select>`: triage is one press, and the status the screen gets opened for
-           carries its count. Same row the runs board uses, for the same reason. -->
-      <div class="chips" role="group" aria-label="Filter videos by status">
+           carries its count. Same row the runs board uses, for the same reason.
+
+           `table-scroll` is the console's horizontal-overflow affordance, not a table thing — nine
+           status labels are ~710px of chips and the panel is ~760px at 1009px wide, so with the
+           box beside them the group has to give somewhere. Scrolling keeps every filter reachable
+           and keeps the two controls on one line; wrapping did neither. -->
+      <div class="chips table-scroll" role="group" aria-label="Filter videos by status">
         @for (option of statuses; track option) {
           <button
             class="chip mono"
@@ -25,20 +44,6 @@
           </button>
         }
       </div>
-
-      <label class="sr-only" for="channel">Channel</label>
-      <!-- `(input)`, so the rows follow what is being typed. It covers the native clear button too:
-           the × fires `input` and defers `change` to blur, which used to empty the box while the
-           filtered rows and `?channel=` both stayed — the control contradicting its own screen. -->
-      <input
-        id="channel"
-        type="search"
-        placeholder="channel name, e.g. LuxAlgo…"
-        autocomplete="off"
-        spellcheck="false"
-        [value]="channel()"
-        (input)="setChannelLive($any($event.target).value)"
-      />
     </div>
     <span class="eyebrow">{{ total() }} total</span>
   </div>
