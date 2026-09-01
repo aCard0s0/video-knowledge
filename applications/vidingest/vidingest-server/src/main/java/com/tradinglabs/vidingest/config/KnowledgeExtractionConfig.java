@@ -97,12 +97,15 @@ public class KnowledgeExtractionConfig {
      * response can't blow through the read timeout.
      *
      * <p>Raised from 4096 with prompt v3, which asks for full coverage of every rule in a batch
-     * and so writes considerably more per segment than v2's "prefer fewer units" did. The cap
-     * matters more than it looks: an overrun truncates the model's JSON mid-object, and
-     * {@code KnowledgeUnitJson.parseUnitsArray} answers unparseable content with an empty list
-     * rather than an exception — so the batch is recorded as a success that extracted nothing.
-     * A cap set too low costs coverage silently, which is the one failure this phase is otherwise
-     * built to avoid.
+     * and so writes considerably more per segment than v2's "prefer fewer units" did. That makes a
+     * long reply normal rather than exceptional, and an overrun truncates the model's JSON
+     * mid-object.
+     *
+     * <p>Such an overrun used to be <em>silent</em>: {@code KnowledgeUnitJson.parseUnitsArray}
+     * answered unparseable content with an empty list, so the batch was recorded as a success that
+     * extracted nothing. It now throws, and the message names this property and carries the content
+     * length, so a too-low cap is diagnosable from the log line rather than by guessing. A cap set
+     * too low therefore costs a failed run rather than coverage — the right way round.
      */
     private int maxOutputTokens = 8192;
 
