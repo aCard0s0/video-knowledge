@@ -4,6 +4,59 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+**`./vk` is the interface to this repo** — one extensionless registry-driven script at the root.
+Bare `./vk` prints the complete surface to stdout and exits 0; `./vk <cmd> --help` is intercepted
+by the dispatcher, so it never has a side effect even on `down`, `clean` and `restart`. Exit codes
+are 0 ok / 1 runtime / 2 usage / 3 missing dependency / 4 present-but-unusable. Prefer it over raw
+`mvnw` / `docker compose` / `npm`; the raw forms below are the cases it deliberately does not cover.
+
+```bash
+./vk
+```
+
+```bash
+./vk setup && ./vk start --build
+```
+
+```bash
+./vk test
+```
+
+```bash
+./vk doctor
+```
+
+**Targets are arguments to verbs, never verbs**: `./vk start vidingest`, never `./vk vidingest`
+(which answers with that exact correction). `./vk list` prints the seven services and
+`./vk list groups` the four groups — `all infra sidecars backend`. There are **no target
+aliases**: `mcp` is `vidingest-mcp`, `db` is `postgres`. Infra is postgres and nothing else, since
+the model runtimes run on the host (see below).
+
+**Three teardown verbs, three blast radii, never aliases of each other.** `stop` halts, `down`
+removes this project's containers and network (`--volumes` also its data, prompting, with `--yes`
+as the non-interactive escape hatch), and `clean` deletes build artifacts and provably cannot
+reach a container. Adding a fifth teardown synonym is how that boundary rots.
+
+**Adding a command means one registry row plus one `cmd_<name>` function** — help, per-command
+help and the dispatcher are all generated from that row, and `./vk doctor` runs the drift lint
+that fails if a row and a function disagree. The file's own header block says this; read it before
+editing. It follows the `project-cli` skill in `~/.claude/skills/`.
+
+`./vk test` is **hermetic** — 412 server unit tests plus 148 console tests, no daemon, no network —
+and names on stderr the suite it skipped. `./vk test integration` is the Testcontainers half, and
+`./vk test server -- -Dtest=FusePhaseTest` passes anything after `--` to the harness. The raw
+Maven forms below still matter for a targeted run, and their traps are unchanged.
+
+**`./vk test cli` is the script's own 116 checks**
+([scripts/vk-selftest.sh](scripts/vk-selftest.sh)) and it **mutates**: it cycles the postgres
+container and runs the real `clean`, which is why it is a named suite and never in the default
+set. Destructive paths are aimed at `VK_PROJECT=vk-selftest`, an isolated compose project sharing
+no container or volume, and the harness asserts all five real containers are still up afterwards.
+Run it after touching `./vk` — it found two live defects on its first run, both of them a promise
+the help text made and the parser broke.
+
+`scripts/compose.sh` is the raw `docker compose` escape hatch with the same file layering.
+
 Build (Java 26 + Maven 3.9+ enforced by the root POM; `./mvnw` pins the build):
 
 ```bash
@@ -41,26 +94,10 @@ build compile against yesterday's API. That fails as **BUILD SUCCESS** over sour
 compile — incremental `test-compile` skips work it thinks is up to date, and the errors only
 appear once something forces a real recompile.
 
-Run the stack (`scripts/tradey.sh --help` for the full command/target list; infra starts
-automatically as a dependency of the server):
-
-```bash
-./scripts/tradey.sh start --build
-```
-
-```bash
-./scripts/tradey.sh logs -f vidingest
-```
-
-```bash
-./scripts/tradey.sh cli
-```
-
-Infra is postgres and nothing else — the model runtimes run on the host, see below. Optional
-footprints: `start sidecars` (paddleocr-server, diarize-asr), `start mcp`.
-`down --volumes` wipes data. Host ports live in [compose/ports.env](compose/ports.env);
-everything binds `127.0.0.1` (`VK_BIND_ADDR`). `scripts/compose.sh` is the raw
-`docker compose` escape hatch with the same file layering.
+Optional footprints: `./vk start sidecars` (paddleocr-server, diarize-asr) and
+`./vk start vidingest-mcp`. `./vk logs -f vidingest` follows the server; `./vk console` opens the
+Spring Shell CLI and `./vk shell --in vidingest` an OS shell beside it. Host ports live in
+[compose/ports.env](compose/ports.env); everything binds `127.0.0.1` (`VK_BIND_ADDR`).
 
 Docs upkeep: `python3 scripts/check-markdown-links.py`,
 `./scripts/regenerate-mermaid-svgs.sh` after editing `docs/**/diagrams/mermaid/*.mmd`.
@@ -269,6 +306,21 @@ instead. The provider-named classes and packages (`OllamaEmbeddingsClient`,
 wire protocol — while every neutral surface is named for the role (`/api/v1/health/llm`,
 `LlmStatus`, `VIDINGEST_LLM_BASE_URL`, `vidingest.transcription.*`). Embeddings additionally has a
 `Disabled*` floor; integration tests use `vidingest.search.embeddings.provider=disabled`.
+
+**`openai` is a fourth provider value and not a synonym for `openai-compatible`.** All three
+connections take it; all three route it to the same client. Only the knowledge-chat *body* differs,
+and only because api.openai.com answers **400** where every local runtime silently ignores: it
+wants `max_completion_tokens` not `max_tokens`, rejects any `temperature` but the default on the
+reasoning models, and validates a `strict: true` schema against rules the shared one breaks
+(`required` must list every key of `properties`, every object needs `additionalProperties: false`).
+`OpenAiCompatibleKnowledgeChatClient` picks the dialect from the configured provider per call —
+a second bean would need a router change and a `@Qualifier` for a fifteen-line delta. Don't merge
+the two values: `max_completion_tokens` is unknown to oMLX and llama.cpp, so one body cannot serve
+both. Two knowingly-taken ceilings live there as `ponytail:` comments — no `temperature` control at
+all under `openai`, and `strict: false` instead of making the schema OpenAI-strict for everyone.
+**Anything that probes a keyed endpoint must send the key**: `ConnectionProbeService` and
+`LlmStatusService` both did not, so `POST .../test` reported 401 and the console's LLM rail read
+"unreachable" while the phase itself worked — a health check reporting its own missing header.
 
 **Embedding width is a column type, not a preference.** `VECTOR(1536)` is what the schema declares
 and `expectedDimensions` is checked on every response. No oMLX-supported embedding architecture is

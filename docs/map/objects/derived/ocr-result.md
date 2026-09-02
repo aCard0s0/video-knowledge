@@ -49,7 +49,7 @@ confidence.
 | Surface | Role |
 |---|---|
 | `OcrPhase` | writes (wipe + repopulate, `vidingest.ocr.enabled`, default false) |
-| paddleocr sidecar (`:8002`) | produces; started by `tradey.sh start sidecars` |
+| paddleocr sidecar (`:8002`) | produces; started by `./vk start sidecars` |
 
 ## See
 

@@ -88,6 +88,19 @@ was one click from a run that entered the phase and read an empty frame set. Not
 served rather than inferred from a null `baseUrl`: `VIDINGEST_EMBEDDINGS_BASE_URL` legitimately
 defaults to empty, and inferring would hide the box exactly when an operator needs to fill it in.
 
+`openai` joining the dropdown (Sep 2026) needed **no** control change — that is the served-flags
+design paying out — but it did need three sentences, because the screen was silent or wrong about
+what the new value implies. `providerNote` says what the selected provider actually reaches, since
+`openai` and `openai-compatible` are two entries whose names do not separate them and both take a
+URL, a model and a key. `modelNote` carries the three model traps that only appear at run time —
+the embeddings column is `VECTOR(1536)`, only `whisper-1` returns timed segments on OpenAI, and a
+reasoning model spends the knowledge output cap on reasoning — none of which the connections API
+can reject, because it validates the *provider* and never the model. And the API key box stopped
+calling itself *optional* on `openai`, where the request 401s without one. All three answer
+null/neutral for a value they do not recognise, so an unknown provider still renders and still
+works; they can only ever go stale into silence, never into a wrong control. They are prose about
+behaviour, not a mirror of `supportedProviders` — that distinction is what keeps them allowed.
+
 ## Design direction
 
 Style and palette candidates came from `.claude/skills/ui-ux-pro-max/scripts/search.py`

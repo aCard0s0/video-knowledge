@@ -1,7 +1,7 @@
 # Base compose file for VidIngest.
 #
 # Defines the shared network and named volumes. The actual services live in
-# split files, layered on top of this base by scripts/tradey.sh:
+# split files, layered on top of this base by ./vk:
 #   - compose/infra/infra.yml   postgres, diarize-asr, paddleocr-server
 #   - compose/services.yml      vidingest       (REST server) + webapp (console)
 #   - compose/cli.yml           vidingest-cli   (Spring Shell console)

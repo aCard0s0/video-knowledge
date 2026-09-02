@@ -48,7 +48,7 @@ services:
     # request via multipart upload and returns line-level detections with confidence scores.
     build:
       # Build context resolves relative to the project directory (cwd of `docker compose`).
-      # Tradey always runs from the repo root, so the sidecar lives at compose/infra/paddleocr-server.
+      # vk always runs from the repo root, so the sidecar lives at compose/infra/paddleocr-server.
       context: compose/infra/paddleocr-server
       dockerfile: Dockerfile
     image: video-knowledge/paddleocr-server:${VK_IMAGE_TAG:-latest}

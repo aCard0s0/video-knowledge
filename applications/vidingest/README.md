@@ -4,18 +4,18 @@ VidIngest is the video ingestion pipeline (server + MCP + CLI + client). It down
 videos (via `yt-dlp`), extracts metadata, persists state to PostgreSQL, and exposes
 REST + MCP tooling for automation.
 
-- **REST base URL (Docker/Tradey default)**: `http://localhost:8051/vidingest`
+- **REST base URL (Docker/vk default)**: `http://localhost:8051/vidingest`
 - **Readiness check**: `http://localhost:8051/vidingest/api/v1/health/ready`
 - **MCP (SSE)**: `http://localhost:8055/vidingest/sse`
 
 ## Quickstart
 
 ```bash
-./scripts/tradey.sh start vidingest --build
+./vk start vidingest --build
 ```
 
 ```bash
-./scripts/tradey.sh start mcp
+./vk start mcp
 ```
 
 Validate quickly:

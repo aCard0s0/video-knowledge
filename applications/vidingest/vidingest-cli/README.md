@@ -10,7 +10,7 @@ prompt, not a server.
 In Docker, against the running stack:
 
 ```bash
-./scripts/tradey.sh cli
+./vk console
 ```
 
 On the host, against a server on :8051:

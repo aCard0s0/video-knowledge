@@ -120,6 +120,56 @@ class OpenAiCompatibleKnowledgeChatClientTest extends KnowledgeChatClientTestBas
         assertThat(body).contains("\"units\"");
     }
 
+    /**
+     * The {@code openai} dialect. Each of the three deltas is a 400 from api.openai.com, not a
+     * field it ignores, so this is the only place they are pinned — a body that regresses here
+     * fails every KNOWLEDGE run against a hosted OpenAI account and passes every local one.
+     */
+    @Test
+    void openAiProviderSwapsTheThreeFieldsOpenAiRejects() throws Exception {
+        AtomicReference<String> captured = new AtomicReference<>();
+        startServerWithCapture(200, EMPTY_UNITS, captured);
+
+        KnowledgeExtractionConfig cfg = config(baseUrl());
+        cfg.setProvider("openai");
+        cfg.setMaxOutputTokens(2048);
+        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), cfg, restClient())
+                .extract("sys", "user");
+
+        String body = captured.get();
+        assertThat(body).contains("\"max_completion_tokens\":2048");
+        assertThat(body).doesNotContain("max_tokens");
+        assertThat(body).doesNotContain("temperature");
+        assertThat(body).contains("\"strict\":false");
+        // Everything else is unchanged — same endpoint, same schema, same messages.
+        assertThat(body).contains("\"model\":\"qwen2.5:14b-instruct\"");
+        assertThat(body).contains("\"json_schema\"");
+        assertThat(body).contains("\"units\"");
+    }
+
+    /**
+     * The other half of the pair: {@code openai-compatible} must keep the body every local runtime
+     * already accepts. oMLX and llama.cpp do not know {@code max_completion_tokens}, so leaking
+     * the dialect across would break the default deployment.
+     */
+    @Test
+    void openAiCompatibleProviderKeepsTheLocalBody() throws Exception {
+        AtomicReference<String> captured = new AtomicReference<>();
+        startServerWithCapture(200, EMPTY_UNITS, captured);
+
+        KnowledgeExtractionConfig cfg = config(baseUrl());
+        cfg.setProvider("openai-compatible");
+        cfg.setMaxOutputTokens(2048);
+        new OpenAiCompatibleKnowledgeChatClient(new ObjectMapper(), cfg, restClient())
+                .extract("sys", "user");
+
+        String body = captured.get();
+        assertThat(body).contains("\"max_tokens\":2048");
+        assertThat(body).doesNotContain("max_completion_tokens");
+        assertThat(body).contains("\"temperature\":0.2");
+        assertThat(body).contains("\"strict\":true");
+    }
+
     @Test
     void apiKeyIsSentAsBearerAndOmittedWhenBlank() throws Exception {
         AtomicReference<String> auth = new AtomicReference<>();

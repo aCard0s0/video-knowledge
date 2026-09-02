@@ -41,7 +41,7 @@ Diagrams live in [vidingest/diagrams](vidingest/diagrams) (`mermaid/` sources,
 
 ## Local orchestration
 
-Compose is driven by `./scripts/tradey.sh` (see `--help`) which layers `compose.yml`
+Compose is driven by `./vk` (see `--help`) which layers `compose.yml`
 plus `compose/{infra/infra,services,cli,mcp}.yml`. Host ports come from
 [compose/ports.env](../compose/ports.env); everything binds to `127.0.0.1` by default
 (`VK_BIND_ADDR`).
@@ -55,5 +55,5 @@ plus `compose/{infra/infra,services,cli,mcp}.yml`. Host ports come from
 - Ports (defaults): postgres 3030, diarize-asr 9001, paddleocr 8002, vidingest 8051, webapp 8052,
   vidingest-mcp 8055. The model runtime is **not** a container — `VK_HOST_LLM_URL`, default
   `http://host.docker.internal:8000/v1` (oMLX on the host)
-- Health and status checks: `./scripts/tradey.sh status` and `logs`
+- Health and status checks: `./vk status` and `logs`
 - Link check: `python3 scripts/check-markdown-links.py`

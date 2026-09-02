@@ -64,7 +64,9 @@ public class ConnectionProbeService {
 
         long startNs = System.nanoTime();
         try {
-            String body = client().get().uri(probeUri).retrieve().body(String.class);
+            String body = authorize(client().get().uri(probeUri), values.apiKey())
+                    .retrieve()
+                    .body(String.class);
             long elapsedMs = elapsedMs(startNs);
             log.info("Connection probe ok: name={}, uri={}, elapsedMs={}", name, probeUri, elapsedMs);
             return new ConnectionTestResult(name, true, baseUrl, probeUri.toString(),
@@ -94,6 +96,22 @@ public class ConnectionProbeService {
             default -> throw new IllegalArgumentException(
                     "No probe defined for provider '" + provider + "' on connection " + name);
         };
+    }
+
+    /**
+     * The same bearer the phase clients send, for the same reason.
+     *
+     * <p>Without it this probe answers 401 against every keyed endpoint while the phase itself
+     * works — a "test" button that fails when the connection is fine is worse than no button. It
+     * belongs here rather than in a per-connection branch because {@code ConnectionValues} already
+     * carries the key for all three LLM connections, so one place fixes all three.
+     */
+    private static RestClient.RequestHeadersSpec<?> authorize(RestClient.RequestHeadersSpec<?> spec,
+                                                              String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return spec;
+        }
+        return spec.header("Authorization", "Bearer " + apiKey.trim());
     }
 
     private static RestClient client() {

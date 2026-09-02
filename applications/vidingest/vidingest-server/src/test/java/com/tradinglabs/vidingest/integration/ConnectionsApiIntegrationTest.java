@@ -2,6 +2,7 @@ package com.tradinglabs.vidingest.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
 import com.tradinglabs.vidingest.api.connections.ConnectionName;
 import com.tradinglabs.vidingest.config.FrameSamplingConfig;
 import com.tradinglabs.vidingest.config.OcrConfig;
@@ -12,10 +13,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -257,6 +261,84 @@ class ConnectionsApiIntegrationTest extends BaseVidingestIntegrationTest {
         assertThat(body.get("reachable").asBoolean()).isFalse();
         assertThat(body.get("error").asText()).isNotBlank();
         assertThat(body.get("probedUrl").asText()).isEqualTo("http://127.0.0.1:1/health");
+    }
+
+    /**
+     * {@code openai} is a saveable value on exactly the three connections that reach a model
+     * runtime. The routers have always understood the string — this pins the validation gate that
+     * used to reject it, which is the whole of what stopped an operator pointing a card at
+     * api.openai.com.
+     */
+    @Test
+    void theOpenAiProviderIsAcceptedOnEveryLlmConnectionAndNowhereElse() throws Exception {
+        record Case(String name, String model) {
+        }
+        for (Case c : new Case[]{
+                new Case("KNOWLEDGE", "gpt-4.1"),
+                new Case("EMBEDDINGS", "text-embedding-3-small"),
+                new Case("TRANSCRIPTION", "whisper-1")}) {
+
+            HttpResponse<String> saved = send(request("/" + c.name())
+                    .PUT(HttpRequest.BodyPublishers.ofString("""
+                            {"provider": "openai", "baseUrl": "https://api.openai.com/v1",
+                             "model": "%s", "apiKey": "sk-test", "enabled": true}
+                            """.formatted(c.model())))
+                    .header("Content-Type", "application/json")
+                    .build());
+
+            assertThat(saved.statusCode()).as(c.name()).isEqualTo(200);
+            JsonNode body = objectMapper.readTree(saved.body());
+            assertThat(body.get("provider").asText()).isEqualTo("openai");
+            assertThat(body.get("model").asText()).isEqualTo(c.model());
+            // Served, never mirrored client-side — this is what puts the option in the dropdown.
+            assertThat(body.get("supportedProviders").toString()).contains("\"openai\"");
+        }
+
+        // The sidecars speak one protocol each and must not gain the value.
+        assertThat(send(request("/OCR")
+                .PUT(HttpRequest.BodyPublishers.ofString("""
+                        {"provider": "openai", "baseUrl": "https://api.openai.com/v1"}
+                        """))
+                .header("Content-Type", "application/json")
+                .build()).statusCode()).isEqualTo(400);
+    }
+
+    /**
+     * The probe has to send the key. Without it "test" answers 401 against every hosted endpoint
+     * while the phase itself works — a button that fails when the connection is fine is a worse
+     * signal than no button at all.
+     */
+    @Test
+    void theProbeSendsTheStoredApiKey() throws Exception {
+        AtomicReference<String> auth = new AtomicReference<>();
+        HttpServer stub = HttpServer.create(new InetSocketAddress(0), 0);
+        stub.createContext("/models", exchange -> {
+            auth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] payload = "{\"data\": [{\"id\": \"gpt-4.1\"}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, payload.length);
+            try (var out = exchange.getResponseBody()) {
+                out.write(payload);
+            }
+        });
+        stub.start();
+        try {
+            send(request("/KNOWLEDGE")
+                    .PUT(HttpRequest.BodyPublishers.ofString("""
+                            {"provider": "openai", "baseUrl": "http://127.0.0.1:%d",
+                             "model": "gpt-4.1", "apiKey": "sk-probe-key", "enabled": true}
+                            """.formatted(stub.getAddress().getPort())))
+                    .header("Content-Type", "application/json")
+                    .build());
+
+            JsonNode probe = objectMapper.readTree(send(request("/KNOWLEDGE/test")
+                    .POST(HttpRequest.BodyPublishers.noBody()).build()).body());
+
+            assertThat(probe.get("reachable").asBoolean()).isTrue();
+            assertThat(auth.get()).isEqualTo("Bearer sk-probe-key");
+        } finally {
+            stub.stop(0);
+        }
     }
 
     private HttpRequest.Builder request(String suffix) {

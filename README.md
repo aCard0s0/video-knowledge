@@ -16,49 +16,80 @@ extracts searchable knowledge units into PostgreSQL + pgvector.
 | [vidingest-mcp](applications/vidingest/vidingest-mcp) | Standalone MCP (SSE) server delegating via the client |
 | [vidingest-cli](applications/vidingest/vidingest-cli) | Spring Shell console |
 
-The operator console is [applications/webapp](applications/webapp) — Angular 22, zoneless, built
-into the server jar and served from the same origin at `/vidingest`. It is not a Maven module; see
-its [README](applications/webapp/README.md) for the dev server and the generated API client.
+The operator console is [applications/webapp](applications/webapp) — Angular 22, zoneless. It is
+its own nginx image on :8052, which proxies the API so the two stay same-origin; the server jar
+stopped serving it in Aug 2026. Not a Maven module; see its
+[README](applications/webapp/README.md) for the dev server and the generated API client.
 
 Shared Java libraries live in [libraries](libraries) (`common-logging`, `common-web`,
 `common-http-client-core`, `common-observability-web`, `common-operation-logging-web`,
 `common-operation-logging-mcp`, `common-mcp-configs`).
 
-## Quick start (Docker)
+## Quick start
+
+[`./vk`](vk) is the one script that runs this repo. Bare, it prints its whole surface; every
+command takes `--help`, and nothing but `-f` on `logs` and `dev` blocks.
 
 ```bash
-./scripts/tradey.sh start --build     # build + run infra + vidingest
+./vk
 ```
 
 ```bash
-./scripts/tradey.sh status            # compose ps with health
+./vk doctor            # can this machine operate the repo? exit 3 missing, 4 unusable
 ```
 
 ```bash
-./scripts/tradey.sh logs -f vidingest # follow server logs
+./vk setup             # fresh clone: install the console's npm dependencies
 ```
 
 ```bash
-./scripts/tradey.sh cli               # open the VidIngest CLI
+./vk start --build     # build the images, then converge the stack and wait for healthy
 ```
 
 ```bash
-./scripts/tradey.sh start mcp         # MCP SSE server (opt-in)
+./vk status            # what is running, and the ports actually bound
 ```
 
 ```bash
-./scripts/tradey.sh down --volumes    # tear everything down (incl. data)
+./vk logs -f vidingest # follow server logs (the only command besides dev that blocks)
 ```
 
-- Console: <http://localhost:8051/vidingest>
+```bash
+./vk console           # the VidIngest Spring Shell CLI
+```
+
+```bash
+./vk down --volumes    # remove the containers and wipe the data (prompts; --yes to skip)
+```
+
+- Console: <http://localhost:8052/vidingest>
 - REST: <http://localhost:8051/vidingest/api/v1>
-- MCP (SSE): <http://localhost:8055/vidingest/sse>
+- MCP (SSE): <http://localhost:8055/vidingest/sse> — opt-in, `./vk start vidingest-mcp`
 
-`tradey` layers the split compose files (`compose.yml` + `compose/*`). Infra
-(`postgres`, `llm`, `whisper`) starts automatically as a dependency of the
-server. Optional sidecars (`paddleocr-server` for OCR, `diarize-asr` for speaker
-diarization) are opt-in: `./scripts/tradey.sh start sidecars`. Host ports are defined
-in [compose/ports.env](compose/ports.env).
+`vk` layers the split compose files (`compose.yml` + `compose/*`). Infra is `postgres` and
+nothing else: the model runtimes are **not** containers, they run on the host so inference
+reaches the GPU (`./vk doctor` probes the host one). The two sidecars — `paddleocr-server` for
+OCR, `diarize-asr` for diarization — are opt-in: `./vk start sidecars`. Targets are arguments to
+verbs, never verbs; `./vk list` prints them. Host ports are defined in
+[compose/ports.env](compose/ports.env).
+
+## Test, format, clean
+
+```bash
+./vk test              # hermetic: server unit + console. Names the suite it skipped
+```
+
+```bash
+./vk test integration  # the Testcontainers half; needs a Docker daemon
+```
+
+```bash
+./vk fmt --check       # prettier over the console; writes nothing, exits 1 on drift
+```
+
+```bash
+./vk clean             # build artifacts only — it cannot reach a container or a volume
+```
 
 ## Build (host)
 

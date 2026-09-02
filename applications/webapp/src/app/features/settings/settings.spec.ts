@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildUpdate } from './settings';
+import { buildUpdate, modelNote, providerNote } from './settings';
 import { ConnectionSummary, ConnectionSummaryNameEnum } from '../../api/generated';
 
 const llm: ConnectionSummary = {
@@ -80,5 +80,54 @@ describe('buildUpdate', () => {
 
   it('omits a blank model rather than clearing the configured one', () => {
     expect(buildUpdate(llm, { ...form, model: '   ' }).model).toBeUndefined();
+  });
+});
+
+/**
+ * The three sentences the card says about a provider. Each exists because the server cannot answer
+ * the question: `supportedProviders` names the values but not what they reach, and the connections
+ * API validates the provider and never the model.
+ */
+describe('providerNote', () => {
+  it('distinguishes openai from openai-compatible, which the dropdown alone does not', () => {
+    // The whole reason the note exists: two entries whose names do not separate them.
+    expect(providerNote('openai')).toContain('api.openai.com');
+    expect(providerNote('openai-compatible')).not.toContain('api.openai.com');
+  });
+
+  it('says nothing for a provider it does not know', () => {
+    // A value added server-side still renders and still works — it just loses its sentence.
+    // Failing loudly here would be a console that breaks when the server gains a feature.
+    expect(providerNote('some-future-runtime')).toBeNull();
+    expect(providerNote(undefined)).toBeNull();
+    // The local/sidecar providers carry no note; the card's own name already says what they are.
+    expect(providerNote('ffmpeg')).toBeNull();
+  });
+});
+
+describe('modelNote', () => {
+  const embeddings: ConnectionSummary = { name: ConnectionSummaryNameEnum.Embeddings };
+  const transcription: ConnectionSummary = { name: ConnectionSummaryNameEnum.Transcription };
+
+  it('warns about the column width on embeddings whatever the provider', () => {
+    // VECTOR(1536) is the constraint, not the vendor — so this one is not gated on openai.
+    expect(modelNote(embeddings, 'ollama')).toContain('1536');
+    expect(modelNote(embeddings, 'openai')).toContain('1536');
+  });
+
+  it('names whisper-1 only on openai, where it is the only model that returns segments', () => {
+    expect(modelNote(transcription, 'openai')).toContain('whisper-1');
+    // A local runtime serves whisper-large-v3-turbo; the note would be actively wrong there.
+    expect(modelNote(transcription, 'openai-compatible')).toBeNull();
+  });
+
+  it('warns that the output cap covers reasoning tokens on openai knowledge', () => {
+    expect(modelNote(llm, 'openai')).toContain('reasoning');
+    expect(modelNote(llm, 'ollama')).toBeNull();
+  });
+
+  it('says nothing for a connection with no model of its own', () => {
+    expect(modelNote(sidecar, 'openai')).toBeNull();
+    expect(modelNote(frames, 'openai')).toBeNull();
   });
 });

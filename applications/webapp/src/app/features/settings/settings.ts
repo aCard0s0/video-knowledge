@@ -47,6 +47,67 @@ export function buildUpdate(
   };
 }
 
+/**
+ * One line under the provider select saying what the selected value actually reaches.
+ *
+ * `openai` and `openai-compatible` are two entries whose names do not distinguish them, and the
+ * choice is not recoverable from anything else on the card — both take a base URL, a model and a
+ * key. Picking wrong is a 400 during the next run, not a validation error here.
+ *
+ * This is **not** a mirror of `supportedProviders`: it gates nothing and enumerates nothing. An
+ * unrecognised value renders no note, so a provider added server-side still appears in the
+ * dropdown and still works, with one fewer sentence beside it.
+ */
+export function providerNote(provider: string | undefined): string | null {
+  switch (provider) {
+    case 'openai':
+      return 'api.openai.com itself. Needs a key, and a base URL ending in /v1.';
+    case 'openai-compatible':
+      return 'Any server speaking /v1 — LM Studio, llama.cpp, mlx, vLLM, or a remote host.';
+    case 'ollama':
+      return "Ollama's native API. Not /v1 — the daemon root.";
+    case 'disabled':
+      return 'Embeddings off. Semantic search returns nothing while this is selected.';
+    default:
+      // The three local/sidecar providers, and anything added later. The card's own name already
+      // says what they are.
+      return null;
+  }
+}
+
+/**
+ * One line under the model box, for the cases where a valid-looking model id fails at run time.
+ *
+ * Same defensive shape as {@link providerNote} and the same reason for existing: none of these is
+ * a value the server can reject on the way in, because each is a property of what the model
+ * *does*, not of what the string *is*. The connections API validates the provider, never the
+ * model — so without this the screen can reach each of these states silently.
+ *
+ * ponytail: written here rather than served as a `modelNote` field on `ConnectionSummary`. A stale
+ * tip is a wrong sentence; a stale control would be a broken screen. Move it to the wire if the
+ * list grows past a handful.
+ */
+export function modelNote(row: ConnectionSummary, provider: string | undefined): string | null {
+  const openAi = provider === 'openai';
+  switch (row.name) {
+    case 'EMBEDDINGS':
+      // True whatever the provider: the column is the constraint, not the vendor.
+      return openAi
+        ? 'Must be 1536-wide. text-embedding-3-small fits; -3-large needs truncation.'
+        : 'Must produce 1536 values — the pgvector column is VECTOR(1536).';
+    case 'TRANSCRIPTION':
+      return openAi
+        ? 'Only whisper-1 returns timed segments. gpt-4o-transcribe returns none.'
+        : null;
+    case 'KNOWLEDGE':
+      return openAi
+        ? 'A reasoning model spends the output cap on reasoning and can return nothing.'
+        : null;
+    default:
+      return null;
+  }
+}
+
 /** The form behind one card. Kept per connection so an unsaved edit survives a list reload. */
 type ConnectionForm = FormGroup<{
   provider: FormControl<string>;
@@ -72,7 +133,15 @@ type ConnectionForm = FormGroup<{
  * Nothing here mirrors a server enum by hand: springdoc emits `ConnectionName` as a real enum
  * schema, and `supportedProviders` / `supportsBaseUrl` / `supportsModel` / `supportsEnabled` come
  * off the summary. A new connection or a new provider therefore shows up here with no client
- * change at all — FRAME_SAMPLE needed only the two `@if`s its missing endpoint implies.
+ * change at all — FRAME_SAMPLE needed only the two `@if`s its missing endpoint implies, and
+ * `openai` needed none.
+ *
+ * What it needed instead was prose. `openai` and `openai-compatible` sit in the same dropdown and
+ * their names do not distinguish them; the api-key box called itself *optional* on a connection
+ * that 401s without one; and three model ids that look valid here fail at run time for reasons the
+ * server cannot check. {@link providerNote}, {@link apiKeyPlaceholder} and {@link modelNote} are
+ * that, and all three answer null/neutral for anything they do not recognise — so they can go
+ * stale into silence, never into a wrong control.
  */
 @Component({
   selector: 'vk-settings',
@@ -133,8 +202,18 @@ export class Settings {
     return this.probes()[row.name!];
   }
 
-  protected apiKeyPlaceholder(row: ConnectionSummary): string {
-    return row.hasApiKey ? '•••••••• stored — leave blank to keep' : 'api key (optional)';
+  protected readonly providerNote = providerNote;
+  protected readonly modelNote = modelNote;
+
+  /**
+   * "optional" was a claim, and on `openai` it is false — api.openai.com 401s without a key, and
+   * the probe would report that as an unreachable host before this said anything.
+   */
+  protected apiKeyPlaceholder(row: ConnectionSummary, provider: string | undefined): string {
+    if (row.hasApiKey) {
+      return '•••••••• stored — leave blank to keep';
+    }
+    return provider === 'openai' ? 'api key (required)' : 'api key (optional)';
   }
 
   protected save(row: ConnectionSummary): void {

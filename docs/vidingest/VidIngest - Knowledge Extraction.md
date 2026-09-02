@@ -213,13 +213,34 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
   | value | client | endpoint | schema goes in | output cap |
   |---|---|---|---|---|
   | `ollama` (default) | `core/knowledge/client/ollama/OllamaKnowledgeChatClient` | `POST {base-url}/api/chat` | `format` (Ollama 0.5+ structured outputs) | `options.num_predict` |
-  | `openai-compatible` | `core/knowledge/client/openai/OpenAiCompatibleKnowledgeChatClient` | `POST {base-url}/chat/completions` | `response_format.json_schema` | `max_tokens` |
+  | `openai-compatible` | `core/knowledge/client/openai/OpenAiCompatibleKnowledgeChatClient` | `POST {base-url}/chat/completions` | `response_format.json_schema`, `strict: true` | `max_tokens` |
+  | `openai` | the same client | the same endpoint | `response_format.json_schema`, `strict: false` | `max_completion_tokens` |
 
   `openai-compatible` is the one to use for **LM Studio, `llama-server`, mlx-lm, vLLM** or a
-  hosted API — they all serve that shape, and none of them serve Ollama's. Its `base-url` needs
-  the API prefix the server exposes, usually `/v1`
+  hosted OpenAI-compatible API — they all serve that shape, and none of them serve Ollama's. Its
+  `base-url` needs the API prefix the server exposes, usually `/v1`
   (`VIDINGEST_KNOWLEDGE_BASE_URL=http://localhost:1234/v1` for LM Studio), and
-  `vidingest.knowledge.api-key` is sent as `Authorization: Bearer` when set.
+  `vidingest.knowledge.api-key` is sent as `Authorization: Bearer` when set — by **both** clients,
+  since the header lives in `AbstractKnowledgeChatClient`; Ollama has no auth of its own but is
+  often fronted by a proxy that does.
+
+  **`openai` is for api.openai.com itself, and is not a synonym.** One class serves both values
+  and picks the dialect from the configured provider per call, because OpenAI answers **400** to
+  three fields every local runtime silently accepts: `max_tokens` (*"not supported with this
+  model"* on gpt-5/o-series), any `temperature` other than the default on the reasoning models,
+  and a `strict: true` schema that does not list every key of `properties` in `required` with
+  `additionalProperties: false` — which the shared schema, at eight properties against two
+  required, does not. So under `openai` the cap is renamed, `temperature` is dropped entirely
+  (extraction runs at the model default; the schema is what constrains the shape) and `strict`
+  becomes false, which leaves the fallback parser below as the thing that recovers a drifting root
+  key. Making the schema strict-compliant for every provider is the upgrade path if that starts to
+  matter; it is not a free swap, because it changes what Ollama and llama.cpp are handed too.
+
+  **`max-output-tokens` covers reasoning tokens on a reasoning model**, so the default 8192 can be
+  spent before any content is emitted. That fails as *"returned an empty
+  choices[0].message.content"*, which reads as a server problem rather than a budget one. Raise it,
+  or pick a non-reasoning model — see the oMLX note below for the same failure from a different
+  cause.
 
   Either way the schema pins the response to `{units: [{type, title, content, ...}]}` so weaker
   open models can't drift to other root keys (we observed qwen2.5:7b emit `{transcript: ...}`
@@ -437,7 +458,7 @@ huggingface.co, all free:
    type **Read**. Copy it (`hf_…`); the value is shown once.
 
 Put it in the gitignored `.env` at the repo root rather than exporting it, so every
-`tradey.sh` invocation picks it up:
+`./vk` invocation picks it up:
 
 ```bash
 HUGGINGFACE_TOKEN=hf_...
@@ -455,7 +476,7 @@ docker exec video-knowledge-diarize-asr-1 \
 
 ### Enable end-to-end on Docker
 
-`.env` at the repo root is read automatically by `docker compose`, and so by `tradey.sh`.
+`.env` at the repo root is read automatically by `docker compose`, and so by `./vk`.
 It is gitignored, which is what makes it the right home for the token.
 
 ```bash
@@ -475,12 +496,12 @@ EOF
 curl -s http://localhost:8000/v1/models | jq '.data[].id'
 
 # 3. Build and start the sidecars, then restart the server onto the new .env
-./scripts/tradey.sh start sidecars --build
-./scripts/tradey.sh start vidingest
+./vk start sidecars --build
+./vk start vidingest
 
 # 4. Both sidecars must read (healthy) before a run — an enabled phase whose sidecar is
 #    unreachable fails the phase, and with it the whole run
-./scripts/tradey.sh status
+./vk status
 
 # 5. Submit a pipeline run with all phases enabled
 curl -sX POST http://localhost:8051/vidingest/api/v1/pipelines \
@@ -519,9 +540,16 @@ WHERE video_id = '<videoId>' GROUP BY type;
 ### Troubleshooting
 
 - **`Knowledge LLM returned HTTP 500`** — usually the chat model isn't pulled/loaded on the
-  runtime. On `openai-compatible`, a `404` here usually means the `/v1` suffix is missing
-  from `base-url` (the client appends `/chat/completions` to whatever it is given).
+  runtime. On `openai-compatible` or `openai`, a `404` here usually means the `/v1` suffix is
+  missing from `base-url` (the client appends `/chat/completions` to whatever it is given).
   Run `ollama pull <model>` and retry.
+- **`Knowledge LLM returned HTTP 400` against api.openai.com** — the provider is
+  `openai-compatible` where it should be `openai`. The error body names which of the three fields
+  it rejected (`max_tokens`, `temperature`, or the strict schema); switching the provider fixes all
+  three at once.
+- **`Knowledge LLM returned HTTP 401`** — the key is unset or wrong. `GET /api/v1/connections/KNOWLEDGE`
+  reports `hasApiKey` (never the key itself), and `POST .../test` now sends the key too, so a green
+  probe means the credential is good and not just the host.
 - **`diarize-asr` returns 500 on first call** — `HUGGINGFACE_TOKEN` is unset, or the
   pyannote model EULA hasn't been accepted on the HuggingFace web UI.
 - **Empty `vidingest_knowledge_units` after a run** — check that
