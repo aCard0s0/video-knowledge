@@ -36,6 +36,12 @@
                 <option [value]="provider">{{ provider }}</option>
               }
             </select>
+            <!-- Keyed off the *selected* value, not the saved one, so it follows the dropdown
+                 before anything is saved. Reading the control in the template is the pattern the
+                 base-URL box already uses below. -->
+            @if (providerNote(form(row).controls.provider.value); as note) {
+              <p class="note sm muted">{{ note }}</p>
+            }
           </div>
 
           <!-- Absent for FRAME_SAMPLE, which is local ffmpeg: an empty box labelled "base URL"
@@ -66,6 +72,11 @@
                 autocomplete="off"
                 spellcheck="false"
               />
+              <!-- The connections API validates the provider, never the model. These are the
+                   states the card can otherwise reach silently. -->
+              @if (modelNote(row, form(row).controls.provider.value); as note) {
+                <p class="note sm muted">{{ note }}</p>
+              }
             </div>
 
             <div class="field">
@@ -76,7 +87,7 @@
                 [id]="row.name + '-apiKey'"
                 type="password"
                 formControlName="apiKey"
-                [placeholder]="apiKeyPlaceholder(row)"
+                [placeholder]="apiKeyPlaceholder(row, form(row).controls.provider.value)"
                 autocomplete="off"
               />
             </div>

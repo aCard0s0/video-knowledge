@@ -52,6 +52,16 @@
   margin-bottom: 0;
 }
 
+// A caption under a control, not a caption for one: it explains the value that is selected, so it
+// sits below the input and takes `.field`'s existing --space-xs gap. Deliberately not `.probe`'s
+// panel treatment — a note is always there and must not compete with a result that is not.
+.note {
+  margin: 0;
+  line-height: 1.4;
+  // 32ch cards, so every note wraps. Balanced beats a one-word last line.
+  text-wrap: pretty;
+}
+
 // The head is exactly one line, always. `.panel-head` wraps by default, and a wrapped head is
 // 13px taller than its neighbours' — which pushes that one card's fields out of line with the rest
 // of the row, the same misalignment the margin above caused. TRANSCRIPTION + OVERRIDDEN is the
