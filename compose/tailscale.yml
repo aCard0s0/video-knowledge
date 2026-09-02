@@ -1,0 +1,105 @@
+# Tailnet access — one tailscale sidecar owning the identity and the TLS.
+#
+# Layered on top of the base files, never used alone, and appended by `./vk` when
+# --serve is given or VK_TAILSCALE_ENABLED=true:
+#
+#   ./vk start --serve https      # tailnet only, no host port
+#   ./vk start --serve https --local   # ...and keep 127.0.0.1:8052 as well
+#
+# The backend is `webapp`, the console's nginx, because it already proxies the API to
+# vidingest:8051 on the same origin — so one Serve handler puts both the console and
+# /vidingest/api/v1 on the tailnet, and the API keeps no second door of its own.
+#
+# WHAT THIS DOES NOT DO: the server has no authentication of any kind. The tailnet ACL
+# decides which *machines* connect and that is the only gate — any allowed device has full
+# operator rights, including DELETE on a video and PUT on a connection. Serve does inject
+# an unspoofable Tailscale-User-Login on every request; nothing reads it yet. See
+# compose/tailscale/ACL.md before the first `up`.
+services:
+  # ── the tailnet node ───────────────────────────────────────────────────────────────
+  # Userspace networking, which is both upstream's default and the tighter option: the app
+  # stays in its own namespace, so no peer can reach it except through Serve. Kernel mode
+  # plus `network_mode: service:tailscale` would let every peer hit webapp:8080 directly.
+  tailscale:
+    image: tailscale/tailscale:${TS_IMAGE_TAG:?set TS_IMAGE_TAG in .env, e.g. v1.102.3}
+    # Deliberately NO `hostname:` key. TS_HOSTNAME sets the MagicDNS name on its own —
+    # containerboot passes it to `tailscale up --hostname`. A compose `hostname:` adds a
+    # second record to docker's embedded DNS, and if it ever equalled a service name that
+    # name would resolve to two containers with Serve dialling whichever answered first.
+    environment:
+      # The URL and the ACL target. Must not equal any service name in this stack
+      # (postgres paddleocr-server diarize-asr vidingest webapp vidingest-cli
+      # vidingest-mcp) — video-knowledge is safe.
+      TS_HOSTNAME: ${TS_HOSTNAME:-video-knowledge}
+      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY in .env — reusable and tagged, never ephemeral}
+      # Without this, containerboot re-runs `tailscale up` with the key on every start.
+      # Identity already lives in the volume, so re-auth can only ever fail — the day the
+      # key is rotated or expires, a working container stops starting.
+      TS_AUTH_ONCE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      # Otherwise MagicDNS rewrites /etc/resolv.conf and the sidecar can no longer resolve
+      # `webapp` on the compose network. Serve then fails with something that reads
+      # nothing like a DNS error.
+      TS_ACCEPT_DNS: "false"
+      TS_SERVE_CONFIG: /config/serve-${TS_SERVE_MODE:-https}.json
+      # Unauthenticated /healthz and /metrics on the compose network only, never published.
+      TS_ENABLE_HEALTH_CHECK: "true"
+      # e.g. --advertise-tags=tag:server when the auth key itself is untagged.
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+      # These two are what make mem_limit below mean anything, and they are set together
+      # or not at all. In userspace mode tailscaled runs a netstack in userland whose
+      # buffers grow with concurrency and are never returned — measured elsewhere at 71 MiB
+      # idle, 292 MiB after 12 concurrent transfers, 586 MiB after 28, each level
+      # persisting. A cgroup limit alone therefore bounds nothing; it converts unbounded
+      # growth into an OOM kill of the one container that provides all access, including
+      # the way in to debug it. GOMEMLIMIT makes Go collect instead of grow.
+      #
+      # GOMAXPROCS because Go does not read the cgroup CPU quota: unset, the runtime sizes
+      # its threads and per-P caches from the host's core count while `cpus` caps it anyway.
+      GOMEMLIMIT: ${TS_GOMEMLIMIT:-128MiB}
+      GOMAXPROCS: ${TS_GOMAXPROCS:-2}
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      # A DIRECTORY, not a single-file bind mount. Tailscale watches the parent directory
+      # for changes; one bind-mounted file is one inode that never fires an event, so edits
+      # to the serve config are ignored until the container is recreated. Mounting the
+      # directory is also what makes TS_SERVE_MODE switchable.
+      - ./compose/tailscale:/config:ro
+    depends_on:
+      webapp:
+        # Serve must not advertise a backend that cannot answer: on a fresh tailnet the
+        # first request is the one that provisions the TLS cert, and it would 502.
+        condition: service_healthy
+    # Docker's default json-file driver has no size cap and no rotation, and this container
+    # is chatty by design — containerboot polls the daemon every 15s and tailscaled logs
+    # each POST to its local API, which is ~5.7k lines a day of
+    # `localapi: [POST] /localapi/v0/debug` on its own. That line is not an error and
+    # cannot be turned off (the caller is this container's own PID 1, and `tailscaled
+    # -verbose` floors at 0), so bound the file rather than chase the line.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    # A backstop the kernel enforces, not the operating point — GOMEMLIMIT above is what
+    # holds the ceiling. Do not lower this without lowering GOMEMLIMIT with it.
+    cpus: ${TS_CPUS:-2.0}
+    mem_limit: ${TS_MEM_LIMIT:-256m}
+    pids_limit: ${TS_PIDS_LIMIT:-128}
+    healthcheck:
+      # Exits non-zero when the backend is down or logged out, and the binary is guaranteed
+      # present in this image. TS_ENABLE_HEALTH_CHECK's /healthz is for scrapers —
+      # Tailscale warns against driving restarts from it, since a tailnet blip would cycle
+      # the node and re-register it.
+      test: ['CMD', 'tailscale', 'status', '--peers=false']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  # Node identity. Keeping it is the whole reason the auth key is spent once, and why the
+  # node does not come back as video-knowledge-1 on the next deploy.
+  tailscale_state:

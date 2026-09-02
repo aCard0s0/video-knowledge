@@ -443,6 +443,107 @@ Per-connection traps, each of which fails confusingly rather than loudly:
 - **There is no per-connection cost cap.** Nothing in the pipeline meters spend, and KNOWLEDGE
   issues one call per ~16000-character batch. Budget at the account.
 
+## Tailnet access (optional)
+
+`./vk start --serve https` adds a tailscale sidecar and serves the console over TLS on your
+tailnet at `https://<TS_HOSTNAME>.<tailnet>.ts.net/vidingest/`. Off by default; a plain
+`./vk start` is unchanged.
+
+Code: [compose/tailscale.yml](../../compose/tailscale.yml),
+[compose/tailscale/](../../compose/tailscale), and
+[compose/tailscale/ACL.md](../../compose/tailscale/ACL.md) — **read that before the first
+start**, because the ACL has to exist first and an ACL on the wrong port locks you out with a
+plain timeout and no log line saying "ACL".
+
+**The backend is `webapp`, and that is the whole design.** The console's nginx already proxies
+the API to `vidingest:8051` on the same origin, so one Serve handler puts both the console and
+`/vidingest/api/v1` on the tailnet while the API keeps no second door of its own. Serve targets
+`http://webapp:8080` over the compose network — a service name, not `127.0.0.1`. The
+`tailscale serve` **CLI** only accepts local addresses and says so in its help, but that
+restriction belongs to the CLI: `TS_SERVE_CONFIG` is loaded straight into the daemon, and a
+service-name proxy target works. Reading the CLI's limit as a property of Serve is the mistake
+that argues for kernel mode and a shared namespace to get a loopback target, giving up the
+isolation for nothing. Confirm it yourself with `docker compose exec tailscale tailscale serve status`.
+
+| Flag | Effect |
+|---|---|
+| `--serve https` | sidecar on, TLS on the tailnet, **console host port dropped** |
+| `--serve funnel` | the same, plus the public internet. Prompts. Do not — see below |
+| `--local` | keep `127.0.0.1:8052` as well as Serve |
+| `--no-local` | drop the console host port without adding a tailnet |
+
+Both flags are accepted before or after the verb, because the file layering has to be resolved
+before *any* compose call — `logs`, `down` and `status` need the same `-f` set as the `up` that
+created the stack, or they cannot see the sidecar at all.
+
+Things worth knowing before you rely on it:
+
+- **The console's host port had to leave the base compose file.** Compose has no falsy port
+  spec, and an override's `ports:` is *appended* to the base list rather than replacing it, so
+  a port declared in `services.yml` could never be taken away again. It lives in
+  [compose/webapp-local.yml](../../compose/webapp-local.yml) and `./vk` decides whether to
+  append it. This is why `--serve` can drop it and a bare `start` still publishes it.
+- **The remaining ports stay published on loopback.** `--serve` drops only the console's. The
+  API (8051), postgres (3030), MCP (8055) and the sidecars keep `127.0.0.1` bindings, which is
+  a door for someone already on the host rather than an exposure. **`VK_BIND_ADDR=0.0.0.0`
+  changes that completely** and `./vk doctor` fails on it when the sidecar is on: if the host
+  is itself a tailscale node, `0.0.0.0` includes its `tailscale0` interface, so peers reach the
+  API at the host's tailnet IP — bypassing Serve and the ACL written for the sidecar's tag. It
+  looks tailnet-only and is governed by nothing. On Linux it also survives `ufw`, since
+  Docker's DNAT sits in `PREROUTING` ahead of the `INPUT` rules the firewall manages.
+- **Userspace networking, deliberately.** No `/dev/net/tun`, no `NET_ADMIN`, no `NET_RAW`.
+  Kernel mode with `network_mode: service:tailscale` is *looser*, not tighter: the console
+  would then listen inside the tailnet node's namespace and every peer could hit `:8080`
+  directly, skipping Serve.
+- **`TS_HOSTNAME` must not equal a service name**, and `./vk start --serve` exits 4 if it does.
+  A matching name resolves to two containers in docker's embedded DNS and Serve dials whichever
+  answers first, so roughly half of all requests 502 with nothing in `docker compose config`
+  looking wrong. The sidecar deliberately carries no compose `hostname:` key for the same
+  reason — `TS_HOSTNAME` alone sets the MagicDNS name.
+- **The serve config is mounted as a directory**, not a single file. Tailscale watches the
+  parent directory for changes; a one-file bind mount is one inode that never fires an event,
+  so edits are silently ignored until the container is recreated. It is also what makes
+  `--serve https|funnel` switchable.
+- **`TS_AUTHKEY` is spent once** — identity lives in the `tailscale_state` volume and
+  `TS_AUTH_ONCE=true` stops re-authentication, so rotating the key needs no redeploy. Without
+  that flag the entrypoint re-runs `tailscale up` on every start, and re-auth can then only
+  ever *fail*: the day the key is rotated, a working container stops starting.
+- **`./vk down` logs the node out first** when the sidecar is up, while it can still reach the
+  coordination server. Skipping that leaves a machine entry holding the MagicDNS name, so the
+  next deploy comes up as `video-knowledge-1` while every URL and ACL points at the corpse.
+- **`./vk status` reports the node's observed state**, parsed from `tailscale status --json` —
+  `BackendState` and the real `DNSName`, never `TS_HOSTNAME` echoed back. A status command that
+  prints its own configuration cannot tell you the node failed to authenticate.
+- **The sidecar's `mem_limit` is paired with `GOMEMLIMIT`,** and they are set together or not at
+  all. In userspace mode tailscaled runs a netstack in userland whose buffers grow with
+  concurrency and are never returned, so a cgroup limit alone bounds nothing — it converts
+  unbounded growth into an OOM kill of the one container that provides all access, including the
+  way in to debug it. `GOMAXPROCS` is set because Go does not read the cgroup CPU quota.
+- **Certificates must be enabled for the tailnet** (admin console → DNS → HTTPS Certificates).
+  There is no plaintext mode: `${TS_CERT_DOMAIN}` is the only substitution containerboot
+  performs and it comes from the node's cert domain, so with certificates off the handler key
+  matches no incoming Host and **the node comes up healthy while serving nothing**.
+
+### Funnel is not appropriate here
+
+`--serve funnel` warns, names the exposure and requires a confirmation, and it exists so the
+posture is one flag rather than a compose edit. It should not be used. **This application has
+no authentication** — no Spring Security, no login — so the tailnet ACL is the entire access
+control, and funnel is exactly the setting that turns it into decoration. Serve does supply an
+unspoofable `Tailscale-User-Login` on every proxied request and strips any inbound header of the
+same name; nothing in this repo reads it yet, so there is no per-user authorization and no audit
+trail. `compose/tailscale/ACL.md` has what gating on it would involve, including why the headers
+are absent for funnel traffic and for tagged devices.
+
+### What the checks cannot tell you
+
+`./vk doctor` and `./vk test cli` are static plus local. Neither can prove the deployment is
+reachable *only* through Serve. Two things to do by hand on the first deploy:
+
+- from another tailnet device, `curl -sSf https://<name>.<tailnet>.ts.net/vidingest/` succeeds
+- from a machine **off** the tailnet, the same URL must fail to connect. If it answers,
+  something is published that you did not intend — most likely a host port, or funnel left on.
+
 ## Docker configuration
 
 ### Compose layout

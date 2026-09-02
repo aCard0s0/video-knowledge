@@ -152,8 +152,12 @@ services:
         NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
         NGINX_IMAGE: ${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
     image: video-knowledge/webapp:${VK_IMAGE_TAG:-latest}
-    ports:
-      - '${VK_BIND_ADDR:-127.0.0.1}:${WEBAPP_PORT:-8052}:8080'
+    # The host port lives in compose/webapp-local.yml, which `./vk` appends unless the
+    # stack is going on a tailnet. It cannot be conditional here: compose has no falsy
+    # port spec, and an override's `ports:` is appended to the base list rather than
+    # replacing it, so a port declared here could never be taken away again.
+    expose:
+      - '8080'
     depends_on:
       # Only for start order — nginx proxies lazily, so the console still loads and reports the
       # failure itself if the server goes away later.

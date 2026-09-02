@@ -212,7 +212,64 @@ if have_lsof; then
   kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 fi
 
-echo "═══ 16. the two registry lints + the resolver ═══"
+echo "═══ 16. tailnet layering (no auth key needed — nothing is started) ═══"
+FAKE="TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=tskey-selftest-fake"
+# The layering has to be identical whether the flag came before or after the verb, because
+# `logs`/`down`/`status` need the same -f set as the `up` that made the stack.
+layer() { bash -c "source ./vk; extract_layering_flags $1; resolve_layering; printf '%s|%s' \"\${TAILSCALE_ON:-no}\" \"\${LOCAL_PORT_ON:-no}\""; }
+for pair in "::no|1" "--serve https::1|no" "--serve https --local::1|1" "--no-local::no|no" "--serve funnel::1|no"; do
+  args="${pair%%::*}"; want="${pair##*::}"; got=$(layer "$args")
+  if [ "$got" = "$want" ]; then PASS=$((PASS+1)); printf '  ok   %-58s %s\n' "layering [${args:-default}]" "$got"
+  else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=%s got=%s\n' "layering [${args:-default}]" "$want" "$got"; fi
+done
+ck      2 "--serve with no mode -> 2"                     ./vk --serve
+ck      2 "--serve bogus -> 2"                            ./vk --serve bogus status
+ck      0 "--serve accepted after the verb too"           bash -c "$FAKE ./vk --dry-run status --serve https"
+# The overlay uses ${TS_AUTHKEY:?}, which would break every read-only compose call; dc()
+# passes placeholders so `status` and `logs` never need the real key to list containers.
+ck      0 "read-only calls survive the required interpolations" bash -c 'TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https status'
+ck      4 "start --serve without TS_AUTHKEY -> 4"         bash -c 'TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY= ./vk start --serve https'
+ck      4 "TS_HOSTNAME equal to a service name -> 4"      bash -c "$FAKE TS_HOSTNAME=webapp ./vk start --serve https"
+ck      2 "start --serve funnel refuses non-interactively" bash -c "$FAKE ./vk start --serve funnel < /dev/null"
+ckout   0 "FUNNEL" "the funnel warning names the exposure" bash -c "$FAKE ./vk start --serve funnel < /dev/null 2>&1; true"
+# The exposure assertion that matters: with --serve the console must publish NOTHING.
+ck      0 "with --serve the console publishes no host port" bash -c '
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert (d[\"services\"][\"webapp\"].get(\"ports\") or []) == [], \"webapp still publishes a port under --serve\"
+assert \"tailscale\" in d[\"services\"], \"sidecar missing\"
+assert json.dumps(d).count(\"TS_AUTHKEY\") == 1, \"TS_AUTHKEY reaches more than the sidecar\"
+"'
+ck      0 "without --serve the console publishes 8052 as before" bash -c '
+  source ./vk; extract_layering_flags; resolve_layering
+  docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert (d[\"services\"][\"webapp\"].get(\"ports\") or []), \"the default no longer publishes the console\"
+assert \"tailscale\" not in d[\"services\"], \"sidecar leaked into the default footprint\"
+"'
+ck      0 "serve config targets webapp, not 127.0.0.1"    grep -q "http://webapp:8080" compose/tailscale/serve-https.json
+ck      0 "both serve configs are valid JSON"             python3 -c "
+import json
+json.load(open('compose/tailscale/serve-https.json'))
+json.load(open('compose/tailscale/serve-funnel.json'))"
+# Deliberately narrow: matching every `TS_AUTHKEY=` assignment flags this harness's own
+# fakes and vk's read-only placeholder, which is noise. What must never be committed is a
+# real key, and those start with the `tskey-` prefix plus a key-class word.
+#
+# The scan covers this file too, which is why the sentence above spells no literal prefix:
+# the first version of it did, and the check matched its own explanation.
+ck      0 "no real tailscale key in any tracked file"     bash -c '! git grep -qE "tskey-(auth|client)-" -- . 2>/dev/null'
+ck      0 "tailscale appears as a target only with --serve" bash -c '
+  ./vk list | grep -q tailscale && exit 1
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  case " $SERVICES " in *" tailscale "*) exit 0 ;; *) exit 1 ;; esac'
+
+echo "═══ 17. the two registry lints + the resolver ═══"
 ck 0 "drift lint: every cmd_ has a row and vice versa" bash -c \
   "diff <(grep '^cmd_' ./vk | sed 's/^cmd_//;s/() .*//' | grep -v '_help\$' | sed 's/_/ /g' | sort) <(sed -n '/^COMMANDS=/,/^REGISTRY/p' ./vk | awk -F'|' 'NF>1{print \$1}' | sort)"
 ck 0 "row lint: every registry row has 4 fields" bash -c \

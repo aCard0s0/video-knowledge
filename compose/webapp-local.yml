@@ -1,0 +1,21 @@
+# The console's host port, kept out of the base file on purpose.
+#
+# Compose has no falsy port spec — an empty ${VAR} in a `ports:` entry is a parse error,
+# not an omission — and a `ports:` list in an override is APPENDED to the base one, never
+# replaced. So a host port can only be made conditional by living outside the base file,
+# and `./vk` is what decides whether to append this one.
+#
+# It is on by default (a plain `./vk start` behaves exactly as it always did) and off when
+# --serve puts the stack on a tailnet, because then the tailnet is the access path and a
+# published port is a second door the ACL does not guard. `--local` forces it back on.
+#
+# VK_BIND_ADDR stays 127.0.0.1. 0.0.0.0 is worse than it looks: on Linux, Docker publishes
+# via DNAT in the nat table's DOCKER chain, traversed in PREROUTING ahead of the INPUT
+# rules ufw and firewalld manage — so the port answers while the host firewall reports
+# "deny". And if the host is itself a tailscale node, 0.0.0.0 includes its tailscale0
+# interface, so peers reach the console at the host's tailnet IP, bypassing Serve and the
+# ACL written for the sidecar's tag. It looks tailnet-only and is governed by nothing.
+services:
+  webapp:
+    ports:
+      - '${VK_BIND_ADDR:-127.0.0.1}:${WEBAPP_PORT:-8052}:8080'

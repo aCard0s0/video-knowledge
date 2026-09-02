@@ -73,6 +73,21 @@ OCR, `diarize-asr` for diarization — are opt-in: `./vk start sidecars`. Target
 verbs, never verbs; `./vk list` prints them. Host ports are defined in
 [compose/ports.env](compose/ports.env).
 
+## Reach it from your other devices (optional)
+
+```bash
+./vk start --serve https   # + a tailscale sidecar; console over TLS on your tailnet
+```
+
+Off by default. Read [compose/tailscale/ACL.md](compose/tailscale/ACL.md) first — the ACL has to
+be in place before the first start, and an ACL on the wrong port locks you out with a plain
+timeout. `--serve` drops the console's `127.0.0.1` port, since the tailnet becomes the access
+path; `--local` keeps both.
+
+**The server has no authentication**, so the tailnet ACL is the entire access control and it
+authenticates machines, not people. Keep the ACL `src` to your own account, and do not use
+`--serve funnel`.
+
 ## Test, format, clean
 
 ```bash

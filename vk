@@ -57,11 +57,25 @@ if [ -f "$ROOT/compose/ports.env" ]; then
 fi
 export VK_IMAGE_TAG="${VK_IMAGE_TAG:-latest}"
 export VK_BIND_ADDR="${VK_BIND_ADDR:-127.0.0.1}"
-COMPOSE_FILES=(-f "$ROOT/compose.yml" -f "$ROOT/compose/infra/infra.yml"
-  -f "$ROOT/compose/services.yml" -f "$ROOT/compose/cli.yml" -f "$ROOT/compose/mcp.yml")
+# ── compose layering ────────────────────────────────────────────────────────────────
+# Two of these are conditional, and both have to be decided before ANY compose call —
+# `logs`, `down` and `status` need the same file set as the `up` that created the stack, or
+# they simply cannot see the sidecar. So the layering is resolved once in main(), from the
+# environment and from flags accepted anywhere on the line, rather than per command.
+#
+#   webapp-local.yml  the console's host port. On by default; off when --serve is given,
+#                     because then the tailnet is the access path and a published port is a
+#                     second door the ACL does not guard. --local forces it back.
+#   tailscale.yml     the sidecar. Off unless --serve or VK_TAILSCALE_ENABLED=true.
+TS_SERVE_MODE="${TS_SERVE_MODE:-}"
+TAILSCALE_ON=""; LOCAL_PORT_ON=""
+case "${VK_TAILSCALE_ENABLED:-}" in true|1|yes) TAILSCALE_ON=1 ;; esac
+case "${LOCAL_PORT_ENABLED:-}" in true|1|yes) LOCAL_PORT_ON=1 ;; esac
+COMPOSE_FILES=()
+BASE_SERVICES="postgres paddleocr-server diarize-asr vidingest webapp vidingest-cli vidingest-mcp"
 # Valid targets. Services feed compose directly; groups expand to a service list. Both
 # are printed by `list` and by the help footer, and both feed the did-you-mean hint.
-SERVICES="postgres paddleocr-server diarize-asr vidingest webapp vidingest-cli vidingest-mcp"
+SERVICES="$BASE_SERVICES"
 # Not GROUPS: that is a bash builtin holding the user's group ids, assignment to it is
 # silently discarded, and `Groups: 20` in the help was the whole symptom.
 TARGET_GROUPS="all infra sidecars backend"
@@ -152,6 +166,49 @@ selected() {
   printf '%s' "${out# }"
 }
 wants_help() { local a; for a in "$@"; do case "$a" in -h|--help) return 0 ;; --) break ;; esac; done; return 1; }
+# Rebuild the -f list and the target catalogue from the resolved layering. Called once,
+# after the pre-scan, and before anything touches docker.
+resolve_layering() {
+  COMPOSE_FILES=(-f "$ROOT/compose.yml" -f "$ROOT/compose/infra/infra.yml"
+    -f "$ROOT/compose/services.yml" -f "$ROOT/compose/cli.yml" -f "$ROOT/compose/mcp.yml")
+  # --serve implies the sidecar, and the sidecar defaults the host port off.
+  if [ -n "$TS_SERVE_MODE" ]; then TAILSCALE_ON=1; fi
+  if [ -z "$TAILSCALE_ON" ] && [ -z "${LOCAL_PORT_ENABLED:-}" ]; then LOCAL_PORT_ON=1; fi
+  if [ -n "$LOCAL_PORT_ON" ]; then COMPOSE_FILES+=(-f "$ROOT/compose/webapp-local.yml"); fi
+  if [ -n "$TAILSCALE_ON" ]; then
+    COMPOSE_FILES+=(-f "$ROOT/compose/tailscale.yml")
+    SERVICES="$BASE_SERVICES tailscale"
+    GROUP_all="$GROUP_infra $GROUP_backend tailscale"
+    export TS_SERVE_MODE="${TS_SERVE_MODE:-https}"
+  fi
+}
+# Strip the layering flags out of the argv before dispatch, so they work in front of the
+# verb or after it — `./vk start --serve https` is what anyone types, and making every
+# command's allow-list carry them would be six edits that drift. Stops at `--` so a
+# passthrough (`./vk test server -- --local`) is left alone.
+LAYERING_ARGS=()
+extract_layering_flags() {
+  LAYERING_ARGS=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --serve) [ $# -ge 2 ] || die "--serve needs a mode (https or funnel)" 2
+               case "$2" in
+                 https|funnel) TS_SERVE_MODE="$2" ;;
+                 *) die "unknown serve mode: $2 (https, funnel)" 2 ;;
+               esac
+               shift ;;
+      --serve=*) case "${1#--serve=}" in
+                   https|funnel) TS_SERVE_MODE="${1#--serve=}" ;;
+                   *) die "unknown serve mode: ${1#--serve=} (https, funnel)" 2 ;;
+                 esac ;;
+      --local)    LOCAL_PORT_ON=1; LOCAL_PORT_ENABLED=true ;;
+      --no-local) LOCAL_PORT_ON="";  LOCAL_PORT_ENABLED=false ;;
+      --) LAYERING_ARGS+=("$@"); return 0 ;;
+      *)  LAYERING_ARGS+=("$1") ;;
+    esac
+    shift
+  done
+}
 
 usage() {
   cat <<EOF
@@ -159,6 +216,11 @@ ${BOLD}$PROG${RST} — $TAGLINE
 
 Usage: ./$PROG [-n|--dry-run] [-y|--yes] [-v|--verbose] <command> [args...]
        ./$PROG <command> --help
+
+Layering (accepted before or after the command):
+  --serve https|funnel   add the tailscale sidecar; serve the console over TLS on the
+                         tailnet. Drops the host port unless --local is also given.
+  --local, --no-local    force the console's 127.0.0.1 port on or off
 
 Commands:
 EOF
@@ -199,7 +261,36 @@ confirm() {
 }
 # One choke point. `dc` is the raw invocation, for read-only captures that must still
 # produce a value under --dry-run; `compose` is the same thing behind run().
-dc()      { docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" ${ENVARG[@]+"${ENVARG[@]}"} "$@"; }
+# The tailscale overlay uses ${TS_IMAGE_TAG:?} and ${TS_AUTHKEY:?} so a real `up` refuses to
+# guess. That also breaks every read-only call — ps, logs, port, exec, the ones `status` is
+# built from — so those get placeholders instead. `status` and `logs` have no business
+# reading the auth key to list containers. cmd_start validates the real values first.
+dc() {
+  TS_IMAGE_TAG="${TS_IMAGE_TAG:-placeholder}" TS_AUTHKEY="${TS_AUTHKEY:-placeholder}" \
+    docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" ${ENVARG[@]+"${ENVARG[@]}"} "$@"
+}
+# Everything a real mutation needs, checked before compose is allowed to guess.
+require_tailscale_env() {
+  [ -n "$TAILSCALE_ON" ] || return 0
+  [ -n "${TS_IMAGE_TAG:-}" ] || die "TS_IMAGE_TAG is unset — pin the sidecar in .env (see .env.example)" 4
+  [ -n "${TS_AUTHKEY:-}" ] || die "TS_AUTHKEY is unset — mint a reusable, tagged key and put it in .env (see compose/tailscale/ACL.md)" 4
+  case "${TS_HOSTNAME:-video-knowledge}" in
+    postgres|paddleocr-server|diarize-asr|vidingest|webapp|vidingest-cli|vidingest-mcp|tailscale)
+      die "TS_HOSTNAME must not equal a compose service name — that name would resolve to two containers and Serve would 502 on about half of all requests" 4 ;;
+  esac
+}
+# Observed, never configured: ask the daemon what its own name and state are. A status
+# command that echoes TS_HOSTNAME back cannot tell you the node failed to authenticate.
+tailnet_state() {
+  [ -n "$TAILSCALE_ON" ] || return 0
+  dc exec -T tailscale tailscale status --json 2>/dev/null | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+me=d.get("Self") or {}
+name=(me.get("DNSName") or "").rstrip(".")
+print((d.get("BackendState") or "unknown")+" "+(name or "-"))' 2>/dev/null || true
+}
 compose() { run dc "$@"; }
 # ── shared parsing: one idiom, plus a per-command allow-list so nothing is ignored ──
 parse_targets() {                      # parse_targets "<allowed flags>" "$@"
@@ -238,15 +329,39 @@ report_urls() {
   web=$(dc port webapp 8080 2>/dev/null || true)
   [ -z "$api" ] || say "api      http://${api}/vidingest"
   [ -z "$web" ] || say "console  http://${web}/vidingest"
-  if [ -z "$api$web" ]; then note "no published ports yet — ./$PROG status"; fi
+  local ts state name
+  ts=$(tailnet_state); state="${ts%% *}"; name="${ts##* }"
+  if [ -n "$ts" ] && [ "$name" != "-" ]; then
+    say "tailnet  https://${name}/vidingest  (${state})"
+    [ "$state" = "Running" ] || warn "the node is '${state}', not Running — check TS_AUTHKEY and the ACL"
+  elif [ -n "$TAILSCALE_ON" ]; then
+    note "the sidecar has no node name yet — ./$PROG logs tailscale"
+  fi
+  if [ -z "$api$web$ts" ]; then note "no published ports yet — ./$PROG status"; fi
 }
-cmd_start() { parse_targets "--build --no-build" "$@"; require_docker
-  if [ -n "$OPT_BUILD" ]; then do_build; fi; do_up; }
+cmd_start() {
+  parse_targets "--build --no-build" "$@"; require_docker; require_tailscale_env
+  # Publishing to the internet must never be a quiet side effect of an env var somebody
+  # edited last month, and this stack has no application authentication at all — the ACL is
+  # the whole gate, which is exactly what funnel makes decoration.
+  if [ "${TS_SERVE_MODE:-}" = "funnel" ]; then
+    warn "FUNNEL: this publishes the console to the PUBLIC INTERNET."
+    warn "This application has no authentication. Anyone with the URL could ingest videos,"
+    warn "delete them, and repoint a connection so the server hands over its API key."
+    confirm "publish to the public internet anyway?"
+  fi
+  if [ -n "$OPT_BUILD" ]; then do_build; fi; do_up
+}
 cmd_start_help() {
   say "  Converges: a target whose image, config or environment changed is recreated."
   say "  Returns only after compose reports every target healthy, so a following command"
   say "  can rely on the stack being up. Already-healthy is exit 0 with no churn."
   say "  --build rebuilds the selected targets first."
+  say ""
+  say "  --serve https    also start the tailscale sidecar and serve the console over TLS"
+  say "                   on the tailnet. Drops the host port; --local keeps it too."
+  say "  --serve funnel   the same, plus the public internet. Prompts, and should not be"
+  say "                   used: nothing here authenticates. compose/tailscale/ACL.md."
 }
 cmd_build() { parse_targets "--no-cache" "$@"; require_docker; do_build; say "built (tag=$VK_IMAGE_TAG)"; }
 cmd_build_help() {
@@ -328,6 +443,15 @@ cmd_down() {
   if [ -n "$vols" ]; then
     confirm "remove every '$PROJECT' volume — the database, the sidecar models, the downloaded videos and the logs? this cannot be undone"
   fi
+  # Order matters, and this is why `logout` lives in the teardown path rather than in a
+  # runbook nobody reads: it has to happen while the container can still reach the
+  # coordination server. Skip it and the machine entry survives holding the MagicDNS name,
+  # so the next deploy authenticates fresh and comes up as video-knowledge-1 while every
+  # URL, bookmark and ACL still points at the corpse.
+  if [ -n "$TAILSCALE_ON" ] && [ -n "$(dc ps -q tailscale 2>/dev/null)" ]; then
+    step "logging the node out of the tailnet"
+    run dc exec -T tailscale tailscale logout || warn "logout failed — delete the machine at login.tailscale.com/admin/machines"
+  fi
   f=(down --remove-orphans); [ -z "$vols" ] || f+=(--volumes)
   compose "${f[@]}"
   say "removed containers and the network${vols:+, and the data volumes}"
@@ -338,6 +462,9 @@ cmd_down_help() {
   say "  video. It prompts, and refuses a non-interactive shell unless you pass --yes."
   say "  The ollama_data volume from before the host-runtime move is not managed here;"
   say "  remove it by hand if it is still on the machine."
+  say "  With --serve, the node is logged out of the tailnet first, while it can still"
+  say "  reach the coordination server. Without that the machine entry keeps the MagicDNS"
+  say "  name and the next deploy comes up as video-knowledge-1."
 }
 cmd_clean() {
   local all=""
@@ -559,6 +686,38 @@ cmd_doctor() {
   elif curl -fsS --max-time 2 "$probe/models" >/dev/null 2>&1; then say "host llm  answering at $probe"
   else warn "host llm  NOT ANSWERING at $probe — start the oMLX server bound to 0.0.0.0, or"
        warn "          repoint the connections (PUT /api/v1/connections/{name})"; broken=1; fi
+  if [ -n "$TAILSCALE_ON" ]; then
+    if [ -n "${TS_IMAGE_TAG:-}" ]; then say "ts image  tailscale/tailscale:$TS_IMAGE_TAG"
+    else warn "ts image  UNPINNED — set TS_IMAGE_TAG in .env"; broken=1; fi
+    if [ -n "${TS_AUTHKEY:-}" ]; then say "ts key    present (spent once; identity is in the volume)"
+    else warn "ts key    MISSING — see compose/tailscale/ACL.md"; broken=1; fi
+    local mode="${TS_SERVE_MODE:-https}"
+    if [ -f "$ROOT/compose/tailscale/serve-$mode.json" ]; then say "ts serve  serve-$mode.json"
+    else warn "ts serve  no compose/tailscale/serve-$mode.json"; broken=1; fi
+    [ "$mode" != "funnel" ] || warn "ts serve  FUNNEL is on — the console is public, and nothing here authenticates"
+    local ts; ts=$(tailnet_state)
+    if [ -z "$ts" ]; then say "tailnet   sidecar not running (start it with --serve $mode)"
+    elif [ "${ts%% *}" = "Running" ]; then say "tailnet   ${ts##* } (Running)"
+    else warn "tailnet   node is '${ts%% *}' — check TS_AUTHKEY and the ACL port for '$mode'"; broken=1; fi
+    # A published port beside Serve is a second door the ACL does not guard.
+    if [ -n "$LOCAL_PORT_ON" ]; then
+      warn "exposure  --local is on beside --serve: the console also answers on ${VK_BIND_ADDR}:${WEBAPP_PORT:-8052}"
+    fi
+    # The one combination that turns a loopback convenience into an ungoverned tailnet
+    # surface. If this host is itself a tailscale node, 0.0.0.0 includes its tailscale0
+    # interface, so peers reach vidingest:8051 at the host's tailnet IP — bypassing Serve
+    # and the ACL written for the sidecar's tag. It looks tailnet-only and is governed by
+    # nothing. On Linux it also survives ufw/firewalld, since Docker's DNAT sits in
+    # PREROUTING ahead of INPUT.
+    if [ "$VK_BIND_ADDR" != "127.0.0.1" ] && [ "$VK_BIND_ADDR" != "::1" ]; then
+      warn "exposure  VK_BIND_ADDR is $VK_BIND_ADDR, not loopback. Every other service's port"
+      warn "          is then on every interface this host has — including tailscale0 if the"
+      warn "          host is a node, which bypasses Serve and the ACL entirely."
+      broken=1
+    else
+      say "exposure  the remaining ports (api, db, mcp, sidecars) are loopback-only"
+    fi
+  fi
   # The registry is the source of truth only if nothing drifts from it. This is the lint
   # from the skill, run here rather than only in CI.
   local drift; drift=$(doctor_drift)
@@ -586,6 +745,11 @@ cmd_version() {
 }
 # ── dispatcher: resolution only, no command logic ──
 main() {
+  # Layering first: `logs`, `down` and `status` need the same -f set as the `up` that made
+  # the stack, so this cannot wait until a command function runs.
+  extract_layering_flags "$@"
+  set -- ${LAYERING_ARGS[@]+"${LAYERING_ARGS[@]}"}
+  resolve_layering
   while [ $# -gt 0 ]; do
     case "$1" in
       -n|--dry-run) DRY_RUN=1 ;;    -y|--yes)     ASSUME_YES=1 ;;
