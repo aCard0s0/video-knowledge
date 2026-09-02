@@ -472,6 +472,14 @@ isolation for nothing. Confirm it yourself with `docker compose exec tailscale t
 | `--local` | keep `127.0.0.1:8052` as well as Serve |
 | `--no-local` | drop the console host port without adding a tailnet |
 
+All four can also be set once in `.env` rather than typed every time —
+`LOCAL_PORT_ENABLED`, `VK_TAILSCALE_ENABLED`, `TS_SERVE_MODE`, plus the `TS_*` credentials.
+Precedence is **flag, then a real shell variable, then the env file**, which is the order
+compose itself uses for the last two. `LOCAL_PORT_ENABLED=true` is the setting for "keep the
+console on loopback as well as the tailnet"; `--no-local` still overrides it per invocation.
+Note that `./vk` has to read `.env` itself to honour any of this — the file otherwise reaches
+only *compose*, via `--env-file`, which is why a setting placed there used to do nothing.
+
 Both flags are accepted before or after the verb, because the file layering has to be resolved
 before *any* compose call — `logs`, `down` and `status` need the same `-f` set as the `up` that
 created the stack, or they cannot see the sidecar at all.

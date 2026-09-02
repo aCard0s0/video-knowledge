@@ -221,12 +221,35 @@ echo "═══ 16. tailnet layering (no auth key needed — nothing is started)
 FAKE="TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=tskey-selftest-fake"
 # The layering has to be identical whether the flag came before or after the verb, because
 # `logs`/`down`/`status` need the same -f set as the `up` that made the stack.
-layer() { bash -c "source ./vk; extract_layering_flags $1; resolve_layering; printf '%s|%s' \"\${TAILSCALE_ON:-no}\" \"\${LOCAL_PORT_ON:-no}\""; }
+# VK_ENV_FILE points at an empty file on purpose: resolve_layering now reads layering
+# defaults out of .env, and this machine's .env may set them. A table that reads the
+# operator's own preferences is testing the machine, not the code.
+# Exported, because the checks below reference it inside single-quoted `bash -c` bodies
+# where the parent shell does no expansion — unexported, the child saw VK_ENV_FILE empty,
+# fell back to the real .env and read the operator's own preferences after all.
+CLEANENV=$(mktemp); export CLEANENV
+layer() { bash -c "VK_ENV_FILE='$CLEANENV' source ./vk; extract_layering_flags $1; resolve_layering; printf '%s|%s' \"\${TAILSCALE_ON:-no}\" \"\${LOCAL_PORT_ON:-no}\""; }
 for pair in "::no|1" "--serve https::1|no" "--serve https --local::1|1" "--no-local::no|no" "--serve funnel::1|no"; do
   args="${pair%%::*}"; want="${pair##*::}"; got=$(layer "$args")
   if [ "$got" = "$want" ]; then PASS=$((PASS+1)); printf '  ok   %-58s %s\n' "layering [${args:-default}]" "$got"
   else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=%s got=%s\n' "layering [${args:-default}]" "$want" "$got"; fi
 done
+# Precedence: a flag beats a real shell variable beats the env file. The env file half was
+# missing entirely — a LOCAL_PORT_ENABLED or VK_TAILSCALE_ENABLED placed in .env, which is
+# where .env.example documents them, silently did nothing.
+PREFENV=$(mktemp)
+printf 'TS_IMAGE_TAG=v1.102.3\nTS_AUTHKEY=fake\nVK_TAILSCALE_ENABLED=true\nLOCAL_PORT_ENABLED=true\n' > "$PREFENV"
+pref() { bash -c "VK_ENV_FILE='$PREFENV'; export VK_ENV_FILE; source ./vk; extract_layering_flags $1; resolve_layering; printf '%s|%s' \"\${TAILSCALE_ON:-no}\" \"\${LOCAL_PORT_ON:-no}\""; }
+for pair in "::1|1" "--no-local::1|no" "--serve https::1|1"; do
+  args="${pair%%::*}"; want="${pair##*::}"; got=$(pref "$args")
+  if [ "$got" = "$want" ]; then PASS=$((PASS+1)); printf '  ok   %-58s %s\n' "env-file prefs + [${args:-none}]" "$got"
+  else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=%s got=%s\n' "env-file prefs + [${args:-none}]" "$want" "$got"; fi
+done
+# A shell variable must still beat the file, as compose does.
+got=$(bash -c "VK_ENV_FILE='$PREFENV'; export VK_ENV_FILE; LOCAL_PORT_ENABLED=false; export LOCAL_PORT_ENABLED; source ./vk; extract_layering_flags; resolve_layering; printf '%s' \"\${LOCAL_PORT_ON:-no}\"")
+if [ "$got" = "no" ]; then PASS=$((PASS+1)); printf '  ok   %-58s local=%s\n' "a shell variable overrides the env file" "$got"
+else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=no got=%s\n' "a shell variable overrides the env file" "$got"; fi
+rm -f "$PREFENV"
 ck      2 "--serve with no mode -> 2"                     ./vk --serve
 ck      2 "--serve bogus -> 2"                            ./vk --serve bogus status
 ck      0 "--serve accepted after the verb too"           bash -c "$FAKE ./vk --dry-run status --serve https"
@@ -266,7 +289,11 @@ ck      4 "TS_HOSTNAME equal to a service name -> 4"      bash -c "$FAKE TS_HOST
 ck      2 "start --serve funnel refuses non-interactively" bash -c "$FAKE ./vk start --serve funnel < /dev/null"
 ckout   0 "FUNNEL" "the funnel warning names the exposure" bash -c "$FAKE ./vk start --serve funnel < /dev/null 2>&1; true"
 # The exposure assertion that matters: with --serve the console must publish NOTHING.
-ck      0 "with --serve the console publishes no host port" bash -c '
+# VK_ENV_FILE is the clean file again: this asserts the DEFAULT posture, and the operator's
+# own .env may legitimately ask for --local. Reading their preferences here would make the
+# check pass or fail on whose machine it runs.
+ck      0 "by default --serve leaves the console unpublished" bash -c '
+  VK_ENV_FILE="$CLEANENV"; export VK_ENV_FILE
   source ./vk; extract_layering_flags --serve https; resolve_layering
   TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
     python3 -c "
@@ -275,6 +302,19 @@ d=json.load(sys.stdin)
 assert (d[\"services\"][\"webapp\"].get(\"ports\") or []) == [], \"webapp still publishes a port under --serve\"
 assert \"tailscale\" in d[\"services\"], \"sidecar missing\"
 assert json.dumps(d).count(\"TS_AUTHKEY\") == 1, \"TS_AUTHKEY reaches more than the sidecar\"
+"'
+# The converse, since keeping both is a supported posture and not an accident.
+ck      0 "--serve --local publishes the console AND the sidecar" bash -c '
+  VK_ENV_FILE="$CLEANENV"; export VK_ENV_FILE
+  source ./vk; extract_layering_flags --serve https --local; resolve_layering
+  TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+d=json.load(sys.stdin); s=d[\"services\"]
+ports=s[\"webapp\"].get(\"ports\") or []
+assert ports, \"--local did not publish the console\"
+assert all(p.get(\"host_ip\") == \"127.0.0.1\" for p in ports), f\"not loopback-bound: {ports}\"
+assert \"tailscale\" in s, \"sidecar missing\"
 "'
 ck      0 "without --serve the console publishes 8052 as before" bash -c '
   source ./vk; extract_layering_flags; resolve_layering
@@ -289,9 +329,11 @@ assert \"tailscale\" not in d[\"services\"], \"sidecar leaked into the default f
 # `[ -n "$out" ]` test reports a correctly-closed stack as exposed. It shipped as
 # `console http://invalid IP:0/vidingest` on the very first real tailnet start.
 ck      0 "no 'invalid IP' leaks into status output"      bash -c '! ./vk status 2>&1 | grep -q "invalid IP"'
+# A service that exists in the file set but publishes nothing is the case `docker compose
+# port` answers with `invalid IP:0`. vidingest-cli never publishes, in any posture.
 ck      0 "published() answers empty for an unpublished port" bash -c '
-  source ./vk; extract_layering_flags --serve https; resolve_layering
-  out=$(published webapp 8080); [ -z "$out" ] || { echo "claimed: $out"; exit 1; }'
+  source ./vk; extract_layering_flags; resolve_layering
+  out=$(published vidingest-cli 8080); [ -z "$out" ] || { echo "claimed: $out"; exit 1; }'
 ck      0 "serve config targets webapp, not 127.0.0.1"    grep -q "http://webapp:8080" compose/tailscale/serve-https.json
 ck      0 "both serve configs are valid JSON"             python3 -c "
 import json
@@ -321,7 +363,7 @@ ln -sf "$PWD/vk" "$LINK"
 ck 0 "runs through a symlink from outside the repo" sh -c "cd / && $LINK list >/dev/null"
 ck 0 "sourceable without executing (entrypoint guard)" sh -c 'out=$(source ./vk 2>&1); [ -z "$out" ]'
 
-rm -f "$OUT"
+rm -f "$OUT" "$CLEANENV"
 echo
 echo "══════════════════════════════════════════════════"
 printf 'PASS=%s  FAIL=%s\n' "$PASS" "$FAIL"

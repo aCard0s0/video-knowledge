@@ -67,10 +67,15 @@ export VK_BIND_ADDR="${VK_BIND_ADDR:-127.0.0.1}"
 #                     because then the tailnet is the access path and a published port is a
 #                     second door the ACL does not guard. --local forces it back.
 #   tailscale.yml     the sidecar. Off unless --serve or VK_TAILSCALE_ENABLED=true.
+# Raw shell values only — nothing is DECIDED here, because the env file has not been read
+# yet and `env_value` is not defined until below. resolve_layering() is the one place that
+# settles it, so there is a single precedence order rather than two halves that disagree.
 TS_SERVE_MODE="${TS_SERVE_MODE:-}"
 TAILSCALE_ON=""; LOCAL_PORT_ON=""
-case "${VK_TAILSCALE_ENABLED:-}" in true|1|yes) TAILSCALE_ON=1 ;; esac
-case "${LOCAL_PORT_ENABLED:-}" in true|1|yes) LOCAL_PORT_ON=1 ;; esac
+# Whether a FLAG set the preference, as opposed to the environment or the file. A flag is
+# for one invocation and must win; without this marker `--no-local` could not override a
+# `LOCAL_PORT_ENABLED=true` sitting in .env.
+FLAG_SERVE=""; FLAG_LOCAL=""
 COMPOSE_FILES=()
 BASE_SERVICES="postgres paddleocr-server diarize-asr vidingest webapp vidingest-cli vidingest-mcp"
 # Valid targets. Services feed compose directly; groups expand to a service list. Both
@@ -186,9 +191,27 @@ env_value() {
 resolve_layering() {
   COMPOSE_FILES=(-f "$ROOT/compose.yml" -f "$ROOT/compose/infra/infra.yml"
     -f "$ROOT/compose/services.yml" -f "$ROOT/compose/cli.yml" -f "$ROOT/compose/mcp.yml")
-  # --serve implies the sidecar, and the sidecar defaults the host port off.
+  # .env is the documented home for all four of these, and it reaches COMPOSE via
+  # --env-file while this script never sees it — so it has to be read here too, or a
+  # setting the operator put in the file silently does nothing. That was already true of
+  # TS_AUTHKEY and was fixed; leaving the siblings broken would have been fixing only the
+  # path that was reported. Precedence: an explicit flag, then a real shell variable, then
+  # the env file — which is the order compose itself uses for the last two.
+  [ -n "$FLAG_SERVE" ] || TS_SERVE_MODE="${TS_SERVE_MODE:-$(env_value TS_SERVE_MODE)}"
+  local ts_pref; ts_pref="${VK_TAILSCALE_ENABLED:-$(env_value VK_TAILSCALE_ENABLED)}"
+  case "$ts_pref" in true|1|yes) TAILSCALE_ON=1 ;; esac
+  # --serve implies the sidecar.
   if [ -n "$TS_SERVE_MODE" ]; then TAILSCALE_ON=1; fi
-  if [ -z "$TAILSCALE_ON" ] && [ -z "${LOCAL_PORT_ENABLED:-}" ]; then LOCAL_PORT_ON=1; fi
+  local local_pref
+  if [ -n "$FLAG_LOCAL" ]; then local_pref="$LOCAL_PORT_ENABLED"
+  else local_pref="${LOCAL_PORT_ENABLED:-$(env_value LOCAL_PORT_ENABLED)}"; fi
+  case "$local_pref" in
+    true|1|yes) LOCAL_PORT_ON=1 ;;
+    false|0|no) LOCAL_PORT_ON="" ;;
+    # Stated nowhere: on, unless the tailnet is the access path — then a published port
+    # would be a second door the ACL does not guard.
+    *) if [ -z "$TAILSCALE_ON" ]; then LOCAL_PORT_ON=1; else LOCAL_PORT_ON=""; fi ;;
+  esac
   if [ -n "$LOCAL_PORT_ON" ]; then COMPOSE_FILES+=(-f "$ROOT/compose/webapp-local.yml"); fi
   if [ -n "$TAILSCALE_ON" ]; then
     COMPOSE_FILES+=(-f "$ROOT/compose/tailscale.yml")
@@ -213,17 +236,18 @@ extract_layering_flags() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --serve) [ $# -ge 2 ] || die "--serve needs a mode (https or funnel)" 2
+               FLAG_SERVE=1
                case "$2" in
                  https|funnel) TS_SERVE_MODE="$2" ;;
                  *) die "unknown serve mode: $2 (https, funnel)" 2 ;;
                esac
                shift ;;
-      --serve=*) case "${1#--serve=}" in
+      --serve=*) FLAG_SERVE=1; case "${1#--serve=}" in
                    https|funnel) TS_SERVE_MODE="${1#--serve=}" ;;
                    *) die "unknown serve mode: ${1#--serve=} (https, funnel)" 2 ;;
                  esac ;;
-      --local)    LOCAL_PORT_ON=1; LOCAL_PORT_ENABLED=true ;;
-      --no-local) LOCAL_PORT_ON="";  LOCAL_PORT_ENABLED=false ;;
+      --local)    FLAG_LOCAL=1; LOCAL_PORT_ENABLED=true ;;
+      --no-local) FLAG_LOCAL=1; LOCAL_PORT_ENABLED=false ;;
       --) LAYERING_ARGS+=("$@"); return 0 ;;
       *)  LAYERING_ARGS+=("$1") ;;
     esac
