@@ -26,8 +26,15 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class KnowledgeChatClientRouter implements KnowledgeChatClient {
 
-    /** The provider values this router accepts, for validation and for the console's dropdown. */
-    public static final List<String> SUPPORTED_PROVIDERS = List.of("ollama", "openai-compatible");
+    /**
+     * The provider values this router accepts, for validation and for the console's dropdown.
+     *
+     * <p>{@code openai} is not a synonym for {@code openai-compatible}: both reach the same client,
+     * but the request body differs, because OpenAI's own models reject three fields every local
+     * runtime accepts. See {@code OpenAiCompatibleKnowledgeChatClient#buildRequestBody}.
+     */
+    public static final List<String> SUPPORTED_PROVIDERS =
+            List.of("ollama", "openai-compatible", "openai");
 
     private final KnowledgeExtractionConfig config;
     private final OllamaKnowledgeChatClient ollamaKnowledgeChatClient;

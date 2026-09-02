@@ -73,7 +73,7 @@ public class LlmStatusService {
                     "Missing LLM base URL (" + key + ").");
         }
 
-        RestClient client = buildClient(baseUrl);
+        RestClient client = buildClient(baseUrl, cfg.getApiKey());
         String listPath = isOllama ? "/api/tags" : "/models";
 
         List<LlmModel> installed;
@@ -99,11 +99,23 @@ public class LlmStatusService {
         return new LlmStatus(true, provider, baseUrl, embedModel, running, installed, null);
     }
 
-    private RestClient buildClient(String baseUrl) {
+    /**
+     * The bearer is a default header rather than a per-request one because this client makes at
+     * most two calls and both need it. Without it, pointing EMBEDDINGS at a hosted API paints the
+     * console's rail red with "LLM runtime unreachable: 401" while embeddings are in fact working
+     * — the same defect the class javadoc describes for the old unconditional Ollama URL, in a
+     * different field. {@code /health/ready} is unaffected: {@code ReadinessService} checks the
+     * database and the storage path and never probes a model runtime.
+     */
+    private RestClient buildClient(String baseUrl, String apiKey) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
         rf.setReadTimeout((int) READ_TIMEOUT.toMillis());
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(rf).build();
+        RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestFactory(rf);
+        if (apiKey != null && !apiKey.isBlank()) {
+            builder = builder.defaultHeader("Authorization", "Bearer " + apiKey.trim());
+        }
+        return builder.build();
     }
 
     /**

@@ -29,9 +29,16 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class EmbeddingsClientRouter implements EmbeddingsClient {
 
-    /** The provider values this router accepts, for validation and for the console's dropdown. */
+    /**
+     * The provider values this router accepts, for validation and for the console's dropdown.
+     *
+     * <p>{@code openai} reaches the same client as {@code openai-compatible} and sends the same
+     * body — unlike knowledge chat, nothing in the embeddings request needs an OpenAI dialect. It
+     * is a separate value so the settings screen can name the hosted case, and so the two can
+     * diverge later without a migration.
+     */
     public static final List<String> SUPPORTED_PROVIDERS =
-            List.of("ollama", "openai-compatible", "disabled");
+            List.of("ollama", "openai-compatible", "openai", "disabled");
 
     private final VideoSearchConfig searchConfig;
     private final OllamaEmbeddingsClient ollamaEmbeddingsClient;

@@ -26,9 +26,16 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class TranscriptionClientRouter implements TranscriptionClient {
 
-    /** The provider values this router accepts, for validation and for the console's dropdown. */
+    /**
+     * The provider values this router accepts, for validation and for the console's dropdown.
+     *
+     * <p>{@code openai} reaches the same client as {@code openai-compatible} and sends the same
+     * multipart. It is a separate value so the settings screen can name the hosted case — and
+     * because only {@code whisper-1} honours {@code response_format=verbose_json} there, which is
+     * the only response shape this pipeline can use.
+     */
     public static final java.util.List<String> SUPPORTED_PROVIDERS =
-            java.util.List.of("whisper-asr", "openai-compatible");
+            java.util.List.of("whisper-asr", "openai-compatible", "openai");
 
     private final TranscriptionClientProperties properties;
     private final WhisperAsrClient whisperAsrClient;

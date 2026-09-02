@@ -48,6 +48,10 @@ public class KnowledgeExtractionConfig {
      *   <li>{@code ollama} (default) — Ollama's native {@code POST /api/chat}</li>
      *   <li>{@code openai-compatible} — {@code POST {base-url}/chat/completions}; point
      *       {@code base-url} at any server speaking that format, including a remote host</li>
+     *   <li>{@code openai} — the same endpoint against api.openai.com itself. A separate value
+     *       and not a synonym: OpenAI's own models answer 400 to three fields every local runtime
+     *       accepts, so the body differs. See
+     *       {@code OpenAiCompatibleKnowledgeChatClient#buildRequestBody}.</li>
      * </ul>
      * Read per call by {@code KnowledgeChatClientRouter}, because this value is editable at
      * runtime through {@code PUT /api/v1/connections/KNOWLEDGE}. An unrecognised value therefore
@@ -66,15 +70,19 @@ public class KnowledgeExtractionConfig {
     /**
      * Base URL of the model runtime. The default is the local Ollama daemon, which the
      * embeddings client also talks to — same daemon, different model. For
-     * {@code provider=openai-compatible} this must include the API prefix the server exposes,
-     * usually {@code /v1} (LM Studio: {@code http://localhost:1234/v1}).
+     * {@code provider=openai-compatible} or {@code openai} this must include the API prefix the
+     * server exposes, usually {@code /v1} (LM Studio: {@code http://localhost:1234/v1}; OpenAI:
+     * {@code https://api.openai.com/v1}). Omitting the suffix is the common misconfiguration —
+     * the URL validation cannot catch it, and the phase fails with a 404 on
+     * {@code /chat/completions}.
      */
     private String baseUrl = "http://localhost:11434";
 
     /**
-     * Optional bearer token, sent as {@code Authorization: Bearer <api-key>} by the
-     * OpenAI-compatible client. Local runtimes ignore it; hosted endpoints need it. Unused by the
-     * Ollama client, which has no auth.
+     * Optional bearer token, sent as {@code Authorization: Bearer <api-key>} whenever it is set —
+     * by <em>both</em> clients, since the header lives in {@code AbstractKnowledgeChatClient}.
+     * Ollama has no auth of its own but is often fronted by a proxy that does. Local runtimes
+     * ignore it; hosted endpoints need it.
      */
     private String apiKey = "";
 
