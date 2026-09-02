@@ -29,6 +29,17 @@ SCRATCH=vk-selftest            # an isolated compose project: shares no containe
 # reaches the whole tree. The first version of this signalled only the direct child, and
 # `ng serve` survived as an orphan holding :4200 — which then made the *next* `dev` check
 # fail for an unrelated reason. A harness that leaks a server is worse than no harness.
+# Snapshot what is running BEFORE anything here touches docker. The three "did this test
+# disturb the stack?" assertions compared against a literal 5, which was true for the
+# default footprint and wrong the moment `--serve` added a sixth container — so they failed
+# for a reason that had nothing to do with what they test.
+STACK_BASELINE=$(docker ps --filter name=video-knowledge --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+intact() { # intact <label>
+  local now; now=$(docker ps --filter name=video-knowledge --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$now" = "$STACK_BASELINE" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "$1" "$now"
+  else FAIL=$((FAIL+1)); printf '  FAIL %-58s baseline=%s now=%s\n' "$1" "$STACK_BASELINE" "$now"; fi
+}
+
 bounded() {
   local s="$1"; shift
   set -m; "$@" >"$OUT" 2>&1 & local pid=$!; set +m
@@ -85,9 +96,7 @@ echo "═══ 2. <cmd> --help is universal and side-effect free ═══"
 for c in start stop restart status logs list setup dev test fmt build down clean shell console doctor version help; do
   ck 0 "$c --help" ./vk "$c" --help
 done
-RUNNING=$(docker ps --filter name=video-knowledge --format '{{.Names}}' | wc -l | tr -d ' ')
-if [ "$RUNNING" = "5" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "all --help left the stack alone" "$RUNNING"
-else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=5 got=%s\n' "--help touched the stack" "$RUNNING"; fi
+intact "all --help left the stack alone"
 
 echo "═══ 3. list ═══"
 cklines 7 "list -> 7 services"                            ./vk list
@@ -146,9 +155,7 @@ ck      0 "down accepts --yes post-verb, as its row promises" env VK_PROJECT="$S
 ck      2 "down takes no targets -> 2"                    ./vk down webapp
 ck      2 "down --bogus -> 2"                             ./vk down --bogus
 ckout   0 "--volumes" "dry-run down --volumes --yes"      ./vk --dry-run down --volumes --yes
-RUNNING=$(docker ps --filter name=video-knowledge --format '{{.Names}}' | wc -l | tr -d ' ')
-if [ "$RUNNING" = "5" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "the real stack survived every down test" "$RUNNING"
-else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=5 got=%s\n' "a down test hit the real stack" "$RUNNING"; fi
+intact "the real stack survived every down test"
 
 echo "═══ 10. clean — real (regenerable only), and provably no container reach ═══"
 ck      2 "clean nosuchtarget -> 2"                       ./vk clean nosuchtarget
@@ -163,9 +170,7 @@ else PASS=$((PASS+1)); printf '  ok   %-58s target/ gone\n' "clean removed the m
 if [ -d applications/webapp/node_modules ]; then
   PASS=$((PASS+1)); printf '  ok   %-58s node_modules intact\n' "bare clean left node_modules alone"
 else FAIL=$((FAIL+1)); printf '  FAIL %-58s bare clean ate node_modules\n' "bare clean left node_modules alone"; fi
-RUNNING=$(docker ps --filter name=video-knowledge --format '{{.Names}}' | wc -l | tr -d ' ')
-if [ "$RUNNING" = "5" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "clean cannot reach a container" "$RUNNING"
-else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=5 got=%s\n' "clean reached a container" "$RUNNING"; fi
+intact "clean cannot reach a container"
 
 echo "═══ 11. setup ═══"
 ckout   0 "already installed" "setup is idempotent"       ./vk setup
@@ -212,7 +217,141 @@ if have_lsof; then
   kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 fi
 
-echo "═══ 16. the two registry lints + the resolver ═══"
+echo "═══ 16. tailnet layering (no auth key needed — nothing is started) ═══"
+FAKE="TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=tskey-selftest-fake"
+# The layering has to be identical whether the flag came before or after the verb, because
+# `logs`/`down`/`status` need the same -f set as the `up` that made the stack.
+# VK_ENV_FILE points at an empty file on purpose: resolve_layering now reads layering
+# defaults out of .env, and this machine's .env may set them. A table that reads the
+# operator's own preferences is testing the machine, not the code.
+# Exported, because the checks below reference it inside single-quoted `bash -c` bodies
+# where the parent shell does no expansion — unexported, the child saw VK_ENV_FILE empty,
+# fell back to the real .env and read the operator's own preferences after all.
+CLEANENV=$(mktemp); export CLEANENV
+layer() { bash -c "VK_ENV_FILE='$CLEANENV' source ./vk; extract_layering_flags $1; resolve_layering; printf '%s|%s' \"\${TAILSCALE_ON:-no}\" \"\${LOCAL_PORT_ON:-no}\""; }
+for pair in "::no|1" "--serve https::1|no" "--serve https --local::1|1" "--no-local::no|no" "--serve funnel::1|no"; do
+  args="${pair%%::*}"; want="${pair##*::}"; got=$(layer "$args")
+  if [ "$got" = "$want" ]; then PASS=$((PASS+1)); printf '  ok   %-58s %s\n' "layering [${args:-default}]" "$got"
+  else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=%s got=%s\n' "layering [${args:-default}]" "$want" "$got"; fi
+done
+# Precedence: a flag beats a real shell variable beats the env file. The env file half was
+# missing entirely — a LOCAL_PORT_ENABLED or VK_TAILSCALE_ENABLED placed in .env, which is
+# where .env.example documents them, silently did nothing.
+PREFENV=$(mktemp)
+printf 'TS_IMAGE_TAG=v1.102.3\nTS_AUTHKEY=fake\nVK_TAILSCALE_ENABLED=true\nLOCAL_PORT_ENABLED=true\n' > "$PREFENV"
+pref() { bash -c "VK_ENV_FILE='$PREFENV'; export VK_ENV_FILE; source ./vk; extract_layering_flags $1; resolve_layering; printf '%s|%s' \"\${TAILSCALE_ON:-no}\" \"\${LOCAL_PORT_ON:-no}\""; }
+for pair in "::1|1" "--no-local::1|no" "--serve https::1|1"; do
+  args="${pair%%::*}"; want="${pair##*::}"; got=$(pref "$args")
+  if [ "$got" = "$want" ]; then PASS=$((PASS+1)); printf '  ok   %-58s %s\n' "env-file prefs + [${args:-none}]" "$got"
+  else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=%s got=%s\n' "env-file prefs + [${args:-none}]" "$want" "$got"; fi
+done
+# A shell variable must still beat the file, as compose does.
+got=$(bash -c "VK_ENV_FILE='$PREFENV'; export VK_ENV_FILE; LOCAL_PORT_ENABLED=false; export LOCAL_PORT_ENABLED; source ./vk; extract_layering_flags; resolve_layering; printf '%s' \"\${LOCAL_PORT_ON:-no}\"")
+if [ "$got" = "no" ]; then PASS=$((PASS+1)); printf '  ok   %-58s local=%s\n' "a shell variable overrides the env file" "$got"
+else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=no got=%s\n' "a shell variable overrides the env file" "$got"; fi
+rm -f "$PREFENV"
+ck      2 "--serve with no mode -> 2"                     ./vk --serve
+ck      2 "--serve bogus -> 2"                            ./vk --serve bogus status
+ck      0 "--serve accepted after the verb too"           bash -c "$FAKE ./vk --dry-run status --serve https"
+# The overlay uses ${TS_AUTHKEY:?}, which would break every read-only compose call; dc()
+# passes placeholders so `status` and `logs` never need the real key to list containers.
+ck      0 "read-only calls survive the required interpolations" bash -c 'TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https status'
+ck      4 "start --serve without TS_AUTHKEY -> 4"         bash -c 'VK_ENV_FILE=/dev/null TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY= ./vk start --serve https'
+# The regression that shipped: vk validated TS_* from its own shell environment, but the
+# documented home for them is .env, which only reaches COMPOSE via --env-file. A correctly
+# configured .env therefore read as missing and `start --serve` died 4 on a working setup.
+ENVTMP=$(mktemp)
+printf 'TS_IMAGE_TAG=v1.102.3\nTS_AUTHKEY=fake-from-envfile   # inline comment\n' > "$ENVTMP"
+ckout   0 "tailscale/tailscale:v1.102.3" \
+        "TS_* are read from the env file, not just the shell" \
+        bash -c "VK_ENV_FILE='$ENVTMP' TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https doctor"
+# The bug that produced a plain 502 from a node that was Running and healthy, with a
+# correct-looking `tailscale serve status`: compose.yml declares a NAMED network that every
+# service joins explicitly, and the sidecar omitted it, so it landed on the implicit
+# `default` and could not resolve `webapp` at all. Static — needs nothing started.
+ck      0 "the sidecar shares a network with its backend" bash -c '
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+s=json.load(sys.stdin)[\"services\"]
+ts=set((s[\"tailscale\"].get(\"networks\") or {}).keys())
+web=set((s[\"webapp\"].get(\"networks\") or {}).keys())
+assert ts and web, f\"a service declares no network: tailscale={ts} webapp={web}\"
+assert ts & web, f\"sidecar on {ts}, backend on {web} - Serve cannot resolve the backend\"
+"'
+ckout   0 "ts key    present" \
+        "an inline # comment is stripped from an env-file value" \
+        bash -c "VK_ENV_FILE='$ENVTMP' TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https doctor"
+ck      0 "the key value is never printed"                 bash -c "! (VK_ENV_FILE='$ENVTMP' TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https doctor 2>&1 | grep -q fake-from-envfile)"
+rm -f "$ENVTMP"
+ck      4 "TS_HOSTNAME equal to a service name -> 4"      bash -c "$FAKE TS_HOSTNAME=webapp ./vk start --serve https"
+ck      2 "start --serve funnel refuses non-interactively" bash -c "$FAKE ./vk start --serve funnel < /dev/null"
+ckout   0 "FUNNEL" "the funnel warning names the exposure" bash -c "$FAKE ./vk start --serve funnel < /dev/null 2>&1; true"
+# The exposure assertion that matters: with --serve the console must publish NOTHING.
+# VK_ENV_FILE is the clean file again: this asserts the DEFAULT posture, and the operator's
+# own .env may legitimately ask for --local. Reading their preferences here would make the
+# check pass or fail on whose machine it runs.
+ck      0 "by default --serve leaves the console unpublished" bash -c '
+  VK_ENV_FILE="$CLEANENV"; export VK_ENV_FILE
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert (d[\"services\"][\"webapp\"].get(\"ports\") or []) == [], \"webapp still publishes a port under --serve\"
+assert \"tailscale\" in d[\"services\"], \"sidecar missing\"
+assert json.dumps(d).count(\"TS_AUTHKEY\") == 1, \"TS_AUTHKEY reaches more than the sidecar\"
+"'
+# The converse, since keeping both is a supported posture and not an accident.
+ck      0 "--serve --local publishes the console AND the sidecar" bash -c '
+  VK_ENV_FILE="$CLEANENV"; export VK_ENV_FILE
+  source ./vk; extract_layering_flags --serve https --local; resolve_layering
+  TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+d=json.load(sys.stdin); s=d[\"services\"]
+ports=s[\"webapp\"].get(\"ports\") or []
+assert ports, \"--local did not publish the console\"
+assert all(p.get(\"host_ip\") == \"127.0.0.1\" for p in ports), f\"not loopback-bound: {ports}\"
+assert \"tailscale\" in s, \"sidecar missing\"
+"'
+ck      0 "without --serve the console publishes 8052 as before" bash -c '
+  source ./vk; extract_layering_flags; resolve_layering
+  docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert (d[\"services\"][\"webapp\"].get(\"ports\") or []), \"the default no longer publishes the console\"
+assert \"tailscale\" not in d[\"services\"], \"sidecar leaked into the default footprint\"
+"'
+# `docker compose port` prints `invalid IP:0` and exits 0 when nothing is published, so a
+# `[ -n "$out" ]` test reports a correctly-closed stack as exposed. It shipped as
+# `console http://invalid IP:0/vidingest` on the very first real tailnet start.
+ck      0 "no 'invalid IP' leaks into status output"      bash -c '! ./vk status 2>&1 | grep -q "invalid IP"'
+# A service that exists in the file set but publishes nothing is the case `docker compose
+# port` answers with `invalid IP:0`. vidingest-cli never publishes, in any posture.
+ck      0 "published() answers empty for an unpublished port" bash -c '
+  source ./vk; extract_layering_flags; resolve_layering
+  out=$(published vidingest-cli 8080); [ -z "$out" ] || { echo "claimed: $out"; exit 1; }'
+ck      0 "serve config targets webapp, not 127.0.0.1"    grep -q "http://webapp:8080" compose/tailscale/serve-https.json
+ck      0 "both serve configs are valid JSON"             python3 -c "
+import json
+json.load(open('compose/tailscale/serve-https.json'))
+json.load(open('compose/tailscale/serve-funnel.json'))"
+# Deliberately narrow: matching every `TS_AUTHKEY=` assignment flags this harness's own
+# fakes and vk's read-only placeholder, which is noise. What must never be committed is a
+# real key, and those start with the `tskey-` prefix plus a key-class word.
+#
+# The scan covers this file too, which is why the sentence above spells no literal prefix:
+# the first version of it did, and the check matched its own explanation.
+ck      0 "no real tailscale key in any tracked file"     bash -c '! git grep -qE "tskey-(auth|client)-" -- . 2>/dev/null'
+ck      0 "tailscale appears as a target only with --serve" bash -c '
+  ./vk list | grep -q tailscale && exit 1
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  case " $SERVICES " in *" tailscale "*) exit 0 ;; *) exit 1 ;; esac'
+
+echo "═══ 17. the two registry lints + the resolver ═══"
 ck 0 "drift lint: every cmd_ has a row and vice versa" bash -c \
   "diff <(grep '^cmd_' ./vk | sed 's/^cmd_//;s/() .*//' | grep -v '_help\$' | sed 's/_/ /g' | sort) <(sed -n '/^COMMANDS=/,/^REGISTRY/p' ./vk | awk -F'|' 'NF>1{print \$1}' | sort)"
 ck 0 "row lint: every registry row has 4 fields" bash -c \
@@ -224,7 +363,7 @@ ln -sf "$PWD/vk" "$LINK"
 ck 0 "runs through a symlink from outside the repo" sh -c "cd / && $LINK list >/dev/null"
 ck 0 "sourceable without executing (entrypoint guard)" sh -c 'out=$(source ./vk 2>&1); [ -z "$out" ]'
 
-rm -f "$OUT"
+rm -f "$OUT" "$CLEANENV"
 echo
 echo "══════════════════════════════════════════════════"
 printf 'PASS=%s  FAIL=%s\n' "$PASS" "$FAIL"

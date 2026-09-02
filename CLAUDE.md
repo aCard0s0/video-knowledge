@@ -94,6 +94,36 @@ build compile against yesterday's API. That fails as **BUILD SUCCESS** over sour
 compile — incremental `test-compile` skips work it thinks is up to date, and the errors only
 appear once something forces a real recompile.
 
+**Tailnet access is `./vk start --serve https`** and is off by default
+([compose/tailscale.yml](compose/tailscale.yml), read
+[compose/tailscale/ACL.md](compose/tailscale/ACL.md) first). One userspace tailscale sidecar
+serves the console over TLS; the backend is **`webapp`**, because its nginx already proxies the
+API same-origin, so one handler covers both and the API needs no second door. Serve targets
+`http://webapp:8080` — a service name works, and the `tailscale serve` *CLI's* refusal of
+non-local targets is a property of the CLI, not of Serve. Reading it otherwise is what argues
+for kernel mode, which is **looser**: the console would then listen in the node's namespace and
+every peer could bypass Serve.
+
+Three things there that look optional and are not: **`TS_HOSTNAME` must not equal a service
+name** (`start --serve` exits 4 if it does — a shared name resolves to two containers and Serve
+502s half the time), the serve config is mounted as a **directory** (a one-file bind mount never
+fires a change event, so edits are ignored), and `mem_limit` is paired with **`GOMEMLIMIT`** (a
+cgroup limit alone just OOM-kills the one container that provides all access). `./vk down` runs
+`tailscale logout` first, or the machine entry keeps the MagicDNS name and the next deploy is
+`video-knowledge-1`.
+
+**The console's host port lives in [compose/webapp-local.yml](compose/webapp-local.yml), not in
+`services.yml`.** Compose has no falsy port spec and an override's `ports:` is *appended* to the
+base list rather than replacing it, so a port declared in the base could never be taken away —
+which is why `--serve` can drop it and a bare `start` still publishes it. `--serve` drops only
+that one; the API, database, MCP and sidecar ports stay on `127.0.0.1`, and
+`VK_BIND_ADDR=0.0.0.0` is what makes that dangerous — `doctor` fails on the combination.
+
+**Nothing authenticates.** There is no Spring Security anywhere, so on a tailnet the ACL is the
+whole gate and it authenticates *machines*. Serve supplies an unspoofable
+`Tailscale-User-Login` that nothing reads yet. `--serve funnel` exists, warns, requires a
+confirmation, and should not be used.
+
 Optional footprints: `./vk start sidecars` (paddleocr-server, diarize-asr) and
 `./vk start vidingest-mcp`. `./vk logs -f vidingest` follows the server; `./vk console` opens the
 Spring Shell CLI and `./vk shell --in vidingest` an OS shell beside it. Host ports live in
