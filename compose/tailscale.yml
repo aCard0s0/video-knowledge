@@ -59,6 +59,15 @@ services:
       # its threads and per-P caches from the host's core count while `cpus` caps it anyway.
       GOMEMLIMIT: ${TS_GOMEMLIMIT:-128MiB}
       GOMAXPROCS: ${TS_GOMAXPROCS:-2}
+    # Not optional, and not the default. compose.yml declares a NAMED network that every
+    # service joins explicitly, so omitting this puts the sidecar on the implicit `default`
+    # network instead — compose even says `Network video-knowledge_default Created` while
+    # doing it. Serve then fails with
+    #   http: proxy error: dial tcp: lookup webapp on 127.0.0.11:53: no such host
+    # which surfaces as a plain 502 from a node that is otherwise Running and healthy, with
+    # a correct-looking `tailscale serve status`. Nothing about it points at networking.
+    networks:
+      - video-knowledge
     volumes:
       - tailscale_state:/var/lib/tailscale
       # A DIRECTORY, not a single-file bind mount. Tailscale watches the parent directory

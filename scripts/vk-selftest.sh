@@ -29,6 +29,17 @@ SCRATCH=vk-selftest            # an isolated compose project: shares no containe
 # reaches the whole tree. The first version of this signalled only the direct child, and
 # `ng serve` survived as an orphan holding :4200 — which then made the *next* `dev` check
 # fail for an unrelated reason. A harness that leaks a server is worse than no harness.
+# Snapshot what is running BEFORE anything here touches docker. The three "did this test
+# disturb the stack?" assertions compared against a literal 5, which was true for the
+# default footprint and wrong the moment `--serve` added a sixth container — so they failed
+# for a reason that had nothing to do with what they test.
+STACK_BASELINE=$(docker ps --filter name=video-knowledge --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+intact() { # intact <label>
+  local now; now=$(docker ps --filter name=video-knowledge --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$now" = "$STACK_BASELINE" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "$1" "$now"
+  else FAIL=$((FAIL+1)); printf '  FAIL %-58s baseline=%s now=%s\n' "$1" "$STACK_BASELINE" "$now"; fi
+}
+
 bounded() {
   local s="$1"; shift
   set -m; "$@" >"$OUT" 2>&1 & local pid=$!; set +m
@@ -85,9 +96,7 @@ echo "═══ 2. <cmd> --help is universal and side-effect free ═══"
 for c in start stop restart status logs list setup dev test fmt build down clean shell console doctor version help; do
   ck 0 "$c --help" ./vk "$c" --help
 done
-RUNNING=$(docker ps --filter name=video-knowledge --format '{{.Names}}' | wc -l | tr -d ' ')
-if [ "$RUNNING" = "5" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "all --help left the stack alone" "$RUNNING"
-else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=5 got=%s\n' "--help touched the stack" "$RUNNING"; fi
+intact "all --help left the stack alone"
 
 echo "═══ 3. list ═══"
 cklines 7 "list -> 7 services"                            ./vk list
@@ -146,9 +155,7 @@ ck      0 "down accepts --yes post-verb, as its row promises" env VK_PROJECT="$S
 ck      2 "down takes no targets -> 2"                    ./vk down webapp
 ck      2 "down --bogus -> 2"                             ./vk down --bogus
 ckout   0 "--volumes" "dry-run down --volumes --yes"      ./vk --dry-run down --volumes --yes
-RUNNING=$(docker ps --filter name=video-knowledge --format '{{.Names}}' | wc -l | tr -d ' ')
-if [ "$RUNNING" = "5" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "the real stack survived every down test" "$RUNNING"
-else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=5 got=%s\n' "a down test hit the real stack" "$RUNNING"; fi
+intact "the real stack survived every down test"
 
 echo "═══ 10. clean — real (regenerable only), and provably no container reach ═══"
 ck      2 "clean nosuchtarget -> 2"                       ./vk clean nosuchtarget
@@ -163,9 +170,7 @@ else PASS=$((PASS+1)); printf '  ok   %-58s target/ gone\n' "clean removed the m
 if [ -d applications/webapp/node_modules ]; then
   PASS=$((PASS+1)); printf '  ok   %-58s node_modules intact\n' "bare clean left node_modules alone"
 else FAIL=$((FAIL+1)); printf '  FAIL %-58s bare clean ate node_modules\n' "bare clean left node_modules alone"; fi
-RUNNING=$(docker ps --filter name=video-knowledge --format '{{.Names}}' | wc -l | tr -d ' ')
-if [ "$RUNNING" = "5" ]; then PASS=$((PASS+1)); printf '  ok   %-58s containers=%s\n' "clean cannot reach a container" "$RUNNING"
-else FAIL=$((FAIL+1)); printf '  FAIL %-58s want=5 got=%s\n' "clean reached a container" "$RUNNING"; fi
+intact "clean cannot reach a container"
 
 echo "═══ 11. setup ═══"
 ckout   0 "already installed" "setup is idempotent"       ./vk setup
@@ -228,7 +233,35 @@ ck      0 "--serve accepted after the verb too"           bash -c "$FAKE ./vk --
 # The overlay uses ${TS_AUTHKEY:?}, which would break every read-only compose call; dc()
 # passes placeholders so `status` and `logs` never need the real key to list containers.
 ck      0 "read-only calls survive the required interpolations" bash -c 'TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https status'
-ck      4 "start --serve without TS_AUTHKEY -> 4"         bash -c 'TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY= ./vk start --serve https'
+ck      4 "start --serve without TS_AUTHKEY -> 4"         bash -c 'VK_ENV_FILE=/dev/null TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY= ./vk start --serve https'
+# The regression that shipped: vk validated TS_* from its own shell environment, but the
+# documented home for them is .env, which only reaches COMPOSE via --env-file. A correctly
+# configured .env therefore read as missing and `start --serve` died 4 on a working setup.
+ENVTMP=$(mktemp)
+printf 'TS_IMAGE_TAG=v1.102.3\nTS_AUTHKEY=fake-from-envfile   # inline comment\n' > "$ENVTMP"
+ckout   0 "tailscale/tailscale:v1.102.3" \
+        "TS_* are read from the env file, not just the shell" \
+        bash -c "VK_ENV_FILE='$ENVTMP' TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https doctor"
+# The bug that produced a plain 502 from a node that was Running and healthy, with a
+# correct-looking `tailscale serve status`: compose.yml declares a NAMED network that every
+# service joins explicitly, and the sidecar omitted it, so it landed on the implicit
+# `default` and could not resolve `webapp` at all. Static — needs nothing started.
+ck      0 "the sidecar shares a network with its backend" bash -c '
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  TS_IMAGE_TAG=v1.102.3 TS_AUTHKEY=x docker compose -p video-knowledge "${COMPOSE_FILES[@]}" config --format json 2>/dev/null |
+    python3 -c "
+import json,sys
+s=json.load(sys.stdin)[\"services\"]
+ts=set((s[\"tailscale\"].get(\"networks\") or {}).keys())
+web=set((s[\"webapp\"].get(\"networks\") or {}).keys())
+assert ts and web, f\"a service declares no network: tailscale={ts} webapp={web}\"
+assert ts & web, f\"sidecar on {ts}, backend on {web} - Serve cannot resolve the backend\"
+"'
+ckout   0 "ts key    present" \
+        "an inline # comment is stripped from an env-file value" \
+        bash -c "VK_ENV_FILE='$ENVTMP' TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https doctor"
+ck      0 "the key value is never printed"                 bash -c "! (VK_ENV_FILE='$ENVTMP' TS_IMAGE_TAG= TS_AUTHKEY= ./vk --serve https doctor 2>&1 | grep -q fake-from-envfile)"
+rm -f "$ENVTMP"
 ck      4 "TS_HOSTNAME equal to a service name -> 4"      bash -c "$FAKE TS_HOSTNAME=webapp ./vk start --serve https"
 ck      2 "start --serve funnel refuses non-interactively" bash -c "$FAKE ./vk start --serve funnel < /dev/null"
 ckout   0 "FUNNEL" "the funnel warning names the exposure" bash -c "$FAKE ./vk start --serve funnel < /dev/null 2>&1; true"
@@ -252,6 +285,13 @@ d=json.load(sys.stdin)
 assert (d[\"services\"][\"webapp\"].get(\"ports\") or []), \"the default no longer publishes the console\"
 assert \"tailscale\" not in d[\"services\"], \"sidecar leaked into the default footprint\"
 "'
+# `docker compose port` prints `invalid IP:0` and exits 0 when nothing is published, so a
+# `[ -n "$out" ]` test reports a correctly-closed stack as exposed. It shipped as
+# `console http://invalid IP:0/vidingest` on the very first real tailnet start.
+ck      0 "no 'invalid IP' leaks into status output"      bash -c '! ./vk status 2>&1 | grep -q "invalid IP"'
+ck      0 "published() answers empty for an unpublished port" bash -c '
+  source ./vk; extract_layering_flags --serve https; resolve_layering
+  out=$(published webapp 8080); [ -z "$out" ] || { echo "claimed: $out"; exit 1; }'
 ck      0 "serve config targets webapp, not 127.0.0.1"    grep -q "http://webapp:8080" compose/tailscale/serve-https.json
 ck      0 "both serve configs are valid JSON"             python3 -c "
 import json

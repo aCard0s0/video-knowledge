@@ -166,6 +166,21 @@ selected() {
   printf '%s' "${out# }"
 }
 wants_help() { local a; for a in "$@"; do case "$a" in -h|--help) return 0 ;; --) break ;; esac; done; return 1; }
+# Read one value out of the env file WITHOUT sourcing it. Compose gets that file via
+# --env-file and resolves ${...} from it, but this script never saw it — so a TS_AUTHKEY
+# correctly placed in .env (which is where .env.example says to put it) read as missing and
+# `start --serve` died with exit 4 on a working configuration. Validation has to look where
+# the documented value actually lives.
+#
+# Not sourced, deliberately: the file is the operator's and may hold anything, and `source`
+# would execute it. Last assignment wins, matching compose; a ` #` trailer is stripped
+# because compose treats it as a comment, and surrounding quotes are removed.
+env_value() {
+  [ -f "$ENV_FILE" ] || return 0
+  sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" 2>/dev/null | tail -1 |
+    sed -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//' \
+        -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
 # Rebuild the -f list and the target catalogue from the resolved layering. Called once,
 # after the pre-scan, and before anything touches docker.
 resolve_layering() {
@@ -180,6 +195,12 @@ resolve_layering() {
     SERVICES="$BASE_SERVICES tailscale"
     GROUP_all="$GROUP_infra $GROUP_backend tailscale"
     export TS_SERVE_MODE="${TS_SERVE_MODE:-https}"
+    # Only read when the sidecar is actually in play, so `help` and `version` never touch
+    # the key. A real shell variable wins over the file, which is what compose does too.
+    TS_IMAGE_TAG="${TS_IMAGE_TAG:-$(env_value TS_IMAGE_TAG)}"
+    TS_AUTHKEY="${TS_AUTHKEY:-$(env_value TS_AUTHKEY)}"
+    TS_HOSTNAME="${TS_HOSTNAME:-$(env_value TS_HOSTNAME)}"
+    export TS_IMAGE_TAG TS_AUTHKEY TS_HOSTNAME
   fi
 }
 # Strip the layering flags out of the argv before dispatch, so they work in front of the
@@ -272,8 +293,8 @@ dc() {
 # Everything a real mutation needs, checked before compose is allowed to guess.
 require_tailscale_env() {
   [ -n "$TAILSCALE_ON" ] || return 0
-  [ -n "${TS_IMAGE_TAG:-}" ] || die "TS_IMAGE_TAG is unset — pin the sidecar in .env (see .env.example)" 4
-  [ -n "${TS_AUTHKEY:-}" ] || die "TS_AUTHKEY is unset — mint a reusable, tagged key and put it in .env (see compose/tailscale/ACL.md)" 4
+  [ -n "${TS_IMAGE_TAG:-}" ] || die "TS_IMAGE_TAG is unset — pin the sidecar in $ENV_FILE (see .env.example)" 4
+  [ -n "${TS_AUTHKEY:-}" ] || die "TS_AUTHKEY is unset — mint a reusable, tagged key and put it in $ENV_FILE (see compose/tailscale/ACL.md)" 4
   case "${TS_HOSTNAME:-video-knowledge}" in
     postgres|paddleocr-server|diarize-asr|vidingest|webapp|vidingest-cli|vidingest-mcp|tailscale)
       die "TS_HOSTNAME must not equal a compose service name — that name would resolve to two containers and Serve would 502 on about half of all requests" 4 ;;
@@ -321,12 +342,21 @@ do_up() {
   compose up -d --wait $svc
   report_urls
 }
+# `docker compose port` does NOT print nothing when nothing is published — it prints
+# `invalid IP:0` and exits 0. So an `[ -n "$out" ]` test reports a correctly-closed stack as
+# exposed, which is precisely what `--serve` produces: it shipped as
+# `console http://invalid IP:0/vidingest` on the first real tailnet start. Match a real
+# host:port instead. A warning that cries wolf on every clean deploy is one nobody reads.
+published() {
+  local out; out=$(dc port "$1" "$2" 2>/dev/null || true)
+  case "$out" in *:[1-9]*) printf '%s' "$out" ;; *) : ;; esac
+}
 # Measured, not configured: ask the engine what it actually bound. A published default
 # printed as fact is the bug this exists to avoid.
 report_urls() {
   local api web
-  api=$(dc port vidingest "${VIDINGEST_PORT:-8051}" 2>/dev/null || true)
-  web=$(dc port webapp 8080 2>/dev/null || true)
+  api=$(published vidingest "${VIDINGEST_PORT:-8051}")
+  web=$(published webapp 8080)
   [ -z "$api" ] || say "api      http://${api}/vidingest"
   [ -z "$web" ] || say "console  http://${web}/vidingest"
   local ts state name
@@ -688,9 +718,10 @@ cmd_doctor() {
        warn "          repoint the connections (PUT /api/v1/connections/{name})"; broken=1; fi
   if [ -n "$TAILSCALE_ON" ]; then
     if [ -n "${TS_IMAGE_TAG:-}" ]; then say "ts image  tailscale/tailscale:$TS_IMAGE_TAG"
-    else warn "ts image  UNPINNED — set TS_IMAGE_TAG in .env"; broken=1; fi
+    else warn "ts image  UNPINNED — add TS_IMAGE_TAG to $ENV_FILE (see .env.example)"; broken=1; fi
+    # Presence only, never the value.
     if [ -n "${TS_AUTHKEY:-}" ]; then say "ts key    present (spent once; identity is in the volume)"
-    else warn "ts key    MISSING — see compose/tailscale/ACL.md"; broken=1; fi
+    else warn "ts key    MISSING from $ENV_FILE — see compose/tailscale/ACL.md"; broken=1; fi
     local mode="${TS_SERVE_MODE:-https}"
     if [ -f "$ROOT/compose/tailscale/serve-$mode.json" ]; then say "ts serve  serve-$mode.json"
     else warn "ts serve  no compose/tailscale/serve-$mode.json"; broken=1; fi

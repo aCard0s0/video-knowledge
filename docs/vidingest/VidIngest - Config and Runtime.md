@@ -500,6 +500,13 @@ Things worth knowing before you rely on it:
   answers first, so roughly half of all requests 502 with nothing in `docker compose config`
   looking wrong. The sidecar deliberately carries no compose `hostname:` key for the same
   reason — `TS_HOSTNAME` alone sets the MagicDNS name.
+- **The sidecar joins the named `video-knowledge` network explicitly.** `compose.yml`
+  declares a named network and every service opts in; omitting it puts the sidecar on the
+  implicit `default` instead — compose even prints `Network video-knowledge_default Created`
+  while doing it. Serve then fails with `dial tcp: lookup webapp on 127.0.0.11:53: no such
+  host`, which surfaces as a plain **502 from a node that is Running and healthy** with a
+  correct-looking `tailscale serve status`. Nothing about the symptom points at networking.
+  `./vk test cli` now asserts the two services share a network.
 - **The serve config is mounted as a directory**, not a single file. Tailscale watches the
   parent directory for changes; a one-file bind mount is one inode that never fires an event,
   so edits are silently ignored until the container is recreated. It is also what makes
