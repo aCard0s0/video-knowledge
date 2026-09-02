@@ -339,9 +339,9 @@ changesets `008-connections.sql` and `009-connections-nullable-base-url.sql`, co
 
 | Name | Config bean | Providers | Base URL? | Model? | Enable toggle? |
 |------|-------------|-----------|-----------|--------|----------------|
-| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `disabled` | yes | yes | no |
-| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible` | yes | yes | yes |
-| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible` | yes | yes | no |
+| `EMBEDDINGS` | `vidingest.search.embeddings.*` | `ollama`, `openai-compatible`, `openai`, `disabled` | yes | yes | no |
+| `KNOWLEDGE` | `vidingest.knowledge.*` | `ollama`, `openai-compatible`, `openai` | yes | yes | yes |
+| `TRANSCRIPTION` | `vidingest.transcription.*` | `whisper-asr`, `openai-compatible`, `openai` | yes | yes | no |
 | `DIARIZATION` | `vidingest.diarization.*` | `diarize-asr` | yes | no | yes |
 | `FRAME_SAMPLE` | `vidingest.frames.*` | `ffmpeg` | **no** | no | yes |
 | `OCR` | `vidingest.ocr.*` | `paddleocr` | yes | no | yes |
@@ -389,6 +389,9 @@ Things worth knowing before you rely on it:
 - **The provider is validated on the way in**, against the same list the router uses at call time
   (served back as `supportedProviders`). An unrecognised value would otherwise fail the phase
   rather than the request.
+- **The probe sends the stored API key.** Without it `POST .../test` answered 401 against every
+  hosted endpoint while the phase itself worked, which is a worse signal than no button. Same
+  header, same three-line block as the phase clients.
 - **`FRAME_SAMPLE` is a connection with no connection.** It is local ffmpeg, so it carries only the
   phase toggle: `supportsBaseUrl` is false, `base_url` is nullable (changeset `009`), a `PUT` that
   sends no `baseUrl` is accepted, and `POST .../test` answers `reachable: false` with *"runs locally
@@ -397,6 +400,48 @@ Things worth knowing before you rely on it:
   `vidingest.frames.enabled` too, since frame sampling writes the only input OCR has, so a settings
   screen that could flip OCR but not frames was one click from a run that entered OCR and found
   nothing. Every other connection still requires an absolute `http(s)` base URL.
+
+### Pointing a connection at OpenAI
+
+`openai` is a separate provider value from `openai-compatible`, on all three LLM connections. Both
+reach the same client over the same endpoints; the difference is only the knowledge-chat request
+body, because api.openai.com answers **400** to three fields every local runtime silently accepts:
+
+| Field | `openai-compatible` | `openai` | Why |
+|---|---|---|---|
+| output cap | `max_tokens` | `max_completion_tokens` | *"'max_tokens' is not supported with this model"* on gpt-5/o-series |
+| `temperature` | sent (`0.2`) | **omitted** | *"Only the default (1) is supported"* on the reasoning models |
+| `json_schema.strict` | `true` | `false` | OpenAI validates a strict schema and requires every key of `properties` in `required` plus `additionalProperties: false`; the shared schema has eight properties against two required |
+
+`OpenAiCompatibleKnowledgeChatClient` serves both values and picks the dialect from the configured
+provider per call. EMBEDDINGS and TRANSCRIPTION need no body change — their requests are already
+what OpenAI expects — so for those two the value exists only to name the hosted case on the
+settings screen.
+
+Set it from the console's **Settings** screen (provider, base URL, model and key are all on the
+card) or over `curl`:
+
+```bash
+curl -s -XPUT localhost:8051/vidingest/api/v1/connections/KNOWLEDGE -H 'Content-Type: application/json' -d '{"provider":"openai","baseUrl":"https://api.openai.com/v1","model":"gpt-4.1","apiKey":"sk-...","enabled":true}'
+```
+
+Per-connection traps, each of which fails confusingly rather than loudly:
+
+- **The base URL needs its `/v1` suffix.** `https://api.openai.com` alone passes the URL validation
+  and then 404s on `/chat/completions`.
+- **KNOWLEDGE on a reasoning model**: `max_completion_tokens` covers reasoning tokens too, so the
+  default `VIDINGEST_KNOWLEDGE_MAX_OUTPUT_TOKENS=8192` can be spent before any content is emitted.
+  That surfaces as *"returned an empty choices[0].message.content"*, not as a truncation. Raise it,
+  or use a non-reasoning model such as `gpt-4.1`.
+- **TRANSCRIPTION only works with `whisper-1`.** The client sends
+  `response_format=verbose_json` because the pipeline needs `{"start","end","text"}` segments;
+  `gpt-4o-transcribe` rejects that format outright. OpenAI also caps uploads at 25 MB, which a long
+  video's audio exceeds.
+- **EMBEDDINGS must fit `VECTOR(1536)`.** `text-embedding-3-small` is natively 1536 and needs
+  nothing; `text-embedding-3-large` is 3072 and needs `VIDINGEST_EMBEDDINGS_DIMENSIONS=1536`, which
+  the client sends as the OpenAI `dimensions` field; `ada-002` rejects that field entirely.
+- **There is no per-connection cost cap.** Nothing in the pipeline meters spend, and KNOWLEDGE
+  issues one call per ~16000-character batch. Budget at the account.
 
 ## Docker configuration
 
@@ -412,10 +457,43 @@ the named volumes; services live in split files layered on top of it:
 | `compose/cli.yml` | `vidingest-cli` |
 | `compose/mcp.yml` | `vidingest-mcp` |
 
-`scripts/tradey.sh` and `scripts/compose.sh` apply the layering; running bare
+[`./vk`](../../vk) and `scripts/compose.sh` apply the layering; running bare
 `docker compose` from the repo root sees only the empty base file. Host ports come from
 `compose/ports.env` and everything publishes to `127.0.0.1` unless `VK_BIND_ADDR` says
 otherwise.
+
+### The `vk` command surface
+
+`./vk` lived at `scripts/` as `tradey.sh` until Sep 2026 and was rebuilt to the `project-cli` pattern in the
+same change: one extensionless script at the repo root, a single `COMMANDS` registry that generates
+help and the dispatcher, and `./vk doctor` running the drift lint that fails if the two disagree.
+What matters operationally:
+
+- **Bare `./vk` prints the whole surface to stdout and exits 0**, and `./vk <cmd> --help` is
+  intercepted before any command body runs — `down --help` and `restart --help` are safe.
+- **Exit codes carry meaning**: 0 ok · 1 runtime failure · 2 usage · 3 a dependency is missing ·
+  4 a dependency is present but unusable. `status` exits **0 even when nothing is running** (it
+  succeeded at observing), while `doctor` is the deliberate inverse and exits 3 or 4 — it is the
+  pre-flight gate to branch on.
+- **`stop` / `down` / `clean` are three verbs with three blast radii** and are never aliases:
+  halt, remove the local runtime, delete build artifacts. `clean` cannot reach a container.
+- **`-v` means `--volumes` on `down` and nothing else**; verbose is `--verbose` only. `--volumes`
+  prompts and refuses a non-interactive shell without `--yes`.
+- **Global `--dry-run` prints every resolved command without running it**, which is the cheapest
+  way to see what a target expands to.
+- **Targets are arguments to verbs, never verbs**, and there are no target aliases — `mcp` is
+  `vidingest-mcp`, `db` is `postgres`. `./vk list` and `./vk list groups` print them, one per line.
+- **`./vk status` reports measured ports**, asking the engine for the binding rather than echoing
+  `compose/ports.env`.
+- **`./vk test` is hermetic** — the Testcontainers suites are excluded and named on stderr — so it
+  runs with no daemon. `./vk test integration` is the other half.
+- **`./vk test cli` tests the script itself** ([scripts/vk-selftest.sh](../../scripts/vk-selftest.sh),
+  116 checks). It **mutates** — it cycles postgres and runs the real `clean` — so it is a named
+  suite. `down --volumes` is exercised against an isolated `VK_PROJECT`, never the live stack, and
+  the harness asserts the five real containers survived. Two defects it caught immediately, both
+  the same shape — a promise the registry row and the help text made that the parser then broke:
+  `down` advertised `--yes` and rejected it, and `clean --all` deleted `node_modules` with no
+  `confirm()` where the vocabulary requires one.
 
 **The console is a separate image.** `webapp` (nginx, `WEBAPP_PORT` 8052) serves the Angular
 bundle and proxies the API to `vidingest:8051`. The server image used to build the bundle in a node
@@ -433,7 +511,7 @@ reach the server but matches none of them falls into the SPA branch and returns 
 **The `llm` and `whisper` services are gone** (Aug 2026). Both ran CPU-only inside the Docker VM,
 which cannot reach the GPU; inference now runs as a host process and compose points at it via
 `VK_HOST_LLM_URL` (default `http://host.docker.internal:8000/v1`, an oMLX server).
-`GROUP_INFRA` in `tradey.sh` is therefore just `postgres`, and `tradey.sh llm` is gone with the
+`GROUP_infra` in `./vk` is therefore just `postgres`, and the `llm` target is gone with the
 container it exec'd into. After upgrading, compose will report the two old containers as orphans;
 clear them with `./scripts/compose.sh down --remove-orphans` and reclaim the model volume by hand
 once you are sure: `docker volume rm video-knowledge_ollama_data`.
@@ -487,15 +565,15 @@ Metrics do not depend on it: `/actuator/prometheus` carries
 ### Running with Docker
 
 ```bash
-./scripts/tradey.sh start vidingest --build
+./vk start vidingest --build
 ```
 
 ```bash
-./scripts/tradey.sh logs -f vidingest
+./vk logs -f vidingest
 ```
 
 ```bash
-./scripts/tradey.sh shell vidingest
+./vk shell --in vidingest
 ```
 
 Override credentials or any other setting through the environment before starting —
@@ -641,10 +719,10 @@ in so the typo is still caught before any run. There is no `Disabled` chat clien
   numpy 2.x).
 
 Both build contexts are project-directory relative (Compose resolves them from cwd, not
-the compose file location). Tradey always invokes `docker compose` from the repo root.
+the compose file location). vk always invokes `docker compose` from the repo root.
 
-Tradey wiring (`scripts/tradey.sh`):
-- Both are members of the `sidecars` group — `./scripts/tradey.sh start sidecars` brings
+`./vk` wiring:
+- Both are members of the `sidecars` group — `./vk start sidecars` brings
   them up. They are deliberately *not* `depends_on` of `vidingest`, so the server starts
   without them; the matching `VIDINGEST_OCR_ENABLED` / `VIDINGEST_DIARIZATION_ENABLED`
   flags gate whether it calls them.

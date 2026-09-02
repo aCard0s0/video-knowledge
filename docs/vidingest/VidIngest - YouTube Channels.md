@@ -29,8 +29,8 @@ If you need to change YouTube discovery or sync behavior, start here:
 Run and validate (Docker; from repo root):
 
 ```bash
-./scripts/tradey.sh start vidingest
-./scripts/tradey.sh status
+./vk start vidingest
+./vk status
 ```
 
 Validate (REST):

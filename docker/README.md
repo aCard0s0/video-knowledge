@@ -11,5 +11,5 @@ Shared build-time assets used by the application Dockerfiles (build context = re
 These are referenced by the `vidingest-server`, `vidingest-cli`, and `vidingest-mcp`
 Dockerfiles via `COPY docker/scripts/... ` and `COPY docker/settings.xml`.
 
-To build and run the stack, use [`scripts/tradey.sh`](../scripts/tradey.sh) (see the
+To build and run the stack, use [`./vk`](../vk) (see the
 [root README](../README.md)), which layers `compose.yml` + `compose/*`.

@@ -7,7 +7,7 @@
 #   ./scripts/compose.sh up -d vidingest
 #   ./scripts/compose.sh ps
 #
-# Prefer ./scripts/tradey.sh for day-to-day start/stop/logs.
+# Prefer ./vk for day-to-day start/stop/logs.
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

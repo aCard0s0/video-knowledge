@@ -26,7 +26,13 @@ is configuration rather than data. Six names, fixed:
   `relation "vidingest_connections" does not exist`.
 - **`api_key` is write-only and plaintext.** The API returns `hasApiKey`, never the key; an absent
   `apiKey` on update keeps the stored one and `""` clears it, because a console that cannot read
-  the key back could not otherwise save any other field without wiping it.
+  the key back could not otherwise save any other field without wiping it. `ConnectionProbeService`
+  sends it too — a "test" that 401s while the phase works is a worse signal than no test.
+- **`openai` is a provider value, not a synonym for `openai-compatible`.** Accepted on the three
+  LLM connections. Same client and same endpoints; only the knowledge-chat body differs, because
+  api.openai.com 400s on `max_tokens`, on a non-default `temperature` and on a `strict: true`
+  schema that is not strict-compliant. The dialect is chosen per call inside
+  `OpenAiCompatibleKnowledgeChatClient`, not by a second bean.
 - **Timeouts are deliberately absent.** Each transport consumes them once when its request factory
   is built, so a value served here would not be the one in use.
 - **`FRAME_SAMPLE` is a connection with no connection.** Local ffmpeg: no base URL, no model,
@@ -60,6 +66,9 @@ is configuration rather than data. Six names, fixed:
 - **Hits:** `VideoSearchConfig`, `KnowledgeExtractionConfig`, `TranscriptionClientProperties`,
   `DiarizationConfig`, `FrameSamplingConfig`, `OcrConfig` (the six beans it writes); the four
   routers that read `provider` per call; the console `features/settings/`; the generated client.
+- **Adding a provider value** means one entry in that router's `SUPPORTED_PROVIDERS` — the switch
+  and the console dropdown both follow from it, since `supportedProviders` is served per row.
+  Nothing on the frontend changes.
 - **Adding a connection** means: a `ConnectionName` constant, a `Binding` in the service
   constructor, and nothing else — the controller, the DTOs and the console iterate the enum, and
   the three `supports*` flags decide which controls render.
@@ -80,7 +89,7 @@ goes quiet — no error, the writes just stop reaching the wire.
 |---|---|
 | `ConnectionsController` | reads / writes / probes |
 | `ConnectionSettingsService` | the only writer of the config beans |
-| `ConnectionProbeService` | reads (never writes); `POST .../test` always answers 200 |
+| `ConnectionProbeService` | reads (never writes), key included; `POST .../test` always answers 200 |
 | console `features/settings/` | reads / writes |
 | every phase client | reads its base URL per call |
 

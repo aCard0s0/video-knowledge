@@ -28,7 +28,7 @@ LM Studio runs the model; MCP servers provide tools. You connect both in the MCP
 - VidIngest service up:
   - `./mvnw -pl applications/vidingest/vidingest-server spring-boot:run`
   - `./mvnw -pl applications/vidingest/vidingest-mcp spring-boot:run`
-  - Or: `./scripts/tradey.sh start vidingest` then `./scripts/tradey.sh start mcp`
+  - Or: `./vk start vidingest` then `./vk start mcp`
 - PostgreSQL running on the configured host/port (default: `localhost:3030`)
 - yt-dlp installed (`pip install yt-dlp`)
 - Whisper ASR running if you want transcription (docker infra exposes `http://localhost:9000/docs`)

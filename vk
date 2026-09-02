@@ -1,0 +1,617 @@
+#!/usr/bin/env bash
+# vk — the one script that runs this repo (video-knowledge: the vidingest backend, the
+# operator console, postgres and two optional sidecars).
+#
+# HOW TO ADD A COMMAND (agents: read this before editing anything below)
+#  1. Add ONE row to the COMMANDS registry:  name|alias|args|summary. A namespaced
+#     command has a space in the name ("db migrate"); "#Label" starts a section. That
+#     row is the ONLY place a command name may live — help, `<cmd> --help` and the
+#     dispatcher are generated from it. Naming a command twice here is a bug, and
+#     `./vk doctor` runs the drift lint that catches it.
+#  2. Define cmd_<name>, spaces and dashes as underscores ("db migrate" ->
+#     cmd_db_migrate). Optional long help: cmd_<fn>_help.
+#  3. Bind arguments to named locals and validate ALL of them before the first side
+#     effect, so `restart --typo` cannot tear the stack down and then fail. Reject
+#     unknown flags; never accept-and-ignore an argument.
+#  4. Side effects go through `run` (free --dry-run/--verbose), destructive ones
+#     through `confirm` (free --yes, plus refusal on non-interactive stdin).
+#  Invariants: no logic in the dispatcher; one arg-parsing idiom (while/case/shift);
+#  targets are arguments to verbs (`./vk start vidingest`, never `./vk vidingest`);
+#  human text only via say/note/step/warn/die — stdout carries values, stderr prose.
+#  bash 3.2 (stock macOS): no associative arrays, no ${var,,}, no mapfile, and never a
+#  bare "${a[@]}" that may be empty — write ${a[@]+"${a[@]}"}.
+#
+#  The model runtimes are NOT containers: transcription, embeddings and knowledge chat
+#  all run on the host so inference reaches the GPU. `./vk doctor` probes the host one;
+#  repoint any of them with `PUT /api/v1/connections/{name}` or the console's Settings.
+#
+#  ponytail: ~490 code lines, over the 400 at which the project-cli skill says to split the
+#  cmd_ bodies into scripts/lib/<group>.sh. Left whole deliberately — that threshold exists
+#  to stop a 2671-line monolith, and one file is still the cheaper thing to read at 18
+#  commands. Split at ~25, keeping the registry, the dispatcher and the helpers here.
+set -Eeuo pipefail
+# ── identity & repo root (survives symlinks into ~/bin, and living in scripts/) ──
+PROG="${0##*/}"; TAGLINE="build, run and inspect the video-knowledge stack"
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _d=$(cd -P "$(dirname "$SELF")" && pwd); SELF=$(readlink "$SELF")
+  case "$SELF" in /*) ;; *) SELF="$_d/$SELF" ;; esac
+done
+SCRIPT_DIR=$(cd -P "$(dirname "$SELF")" && pwd); ROOT="$SCRIPT_DIR"
+while [ "$ROOT" != "/" ] && [ ! -e "$ROOT/.git" ]; do ROOT=$(dirname "$ROOT"); done
+[ "$ROOT" != "/" ] || ROOT="$SCRIPT_DIR"
+cd "$ROOT"
+# ── config: every knob env-overridable, every name prefixed with the tool ──
+PROJECT="${VK_PROJECT:-video-knowledge}"
+WEBAPP_DIR="$ROOT/applications/webapp"
+ENV_FILE="${VK_ENV_FILE:-$ROOT/.env}"
+# Canonical host-port map, overridable from the environment. Sourced, not parsed: it is
+# ours and it is plain KEY=VALUE.
+# An if-block, not `[ -f x ] && . x`: the && form returns 1 when the file is absent,
+# which trips the ERR trap on a checkout that has no ports.env.
+if [ -f "$ROOT/compose/ports.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/compose/ports.env"
+  set +a
+fi
+export VK_IMAGE_TAG="${VK_IMAGE_TAG:-latest}"
+export VK_BIND_ADDR="${VK_BIND_ADDR:-127.0.0.1}"
+COMPOSE_FILES=(-f "$ROOT/compose.yml" -f "$ROOT/compose/infra/infra.yml"
+  -f "$ROOT/compose/services.yml" -f "$ROOT/compose/cli.yml" -f "$ROOT/compose/mcp.yml")
+# Valid targets. Services feed compose directly; groups expand to a service list. Both
+# are printed by `list` and by the help footer, and both feed the did-you-mean hint.
+SERVICES="postgres paddleocr-server diarize-asr vidingest webapp vidingest-cli vidingest-mcp"
+# Not GROUPS: that is a bash builtin holding the user's group ids, assignment to it is
+# silently discarded, and `Groups: 20` in the help was the whole symptom.
+TARGET_GROUPS="all infra sidecars backend"
+GROUP_infra="postgres"                          # the model runtimes moved to the host
+GROUP_sidecars="paddleocr-server diarize-asr"
+GROUP_backend="vidingest webapp"                # the console is its own image
+GROUP_all="$GROUP_infra $GROUP_backend"         # default footprint: no opt-in extras
+DRY_RUN=""; ASSUME_YES=""; VERBOSE=""; CURRENT_CMD=""
+TARGETS=(); OPT_BUILD=""; OPT_NOCACHE=""
+ENVARG=(); if [ -f "$ENV_FILE" ]; then ENVARG=(--env-file "$ENV_FILE"); fi
+# ── output: colour only on a TTY; values on stdout, prose on stderr ──
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; YLW=$'\033[33m'; GRN=$'\033[32m'; RST=$'\033[0m'
+else BOLD=''; DIM=''; RED=''; YLW=''; GRN=''; RST=''; fi
+say()  { printf '%s\n' "$*"; }
+note() { printf '%s%s%s\n' "$DIM" "$*" "$RST" >&2; }
+step() { printf '%s→ %s%s\n' "$BOLD" "$*" "$RST" >&2; }
+warn() { printf '%s%s: %s%s\n' "$YLW" "$PROG" "$*" "$RST" >&2; }
+die()  { printf '%s%s: %s%s\n' "$RED" "$PROG" "$1" "$RST" >&2; exit "${2:-1}"; }
+# exit codes: 0 ok · 1 runtime failure · 2 usage error · 3 missing dependency · 4 bad state
+on_err() { local rc=$?; printf '%s%s: unexpected failure at line %s (exit %s)%s\n' "$RED" "$PROG" "${1:-?}" "$rc" "$RST" >&2; exit "$rc"; }
+cleanup() { :; }
+trap 'on_err $LINENO' ERR; trap cleanup EXIT
+trap 'cleanup; exit 130' INT; trap 'cleanup; exit 143' TERM
+# ── command registry: the single source of truth ──
+# No field may contain a '|' — writing a flag as [-v|--volumes] truncates the row and
+# corrupts help. Spell the short form in the command's own cmd_<name>_help instead.
+COMMANDS=$(cat <<'REGISTRY'
+#Lifecycle
+start|up|[target...] [--build]|Start the stack detached and health-gated, or only the named targets
+stop||[target...]|Halt containers, leaving them and their data in place
+restart||[target...] [--build]|Stop then start the same targets, re-reading configuration
+#Inspect
+status|ps|[target...]|Report what is running and the ports actually bound
+logs||[target...] [-f] [-n N]|Print the last 200 log lines; -f follows and blocks
+list||[kind]|Print the target names the other verbs accept, one per line
+#Develop
+setup||[--force]|Prepare a fresh clone: install the console's npm dependencies
+dev||[-- <ng args>]|Serve the console on :4200 with reload (foreground, blocks until Ctrl-C)
+test||[suite...] [-- <args>]|Run the hermetic tests; suites: server console integration cli
+fmt|format|[--check]|Format the console sources with prettier
+build||[target...] [--no-cache]|Build the container images
+#Teardown
+down||[--volumes] [--yes]|Remove this project's containers and network; --volumes deletes its data
+clean||[--all] [--yes]|Delete build artifacts this repo produced -- never containers or volumes
+#Access
+shell|sh|[--in <service>]|Open sh inside a running container
+console|||Open the VidIngest Spring Shell console
+#Meta
+doctor|||Check this machine can operate the repo, and say what is broken
+version|||Print the revision a bug should be filed against
+help||[command]|Show this help, or the help for one command
+REGISTRY
+)
+reg()       { printf '%s\n' "$COMMANDS"; }
+reg_names() { reg | awk -F'|' 'NF>1 {print $1}'; }
+reg_field() { reg | awk -F'|' -v n="$1" -v f="$2" '$1==n {print $f; exit}'; }
+fn_of()     { printf 'cmd_%s' "$(printf '%s' "$1" | tr ' -' '__')"; }
+lookup() {                             # lookup <tok> [tok2] -> canonical name, or empty
+  local hit=""
+  if [ -n "${2:-}" ]; then hit=$(reg_names | grep -Fx -- "$1 $2" || true); fi
+  [ -n "$hit" ] || hit=$(reg_names | grep -Fx -- "$1" || true)
+  [ -n "$hit" ] || hit=$(reg | awk -F'|' -v a="$1" 'NF>1 && $2==a {print $1; exit}')
+  printf '%s' "$hit"
+}
+suggest() {
+  reg_names | awk -v w="$1" '{ s=0
+    if (index($0,w) || index(w,$0)) s=3; else if (substr($0,1,2)==substr(w,1,2)) s=2
+    if (s>b) { b=s; best=$0 } } END { if (b>0) print best }'
+}
+valid_target() { case " $SERVICES $TARGET_GROUPS " in *" $1 "*) return 0 ;; esac; return 1; }
+# A group expands to its services; a service is itself. Compose never sees a group name.
+expand_target() {
+  case "$1" in
+    all)      printf '%s' "$GROUP_all" ;;
+    infra)    printf '%s' "$GROUP_infra" ;;
+    sidecars) printf '%s' "$GROUP_sidecars" ;;
+    backend)  printf '%s' "$GROUP_backend" ;;
+    *)        printf '%s' "$1" ;;
+  esac
+}
+# The service list compose should act on: the expansion of every target given, or the
+# default footprint when none were.
+selected() {
+  local t out=""
+  if [ ${#TARGETS[@]} -eq 0 ]; then printf '%s' "$GROUP_all"; return 0; fi
+  for t in ${TARGETS[@]+"${TARGETS[@]}"}; do out="$out $(expand_target "$t")"; done
+  printf '%s' "${out# }"
+}
+wants_help() { local a; for a in "$@"; do case "$a" in -h|--help) return 0 ;; --) break ;; esac; done; return 1; }
+
+usage() {
+  cat <<EOF
+${BOLD}$PROG${RST} — $TAGLINE
+
+Usage: ./$PROG [-n|--dry-run] [-y|--yes] [-v|--verbose] <command> [args...]
+       ./$PROG <command> --help
+
+Commands:
+EOF
+  reg | awk -F'|' -v b="$BOLD" -v r="$RST" '
+    /^#/ { printf "\n%s%s%s\n", b, substr($0,2), r; next }
+    NF>1 { c=$1; if ($2!="") c=c ", " $2; printf "  %-12s %s\n", c, $4 }'
+  printf '\nGroups:   %s\nServices: %s\n' "$TARGET_GROUPS" "$SERVICES"
+  printf 'Config:   VK_IMAGE_TAG=%s  VK_BIND_ADDR=%s  (also VK_ENV_FILE, VK_PROJECT, NO_COLOR,\n' \
+    "$VK_IMAGE_TAG" "$VK_BIND_ADDR"
+  printf '          and every port in compose/ports.env)\n'
+}
+cmd_help() {
+  if [ $# -eq 0 ]; then usage; return 0; fi
+  local name fn
+  name=$(lookup "$1" "${2:-}"); [ -n "$name" ] || die "no such command: $1" 2
+  say "${BOLD}$PROG $name${RST} $(reg_field "$name" 3)"; say ""; say "  $(reg_field "$name" 4)"
+  fn="$(fn_of "$name")_help"
+  if declare -f "$fn" >/dev/null 2>&1; then say ""; "$fn"; fi
+}
+# ── preflight: never above the dispatcher — help must work with no docker installed ──
+have() { command -v "$1" >/dev/null 2>&1; }
+require_docker() {
+  have docker || die "docker is not on PATH — install Docker Desktop, then retry" 3
+  docker compose version >/dev/null 2>&1 || die "no 'docker compose' plugin — this needs Compose v2, not docker-compose" 3
+  docker info >/dev/null 2>&1 || die "the Docker daemon is not running — start Docker Desktop" 3
+}
+require_maven() { [ -x "$ROOT/mvnw" ] || die "no ./mvnw at $ROOT — wrong repo, or the wrapper was deleted" 3; }
+require_npm() {
+  have npm || die "npm is not on PATH — install Node 22+, then retry" 3
+  [ -d "$WEBAPP_DIR/node_modules" ] || die "the console's dependencies are not installed — run ./$PROG setup" 4
+}
+run() { if [ -n "$DRY_RUN$VERBOSE" ]; then note "+ $*"; fi; if [ -n "$DRY_RUN" ]; then return 0; fi; "$@"; }
+confirm() {
+  if [ -n "$ASSUME_YES" ]; then return 0; fi
+  [ -t 0 ] || die "refusing to do this non-interactively — pass --yes if you mean it" 2
+  printf '%s%s [y/N] %s' "$YLW" "$*" "$RST" >&2; local reply=""; read -r reply || true
+  case "$reply" in y|Y|yes|YES) return 0 ;; *) die "aborted" 2 ;; esac
+}
+# One choke point. `dc` is the raw invocation, for read-only captures that must still
+# produce a value under --dry-run; `compose` is the same thing behind run().
+dc()      { docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" ${ENVARG[@]+"${ENVARG[@]}"} "$@"; }
+compose() { run dc "$@"; }
+# ── shared parsing: one idiom, plus a per-command allow-list so nothing is ignored ──
+parse_targets() {                      # parse_targets "<allowed flags>" "$@"
+  local allowed=" $1 "; shift; TARGETS=(); OPT_BUILD=""; OPT_NOCACHE=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -*) case "$allowed" in *" $1 "*) ;; *) die "unknown option: $1 (try ./$PROG $CURRENT_CMD --help)" 2 ;; esac
+          case "$1" in --build) OPT_BUILD=1 ;; --no-build) OPT_BUILD="" ;; --no-cache) OPT_NOCACHE=1 ;; esac ;;
+      *)  valid_target "$1" || die "unknown target: $1. Groups: $TARGET_GROUPS. Services: $SERVICES" 2
+          TARGETS+=("$1") ;;
+    esac
+    shift
+  done
+}
+no_args() { [ $# -eq 0 ] || die "$CURRENT_CMD takes no arguments (got: $1)" 2; }
+# ── commands ──
+do_build() {
+  local f=(build) svc; svc=$(selected); [ -z "$OPT_NOCACHE" ] || f+=(--no-cache)
+  step "building $svc  (tag=$VK_IMAGE_TAG)"
+  # shellcheck disable=SC2086  # deliberate word split: a service list, never a path
+  compose "${f[@]}" $svc
+}
+do_up() {
+  local svc; svc=$(selected)
+  step "starting $svc  (tag=$VK_IMAGE_TAG)"
+  # --wait health-gates the return, so `start` cannot exit 0 before readiness. Never sleep.
+  # shellcheck disable=SC2086
+  compose up -d --wait $svc
+  report_urls
+}
+# Measured, not configured: ask the engine what it actually bound. A published default
+# printed as fact is the bug this exists to avoid.
+report_urls() {
+  local api web
+  api=$(dc port vidingest "${VIDINGEST_PORT:-8051}" 2>/dev/null || true)
+  web=$(dc port webapp 8080 2>/dev/null || true)
+  [ -z "$api" ] || say "api      http://${api}/vidingest"
+  [ -z "$web" ] || say "console  http://${web}/vidingest"
+  if [ -z "$api$web" ]; then note "no published ports yet — ./$PROG status"; fi
+}
+cmd_start() { parse_targets "--build --no-build" "$@"; require_docker
+  if [ -n "$OPT_BUILD" ]; then do_build; fi; do_up; }
+cmd_start_help() {
+  say "  Converges: a target whose image, config or environment changed is recreated."
+  say "  Returns only after compose reports every target healthy, so a following command"
+  say "  can rely on the stack being up. Already-healthy is exit 0 with no churn."
+  say "  --build rebuilds the selected targets first."
+}
+cmd_build() { parse_targets "--no-cache" "$@"; require_docker; do_build; say "built (tag=$VK_IMAGE_TAG)"; }
+cmd_build_help() {
+  say "  Container images only. The jar and the console bundle are built inside their"
+  say "  Dockerfiles; \`./$PROG test\` is what compiles them on the host."
+}
+cmd_stop() {
+  parse_targets "" "$@"; require_docker; local svc; svc=$(selected)
+  step "stopping $svc"
+  # shellcheck disable=SC2086
+  compose stop $svc
+  say "stopped"
+}
+cmd_stop_help() { say "  Halts only. Removal is \`./$PROG down\`; build artifacts are \`./$PROG clean\`."; }
+cmd_restart() {                        # parse once, up front: validate before side effects
+  parse_targets "--build --no-build" "$@"; require_docker
+  local svc; svc=$(selected)
+  step "stopping $svc"
+  # shellcheck disable=SC2086
+  compose stop $svc
+  if [ -n "$OPT_BUILD" ]; then do_build; fi; do_up
+}
+cmd_restart_help() {
+  say "  Re-reads compose and the env file, unlike \`docker compose restart\`, so a change"
+  say "  you just made takes effect. Flags mean exactly what they mean on start."
+}
+cmd_status() {
+  parse_targets "" "$@"; require_docker
+  # shellcheck disable=SC2086
+  dc ps $(selected) || die "the Docker daemon answered but compose failed" 1
+  report_urls
+}
+cmd_status_help() { say "  Exits 0 whenever it observed successfully, including when nothing is running."; }
+cmd_list() {
+  local kind="${1:-services}"
+  [ $# -le 1 ] || die "list takes at most one kind (got: $2)" 2
+  case "$kind" in
+    services) printf '%s\n' $SERVICES ;;
+    groups)   printf '%s\n' $TARGET_GROUPS ;;
+    *)        die "unknown kind: $kind (services, groups)" 2 ;;
+  esac
+}
+cmd_list_help() { say "  One bare name per line, so it composes with xargs. Kinds: services, groups."; }
+cmd_logs() {
+  local follow="" tail="200" f; TARGETS=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -f|--follow) follow=1 ;;
+      -n|--tail)   [ $# -ge 2 ] || die "-n needs a line count" 2; tail="$2"; shift ;;
+      -*) die "unknown option: $1 (try ./$PROG logs --help)" 2 ;;
+      *)  valid_target "$1" || die "unknown target: $1. Groups: $TARGET_GROUPS. Services: $SERVICES" 2
+          TARGETS+=("$1") ;;
+    esac
+    shift
+  done
+  require_docker; f=(logs --tail "$tail"); [ -z "$follow" ] || f+=(--follow)
+  # shellcheck disable=SC2086
+  compose "${f[@]}" $(selected)
+}
+cmd_logs_help() { say "  Bounded at 200 lines by default and terminates. -f is the only path that blocks."; }
+# Three teardown verbs, never aliases of each other: stop halts, down removes the local
+# runtime, clean deletes build artifacts. `make clean`/`mvn clean` have trained everyone
+# that clean is the harmless one, so clean must never be able to reach a container.
+cmd_down() {
+  local vols="" f
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -v|--volumes) vols=1 ;;   # -v is volumes here, as in compose; verbose is --verbose only
+      # Accepted here as well as globally because the registry row advertises it and
+      # cmd_down_help tells you to type it. A flag a row promises and the parser rejects is
+      # the defect the registry exists to prevent, and it was live until the selftest ran.
+      -y|--yes) ASSUME_YES=1 ;;
+      -*) die "unknown option: $1 (try ./$PROG down --help)" 2 ;;
+      *)  die "down takes no targets (got: $1) — it removes the whole project" 2 ;;
+    esac
+    shift
+  done
+  require_docker
+  if [ -n "$vols" ]; then
+    confirm "remove every '$PROJECT' volume — the database, the sidecar models, the downloaded videos and the logs? this cannot be undone"
+  fi
+  f=(down --remove-orphans); [ -z "$vols" ] || f+=(--volumes)
+  compose "${f[@]}"
+  say "removed containers and the network${vols:+, and the data volumes}"
+}
+cmd_down_help() {
+  say "  -v is short for --volumes, as in compose; verbose is --verbose only."
+  say "  --volumes wipes the database, the cached sidecar models and every downloaded"
+  say "  video. It prompts, and refuses a non-interactive shell unless you pass --yes."
+  say "  The ollama_data volume from before the host-runtime move is not managed here;"
+  say "  remove it by hand if it is still on the machine."
+}
+cmd_clean() {
+  local all=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all) all=1 ;;
+      -y|--yes) ASSUME_YES=1 ;;
+      -*) die "unknown option: $1 (try ./$PROG clean --help)" 2 ;;
+      *)  die "clean takes no targets (got: $1)" 2 ;;
+    esac
+    shift
+  done
+  # Only regenerable files this repo produced. No containers, no volumes, no remote
+  # resources, nothing git-tracked, never the .env. Keep this list explicit.
+  require_maven
+  # The bare form is the safe reflex and never prompts. --all is different: node_modules is
+  # a network round-trip to rebuild, not a recompile, so it is the one branch here that has
+  # to ask. Everything else clean touches is regenerable from the working tree alone.
+  if [ -n "$all" ]; then
+    confirm "also remove node_modules? ./$PROG setup has to run again before dev, test or fmt"
+  fi
+  step "removing build artifacts"
+  run "$ROOT/mvnw" -q clean
+  run rm -rf "$WEBAPP_DIR/dist" "$WEBAPP_DIR/.angular" "$ROOT/target"
+  [ -z "$all" ] || run rm -rf "$WEBAPP_DIR/node_modules"
+  say "clean${all:+ --all} done"
+}
+cmd_clean_help() {
+  say "  Maven target/ trees, the console's dist/ and .angular/ cache."
+  say "  --all also removes node_modules, so \`./$PROG setup\` has to run again. That is the"
+  say "  one branch that prompts; pass --yes for a non-interactive caller. The bare form is"
+  say "  the safe reflex and never asks."
+  say "  Containers and volumes are \`./$PROG down\`; this never touches them."
+}
+cmd_setup() {
+  local force=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1 ;;
+      -*) die "unknown option: $1 (try ./$PROG setup --help)" 2 ;;
+      *)  die "setup takes no arguments (got: $1)" 2 ;;
+    esac
+    shift
+  done
+  have npm || die "npm is not on PATH — install Node 22+, then retry" 3
+  if [ -d "$WEBAPP_DIR/node_modules" ] && [ -z "$force" ]; then
+    say "console dependencies already installed"
+  else
+    step "installing the console's dependencies (npm ci)"
+    run sh -c "cd '$WEBAPP_DIR' && npm ci"
+  fi
+  # Never seeded, never overwritten: .env is gitignored, holds the HuggingFace token, and
+  # every value in it has a working compose default. Absence is a valid state.
+  [ -f "$ENV_FILE" ] || note "no $ENV_FILE — compose defaults apply; see compose/ports.env"
+  say "ready — next: ./$PROG start"
+}
+cmd_setup_help() {
+  say "  Idempotent: a second run reports what it verified rather than reinstalling."
+  say "  Maven needs nothing — ./mvnw downloads its own toolchain on first use."
+  say "  It never writes .env, which is gitignored and may hold a HuggingFace token."
+}
+cmd_dev() {
+  local passthrough=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --) shift; passthrough=("$@"); break ;;
+      *)  die "dev takes no arguments before -- (got: $1)" 2 ;;
+    esac
+  done
+  require_npm
+  # A port already in use is a precondition that BLOCKS the transition, which the vocabulary
+  # spells exit 4. Without this, ng's own failure surfaces as a bare 127 from npm through the
+  # ERR trap — which is what a stale `dev` from an earlier run actually looks like, and it
+  # reads as a broken toolchain rather than an occupied port. Only checked when no
+  # passthrough was given, since `-- --port 4300` legitimately moves it.
+  if [ ${#passthrough[@]} -eq 0 ] && have lsof && lsof -nP -iTCP:4200 -sTCP:LISTEN >/dev/null 2>&1; then
+    die "port 4200 is already in use — stop the other dev server, or ./$PROG dev -- --port 4300" 4
+  fi
+  step "ng serve on :4200 — proxies /vidingest to the server on :${VIDINGEST_PORT:-8051}"
+  note "this blocks until Ctrl-C"
+  run sh -c "cd '$WEBAPP_DIR' && npm start -- \"\$@\"" sh ${passthrough[@]+"${passthrough[@]}"}
+}
+cmd_dev_help() {
+  say "  The console only. The server it proxies to must already be up (./$PROG start)."
+  say "  Blocks until Ctrl-C — there is no \`dev stop\`."
+}
+run_suite_server()  { run "$ROOT/mvnw" -q test -Dtest='!*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false "$@"; }
+run_suite_console() { run sh -c "cd '$WEBAPP_DIR' && npm test -- --no-watch \"\$@\"" sh "$@"; }
+run_suite_integration() { run "$ROOT/mvnw" -q test -Dtest='*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false "$@"; }
+# This file's own tests. Not hermetic — it cycles the postgres container and runs `clean` —
+# so it is a named suite and never in the default set.
+run_suite_cli() { run "$ROOT/scripts/vk-selftest.sh" "$@"; }
+cmd_test() {
+  local suites=() passthrough=() s
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --) shift; passthrough=("$@"); break ;;
+      -*) die "unknown option: $1 (try ./$PROG test --help)" 2 ;;
+      server|console|integration|cli) suites+=("$1") ;;
+      *)  die "unknown suite: $1 (server, console, integration, cli)" 2 ;;
+    esac
+    shift
+  done
+  if [ ${#suites[@]} -eq 0 ]; then
+    suites=(server console)
+    # Naming what was skipped is the contract: a green run that tested nothing is the
+    # worst possible answer, and `integration` needs a Docker daemon for Testcontainers.
+    note "hermetic suites only. Omitted: integration — run it with ./$PROG test integration"
+  fi
+  for s in ${suites[@]+"${suites[@]}"}; do
+    case "$s" in
+      server)      require_maven; step "server unit tests"; run_suite_server ${passthrough[@]+"${passthrough[@]}"} ;;
+      console)     require_npm;   step "console tests";     run_suite_console ${passthrough[@]+"${passthrough[@]}"} ;;
+      integration) require_maven; require_docker
+                   step "Testcontainers integration tests (pgvector/pgvector:pg17)"
+                   run_suite_integration ${passthrough[@]+"${passthrough[@]}"} ;;
+      cli)         require_docker; step "./vk's own command surface (mutates: see the header)"
+                   run_suite_cli ${passthrough[@]+"${passthrough[@]}"} ;;
+    esac
+  done
+  say "tests passed: ${suites[*]}"
+}
+cmd_test_help() {
+  say "  Bare \`test\` is hermetic: no daemon, no network, no running stack."
+  say "    server       412 unit tests via ./mvnw, Testcontainers excluded"
+  say "    console      the Angular specs via ng test --no-watch"
+  say "    integration  needs a Docker daemon; boots pgvector/pgvector:pg17"
+  say "    cli          this script's own 112 checks. MUTATES: cycles the postgres"
+  say "                 container and runs clean. Destructive paths are aimed at an"
+  say "                 isolated VK_PROJECT, never at your stack."
+  say "  Everything after -- goes verbatim to the harness, e.g."
+  say "    ./$PROG test server -- -Dtest=FusePhaseTest"
+}
+cmd_fmt() {
+  local check=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --check) check=1 ;;
+      -*) die "unknown option: $1 (try ./$PROG fmt --help)" 2 ;;
+      *)  die "fmt takes no targets (got: $1)" 2 ;;
+    esac
+    shift
+  done
+  require_npm
+  if [ -n "$check" ]; then
+    step "checking console formatting"
+    run sh -c "cd '$WEBAPP_DIR' && npx prettier --check ." || die "formatting drift — run ./$PROG fmt" 1
+    say "no formatting drift"
+  else
+    step "formatting the console sources"
+    run sh -c "cd '$WEBAPP_DIR' && npx prettier --write ."
+    say "formatted"
+  fi
+}
+cmd_fmt_help() {
+  say "  The console only — there is no Java formatter configured in this repo."
+  say "  .prettierignore keeps it off src/app/api/generated, which is regenerated by"
+  say "  \`npm run api:gen\` and must never be hand-edited."
+  say "  --check writes nothing and exits 1 on drift; that is the CI form."
+}
+cmd_shell() {
+  local svc="vidingest"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --in) [ $# -ge 2 ] || die "--in needs a service" 2; svc="$2"; shift ;;
+      -*)   die "unknown option: $1 (try ./$PROG shell --help)" 2 ;;
+      *)    die "shell takes --in <service>, not a bare name (got: $1)" 2 ;;
+    esac
+    shift
+  done
+  case " $SERVICES " in *" $svc "*) ;; *) die "unknown service: $svc. Services: $SERVICES" 2 ;; esac
+  require_docker
+  compose exec "$svc" sh
+}
+cmd_shell_help() { say "  Defaults to the vidingest container. An OS shell, not the app console."; }
+cmd_console() {
+  no_args "$@"; require_docker
+  step "ensuring vidingest-cli is up"
+  compose up -d vidingest-cli
+  # The container idles so the shell can be attached repeatedly; sh is the fallback when
+  # the launcher is missing from an older image.
+  compose exec vidingest-cli vidingest-cli || compose exec vidingest-cli sh
+}
+cmd_console_help() { say "  The application's own Spring Shell. An OS shell is \`./$PROG shell\`."; }
+cmd_doctor() {
+  no_args "$@"
+  local missing=0 broken=0
+  say "root      $ROOT"
+  if have docker; then say "docker    $(docker --version 2>/dev/null)"
+  else warn "docker    MISSING — install Docker Desktop"; missing=1; fi
+  if docker compose version >/dev/null 2>&1; then say "compose   $(docker compose version --short 2>/dev/null)"
+  else warn "compose   MISSING — this needs the Compose v2 plugin, not docker-compose"; missing=1; fi
+  if docker info >/dev/null 2>&1; then say "daemon    running"
+  else warn "daemon    NOT RUNNING — start Docker Desktop"; broken=1; fi
+  if [ -x "$ROOT/mvnw" ]; then say "mvnw      present"
+  else warn "mvnw      MISSING — wrong repo, or the wrapper was deleted"; missing=1; fi
+  if have java; then
+    local jv; jv=$(java -version 2>&1 | head -1)
+    say "java      $jv"
+    case "$jv" in *\"2[6-9]* | *\"[3-9][0-9]*) ;; *) warn "java      the build enforces Java 26 — this looks older"; broken=1 ;; esac
+  else warn "java      MISSING — the build enforces Java 26"; missing=1; fi
+  if have npm; then say "npm       $(npm --version 2>/dev/null)"
+  else warn "npm       MISSING — install Node 22+"; missing=1; fi
+  if [ -d "$WEBAPP_DIR/node_modules" ]; then say "console   dependencies installed"
+  else warn "console   dependencies MISSING — run ./$PROG setup"; broken=1; fi
+  if [ -f "$ENV_FILE" ]; then say "env       $ENV_FILE"
+  else say "env       none (compose defaults apply — this is fine)"; fi
+  # The model runtimes are on the host, not in compose, so nothing else here would notice
+  # them being down until a phase fails minutes into a run.
+  #
+  # VK_HOST_LLM_URL is the CONTAINER-facing address, and host.docker.internal does not
+  # resolve out here — probing it verbatim reports a healthy runtime as down. Translate to
+  # loopback for this one check. The reverse trap is real too and is not ours to fix from
+  # here: the server must bind 0.0.0.0, because a loopback-only listener answers this probe
+  # and still refuses the container arriving on the bridge address.
+  local llm="${VK_HOST_LLM_URL:-http://localhost:8000/v1}"
+  local probe="${llm/host.docker.internal/localhost}"
+  if ! have curl; then warn "host llm  cannot probe — curl is not on PATH"; broken=1
+  elif curl -fsS --max-time 2 "$probe/models" >/dev/null 2>&1; then say "host llm  answering at $probe"
+  else warn "host llm  NOT ANSWERING at $probe — start the oMLX server bound to 0.0.0.0, or"
+       warn "          repoint the connections (PUT /api/v1/connections/{name})"; broken=1; fi
+  # The registry is the source of truth only if nothing drifts from it. This is the lint
+  # from the skill, run here rather than only in CI.
+  local drift; drift=$(doctor_drift)
+  if [ -z "$drift" ]; then say "registry  every command has a row and a function"
+  else warn "registry  DRIFT — $drift"; broken=1; fi
+  [ "$missing" -eq 0 ] || die "a required dependency is missing (see above)" 3
+  [ "$broken" -eq 0 ] || die "a dependency is present but not usable (see above)" 4
+  say "healthy"
+}
+doctor_drift() {
+  local fns rows
+  fns=$(grep '^cmd_' "$SELF" | sed 's/^cmd_//;s/() .*//' | grep -v '_help$' | sed 's/_/ /g' | sort)
+  rows=$(reg_names | sort)
+  [ "$fns" = "$rows" ] || printf 'registry rows and cmd_ functions differ'
+}
+cmd_doctor_help() { say "  Read-only. Exits 3 for a missing tool, 4 for one present but unusable —"
+                    say "  the deliberate inverse of status, which exits 0 whenever it could observe."; }
+cmd_version() {
+  no_args "$@"
+  local v
+  v=$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || true)
+  [ -n "$v" ] || die "cannot determine the revision — not a git checkout?" 1
+  say "$PROG $v"
+  say "project-cli vocabulary rev 1 — clean means build artifacts, status exits 0 when down"
+}
+# ── dispatcher: resolution only, no command logic ──
+main() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n|--dry-run) DRY_RUN=1 ;;    -y|--yes)     ASSUME_YES=1 ;;
+      -v|--verbose) VERBOSE=1 ;;    -V|--version) cmd_version; return 0 ;;
+      -h|--help)    usage; return 0 ;;
+      --) shift; break ;;
+      -*) warn "unknown global option: $1"; usage >&2; exit 2 ;;
+      *)  break ;;
+    esac
+    shift
+  done
+  if [ $# -eq 0 ]; then usage; return 0; fi    # bare invocation: help on stdout, exit 0
+  local name fn hint
+  name=$(lookup "$1" "${2:-}")
+  if [ -z "$name" ]; then
+    warn "unknown command: $1"
+    if valid_target "$1"; then note "'$1' is a target, not a command — try: ./$PROG start $1"; fi
+    hint=$(suggest "$1"); [ -z "$hint" ] || note "did you mean: ./$PROG $hint"
+    usage >&2; exit 2
+  fi
+  shift; case "$name" in *' '*) shift ;; esac  # a namespace consumes its second token
+  if wants_help "$@"; then                     # one place makes `<cmd> --help` universal
+    # shellcheck disable=SC2086  # deliberate split so a namespaced name arrives as two words
+    cmd_help $name; return 0
+  fi
+  CURRENT_CMD="$name"; fn=$(fn_of "$name")
+  "$fn" "$@"
+}
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi

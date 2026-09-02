@@ -57,7 +57,7 @@ VidIngest is split into:
 ./mvnw -pl applications/vidingest/vidingest-cli spring-boot:run
 
 # Docker (recommended for end-to-end)
-./scripts/tradey.sh start vidingest --build && ./scripts/tradey.sh start mcp
+./vk start vidingest --build && ./vk start mcp
 ```
 
 **When you change this app, update**

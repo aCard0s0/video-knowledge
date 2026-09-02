@@ -33,9 +33,13 @@ Subject tree: the whole repo. Orientation that already exists and is **not** dup
 ## Universes
 
 - **live** — `applications/`, `libraries/`, `compose/`, `scripts/`, `docs/vidingest/`.
-- **leftover** — `com.tradinglabs` groupId, DB `tradingPlatformDB` / user `dealer`, `scripts/tradey.sh`.
+- **leftover** — `com.tradinglabs` groupId, DB `tradingPlatformDB` / user `dealer`.
   In force, working, named for the trading-platform repo this was carved out of. Renaming is a
-  migration, not a tidy-up.
+  migration, not a tidy-up. [vk](../../vk) was on this list as `tradey.sh`
+  until Sep 2026 — the one leftover whose rename *was* a tidy-up, because nothing outside prose
+  referenced it. That is also why the older PR notes name `vk` for a period when it was `tradey.sh`:
+  `check-markdown-links.py` fails a backticked repo path that does not resolve, so every record
+  here carries live paths rather than historical ones.
 - **ghost** — [design-system/vidingest-console/MASTER.md](../../design-system/vidingest-console/MASTER.md)
   (regenerable CLI output, overridden by `_tokens.scss`);
   [docs/frontend-bootstrap-prompt.md](../frontend-bootstrap-prompt.md) (self-declared historical).
