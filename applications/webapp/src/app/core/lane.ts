@@ -53,8 +53,19 @@ export function buildLane(item: RunItem, events: RunItemAuditEvent[], nowMs: num
 
   // Everything past the frontier was never reached; everything before it that has no ENTERED
   // event was deliberately skipped. Same absence, opposite meaning.
+  //
+  // A live item that has entered nothing has no frontier yet — it is queued behind the ingestion
+  // semaphore, or just retried and waiting for METADATA. The frontier used to fall back to the
+  // *end* for it, which read every phase as "skipped — turned off for this run" on the whole
+  // PENDING tail of a batch: -1 is the truth, nothing reached, nothing skipped. The end is the
+  // right fallback only for an item that is over: execution passed everything, so a phase with no
+  // ENTERED event really was turned off.
   const frontierName = blamed ?? (live ? lastEntered(current) : null);
-  const frontier = frontierName ? LANE_PHASES.indexOf(frontierName as LanePhase) : LANE_PHASES.length - 1;
+  const frontier = frontierName
+    ? LANE_PHASES.indexOf(frontierName as LanePhase)
+    : live
+      ? -1
+      : LANE_PHASES.length - 1;
 
   return LANE_PHASES.map((phase, index) => {
     const start = entered.get(phase);
