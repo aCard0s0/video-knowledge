@@ -2,7 +2,7 @@
 <!-- Present even when empty, so it is a region a screen reader can announce into rather than one
      that appears with its text already in place. Saving a value that was already set changes no
      pixel on the card, so this line is the whole confirmation. -->
-<p class="said mono muted" role="status">{{ said() }}</p>
+<p class="said mono muted" role="status">{{ action.said() }}</p>
 
 @if (list.error()) {
   <!-- Nothing else: the problem panel above already says what failed, and rendering an empty
@@ -112,22 +112,22 @@
         </div>
 
         <div class="actions">
-          <button class="btn-primary mono" type="submit" [disabled]="busy() === row.name">
+          <button class="btn-primary mono" type="submit" [disabled]="action.busy() === row.name">
             <vk-icon name="check" />
             save
           </button>
           <!-- Nothing to probe without an endpoint; the server says so too, but offering the
                button and answering "not reachable" would read as a fault. -->
           @if (row.supportsBaseUrl) {
-            <button class="mono" type="button" (click)="test(row)" [disabled]="busy() === row.name">
-              <vk-icon name="refresh" [spin]="busy() === row.name" />
+            <button class="mono" type="button" (click)="test(row)" [disabled]="action.busy() === row.name">
+              <vk-icon name="refresh" [spin]="action.busy() === row.name" />
               test
             </button>
           }
           @if (row.overridden) {
-            <button class="btn-danger mono" type="button" (click)="reset(row)" [disabled]="busy() === row.name">
+            <button class="btn-danger mono" type="button" (click)="reset(row)" [disabled]="action.busy() === row.name">
               <vk-icon name="trash" />
-              {{ armed() === row.name ? 'confirm reset' : 'reset' }}
+              {{ action.armed() === row.name ? 'confirm reset' : 'reset' }}
             </button>
           }
         </div>

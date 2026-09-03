@@ -45,7 +45,8 @@ except [Connection](runtime/connection.md), added 2026-08-29.
 | [Generated API client](console/generated-client.md) | the whole HTTP layer; regenerated, never edited | verified |
 | [domain.ts enums](console/domain-enums.md) | eight server enums mirrored by hand, nothing keeps them in sync | verified |
 | [ApiFailure](console/api-failure.md) | the error envelope, and which failure a screen shows | verified |
-| [watchRun](console/run-watch.md) | run + audit tail + lanes, shared by the two lane screens | verified |
+| [watchRun](console/run-watch.md) | run + audit tail + lanes, shared by the three lane screens; `?run=` and the panel with it | verified |
+| [actionState](console/action-state.md) | busy/armed/said/failure as one state, keyed, on the six mutating screens | verified |
 
 ## Deliberately not cards
 

@@ -42,7 +42,7 @@ help and the dispatcher are all generated from that row, and `./vk doctor` runs 
 that fails if a row and a function disagree. The file's own header block says this; read it before
 editing. It follows the `project-cli` skill in `~/.claude/skills/`.
 
-`./vk test` is **hermetic** — 412 server unit tests plus 148 console tests, no daemon, no network —
+`./vk test` is **hermetic** — 412 server unit tests plus 166 console tests, no daemon, no network —
 and names on stderr the suite it skipped. `./vk test integration` is the Testcontainers half, and
 `./vk test server -- -Dtest=FusePhaseTest` passes anything after `--` to the harness. The raw
 Maven forms below still matter for a targeted run, and their traps are unchanged.
@@ -472,7 +472,9 @@ ProblemDetail) when every URL was rejected; **`/health/ready` answers 503 carryi
 `HttpErrorResponse.error` and says "server unreachable" only on status 0 — treating any error as
 unreachable hid the one line naming the broken dependency); and **a 202 on either retry endpoint
 does not mean the work was queued** — the same body carries `REJECTED` items with a reason
-("already running", "was cancelled"), so the response is read, never discarded.
+("already running", "was cancelled"), so the response is read, never discarded (`core/verdict.ts`
+is that read, once, for the four screens that make it; `POST /pipelines` answers **400 with the
+same body** when every URL was rejected, which is why it takes a nullable response).
 
 **`failedPhase` is not always a phase.** It is `CREATED` for an item reaped while still queued and
 `DONE` on a clean finish, so `LANE_PHASES.indexOf` answers `-1` — call `isLanePhase()` before
@@ -486,12 +488,28 @@ taking page 4 alone left ninety items with no events at all — and `buildLane` 
 `ITEM_PHASE_ENTERED` as ten hatched "skipped" boxes, so phases that ran reported themselves as
 turned off. `core/audit.ts` takes whole pages from the end (capped at four) and concatenates.
 
-**Two screens draw lanes**, run detail and ingest, and both take the run, its audit tail and the
-built lanes from `core/watch-run.ts` — declared inline they cost the same correction twice (the tail
-paging above, and the lane build moving out of the template's read path). **Which** failure a screen
+**Three screens draw lanes** — run detail, ingest and channel detail — and all three take the run,
+its audit tail and the built lanes from `core/watch-run.ts`, declared inline they cost the same
+correction twice (the tail paging above, and the lane build moving out of the template's read
+path). The two that *start* a run also draw the same panel around it, `ui/run-watch.ts`, and reach
+it through `watchRunFromUrl()`, which owns the `?run=` query param: that panel was copied from
+ingest to the channel screen without the param, so a refresh dropped the run the operator had just
+started until it was fixed a second time. Each screen keeps only what differs — its head label, and
+what can be *done* to the run (ingest projects a Retry button into the `[action]` slot). **Which** failure a screen
 shows is `firstFailure` in `core/problem.ts`: load failures in precedence order, with the action the
-operator just took in front of the call as `actionFailure() ?? firstFailure(…)`. Both are called from an injection context, like
+operator just took in front of the call as `action.failure() ?? firstFailure(…)`. Both are called from an injection context, like
 `syncQueryParams` and `clampPage`.
+
+**An action is four signals, not four flags** — `busy`, `armed`, `said`, `failure` — and they live
+together in `actionState()` (`core/action.ts`) because every transition writes several at once:
+`start` clears the last failure *and* the last message, `fail` clears the message, `ok` sets it.
+Open-coded on six screens that rule got missed; `settings.ts` had already extracted the pair
+locally, which is what said it belonged one level up. `busy`/`armed` are **keyed**, so one instance
+covers a list (which row is armed, which row is in flight). Two calls back out of an arm and the
+difference is behavioural: `cancel()` also drops the warning the arm wrote ("Press Confirm delete to
+remove X."), `disarm()` keeps `said` because there the control names its own consequence and the
+line is holding the *previous* result. The runs board and ingest are deliberately not on it — a
+batch retry's in-flight state is a `Set` of ids, and ingest has no arm and no status line.
 
 **A page number outlives the list it came from.** Delete the only row on page 2 and the response is
 0 rows with a total of 25, so the screen renders its "nothing matches" empty state over 25 rows

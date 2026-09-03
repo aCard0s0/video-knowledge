@@ -45,10 +45,13 @@ applications/webapp/
   src/app/core/                   domain.ts (mirrored enums) · time.ts (UTC parsing, durations)
                                   lane.ts (+ spec) · problem.ts (ProblemDetail, firstFailure)
                                   audit.ts (tail paging, + spec) · paging.ts (clampPage, + spec)
-                                  watch-run.ts (run + audit + lanes, shared by 2 screens)
-                                  poller.ts · url-state.ts · api-base.ts
-  src/app/ui/                     lane · problem · fault · rejects · empty · pager · phase-picker
-                                  status-badge
+                                  action.ts (busy/armed/said/failure, + spec)
+                                  verdict.ts (a 2xx is not an acceptance, + spec)
+                                  watch-run.ts (run + audit + lanes + ?run=, shared by 3 screens)
+                                  poller.ts (the shared clock, and every age off it)
+                                  url-state.ts · api-base.ts
+  src/app/ui/                     lane · run-watch (+spec) · problem · fault · rejects · empty
+                                  pager · phase-picker · status-badge
   src/app/features/               ingest (+spec) · channels (+detail) · runs (+detail) · videos (+detail) · audit
   src/styles/_tokens.scss         the corrected palette (this file's tokens win over MASTER.md)
 ```
@@ -134,9 +137,13 @@ than the SPA shell.
   only reject blank, non-http and in-request duplicates, and the client filters all three.
   five runs instead of standing empty.
 - **Runs triage is one click, and the board says why.** Status is a row of chips rather than a
-  select, the FAILED chip carries its count (one extra one-row query — that number is why the
-  screen gets opened), and FAILED rows carry a Retry button so triage does not require a
-  navigation first. `error` is on every `RunSummary`, so the reason renders in a full-width row
+  select, every chip carries its count — FAILED because that number is why the screen gets opened —
+  and FAILED rows carry a Retry button so triage does not require a navigation first. `GET
+  /pipelines` has no group-by, so a count is a one-row query, but only **three** of the five are:
+  `PENDING` and `IN_PROGRESS` come off the live tables' own responses, since those are already
+  queries for those statuses and a `PageResponse.total` counts the query rather than the page.
+  Asking again was two extra requests on every 2s tick and one number with two sources, which could
+  disagree on screen. `error` is on every `RunSummary`, so the reason renders in a full-width row
   under its run rather than one navigation away: fourteen rows all reading `UPSTREAM_TOOL_FAILURE`
   are told apart only by the message tail, so it gets the width to wrap rather than a clip that
   lands the ellipsis on the discriminating half. The retry's own answer is read too — see
@@ -317,7 +324,9 @@ than the SPA shell.
   line, always in the DOM so it is a region to announce into rather than one that appears already
   spoken, reads `Press Confirm delete to remove <title>.` and then `Deleted <title>.` — the same
   shape the runs board gives a retry — literally, now: `.said` is one class in `styles.scss` rather
-  than the same four declarations under two names.
+  than the same four declarations under two names. The *state* behind it is shared too, since
+  Sep 2026: `actionState()` in `core/action.ts` holds the `busy`/`armed`/`said`/`failure` four that
+  six screens had written by hand, keyed so one instance covers a list.
 - **Videos triage is one press too, and the count is on the chip.** A `<select>` of nine statuses
   put the screen's whole reason for existing two clicks away and showed no number; the row of chips
   is the runs board's, with `FAILED` carrying its total from one extra one-row query. Nine chips wrap
@@ -407,10 +416,16 @@ than the SPA shell.
   video(s)` and a link, which is the dead end ingest had already been given lanes to fix — and the
   N was `items.length`, so videos the server *refused* were counted as started. The panel now reads
   `1 accepted · 1 rejected`, watches the run in place through the same `core/watch-run.ts` that
-  feeds ingest and run detail, and hands the refusals to `vk-rejects`. Warn rather than the failure
+  feeds ingest and run detail — and now through the same panel, `ui/run-watch.ts`, which is where
+  the `?run=` param this screen was copied without ended up — and hands the refusals to
+  `vk-rejects`. Warn rather than the failure
   ramp, and labelled `not started` rather than `not retried`: a video declined here is not
   something the operator can fix, because the URL came from the stored catalog and not from a box
-  they typed into.
+  they typed into. **An ingest that starts nothing still shows why** (Sep 2026): when every picked
+  video is refused the server creates no run, so `runId` stays empty — and the panel was keyed on
+  that id, which hid the whole thing including the table naming each refusal. The reasons reached
+  the client and were rendered nowhere. `watching()` counts `started()` too, and the panel drops its
+  `full run →` link when there is no run to open.
 - **The channel screen is one screen wide.** The ingest CTA sat ~1000px below the fold on a
   fifty-row page — tick a box at the top, scroll a full screen to press it, with the selection
   count out of sight the whole time it was being built — so the panel is `position: sticky` against
@@ -501,8 +516,10 @@ than the SPA shell.
 
 The one visualization: per run item, the ten phases as a horizontal track whose segment widths
 are proportional to measured duration (`core/lane.ts`, unit-tested in `core/lane.spec.ts`). Both
-screens that draw lanes — run detail and ingest — get the run, the audit tail and the built lanes
-from `core/watch-run.ts`, so a correction to either fetch lands once.
+screens that draw lanes — run detail, ingest and channel detail — get the run, the audit tail and
+the built lanes from `core/watch-run.ts`, so a correction to either fetch lands once. The two that
+start a run draw one panel around it, `ui/run-watch.ts`: head, meta line and one row per item, with
+each screen supplying only its head label and whatever can be done to the run.
 Skipped phases render as hatched voids and stay individually visible (which ones were turned off
 is information); consecutive *unreached* phases collapse into a single void carrying their count,
 because an item that dies in METADATA otherwise renders as nine identical empty boxes. The failed

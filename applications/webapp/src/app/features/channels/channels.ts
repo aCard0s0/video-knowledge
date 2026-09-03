@@ -5,9 +5,10 @@ import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 
 import { YoutubeChannelSummary, YoutubeService } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
+import { absoluteTime, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
-import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
+import { firstFailure, valueOf } from '../../core/problem';
+import { actionState } from '../../core/action';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
@@ -31,12 +32,11 @@ export class Channels {
 
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
-  protected readonly busy = signal<string | null>(null);
-  /** Two-step remove: the first press arms the row, the second sends it. */
-  protected readonly armed = signal<string | null>(null);
-  /** What the last press did, for the `role="status"` line. Empty is the resting state. */
-  protected readonly said = signal('');
-  private readonly actionFailure = signal<ApiFailure | null>(null);
+  /**
+   * Add, sync and remove, keyed: `'add'` for the form, the channel id for a row. One instance for
+   * all three, because they are one action at a time on one list.
+   */
+  protected readonly action = actionState();
   /** Errors appear on submit, not while the operator is still typing the first character. */
   private readonly submitted = signal(false);
   private readonly urlField = viewChild<ElementRef<HTMLInputElement>>('urlField');
@@ -64,15 +64,12 @@ export class Channels {
 
   protected readonly rows = computed(() => valueOf(this.list)?.items ?? []);
   protected readonly total = computed(() => valueOf(this.list)?.total ?? 0);
-  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.list));
+  protected readonly failure = computed(() => this.action.failure() ?? firstFailure(this.list));
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   /** The sync column: a half-hourly schedule has no second hand, and the tooltip has the instant. */
   protected syncAge(value: string | undefined): string {
@@ -117,9 +114,7 @@ export class Channels {
       return;
     }
     const { url, displayName } = this.form.getRawValue();
-    this.busy.set('add');
-    this.actionFailure.set(null);
-    this.said.set('');
+    this.action.start('add');
     this.youtube.createChannel({ url, displayName: displayName || undefined }).subscribe({
       next: (channel) => {
         this.form.reset();
@@ -130,32 +125,24 @@ export class Channels {
         if (channel.id) {
           this.sync(channel);
         } else {
-          this.busy.set(null);
+          this.action.ok();
         }
       },
-      error: (err: unknown) => {
-        this.busy.set(null);
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 
   protected sync(channel: YoutubeChannelSummary): void {
     if (!channel.id) return;
-    this.busy.set(channel.id);
-    this.actionFailure.set(null);
+    this.action.start(channel.id);
     this.youtube.syncChannel(channel.id).subscribe({
       next: () => {
-        this.busy.set(null);
         // A sync that discovers nothing new changes no cell on the row, so the button flipping back
         // from "Syncing…" is otherwise the whole answer.
-        this.said.set(`Synced ${channel.displayName || channel.url}.`);
+        this.action.ok(`Synced ${channel.displayName || channel.url}.`);
         this.list.reload();
       },
-      error: (err: unknown) => {
-        this.busy.set(null);
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 
@@ -173,30 +160,19 @@ export class Channels {
    * `role="status"` line, where a screen reader reaches it and where it is also on screen.
    */
   protected remove(channel: YoutubeChannelSummary): void {
-    if (!channel.id || this.busy() === channel.id) return;
+    if (!channel.id || this.action.isBusy(channel.id)) return;
     const name = channel.displayName || channel.url;
-    if (this.armed() !== channel.id) {
-      this.armed.set(channel.id);
-      this.said.set(
-        `Press Confirm remove to stop tracking ${name}. Its discovered catalog goes too; videos already ingested from it are kept.`,
-      );
-      return;
-    }
-    this.armed.set(null);
-    this.busy.set(channel.id);
-    this.actionFailure.set(null);
+    const warning = `Press Confirm remove to stop tracking ${name}. Its discovered catalog goes too; videos already ingested from it are kept.`;
+    if (!this.action.confirm(channel.id, warning)) return;
+
+    this.action.start(channel.id);
     this.youtube.deleteChannel(channel.id).subscribe({
       next: () => {
-        this.busy.set(null);
         // The row leaves the table, which on its own looks exactly like a press that did nothing.
-        this.said.set(`Stopped tracking ${name}.`);
+        this.action.ok(`Stopped tracking ${name}.`);
         this.list.reload();
       },
-      error: (err: unknown) => {
-        this.busy.set(null);
-        this.said.set('');
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 }

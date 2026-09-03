@@ -24,7 +24,7 @@
       <!-- Where the ingested half of this catalog ended up; `?channelName` already filters it. -->
       <a class="mono sm" routerLink="/videos" [queryParams]="{ channel: ch.displayName }">Ingested videos →</a>
       <a class="mono sm" [href]="ch.url" target="_blank" rel="noopener">Open on YouTube ↗</a>
-      <button type="button" [disabled]="busy()" (click)="sync()">{{ busy() ? 'Working…' : 'Sync now' }}</button>
+      <button type="button" [disabled]="action.isBusy()" (click)="sync()">{{ action.isBusy('sync') ? 'Working…' : 'Sync now' }}</button>
     </div>
   </div>
 
@@ -35,56 +35,21 @@
   <vk-problem [failure]="failure()" />
 
   <!--
-    The run this screen just started, advancing in place — same lane component as the run screen,
-    so what you learn to read here is what you read when something breaks. The rejects sit beside
+    The run this screen just started, advancing in place — `vk-run-watch`, the same panel the
+    ingest screen draws, over the same lane component the run screen uses. The rejects sit under
     it because a 202 is not an acceptance: the body names every video that was turned away.
   -->
   @if (watching()) {
-    <section class="panel watch">
-      <div class="panel-head">
-        <span class="eyebrow">{{ headline() }}</span>
-        @if (watched(); as run) {
-          <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
-        }
-      </div>
-
-      @if (watched(); as run) {
-        <p class="watch-meta mono sm" aria-live="polite">
-          <vk-status [status]="run.status" />
-          <span class="muted">· {{ watchedItems().length }} item(s) ·
-            <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
-        </p>
-
-        <ul class="watch-items">
-          @for (item of watchedItems(); track item.itemId) {
-            <li>
-              <div class="watch-item-head">
-                <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
-                <span class="url" [title]="item.url">{{ label(item.videoTitle, item.url) }}</span>
-                <vk-status [status]="item.status" />
-              </div>
-              <!--
-                The same three inputs the other two screens pass. `status` is what tells the lane an
-                item stopped before phase one — without it a FAILED item reaped while still queued
-                announced itself as complete — and an unwired `pick` leaves ten focusable buttons
-                per item that do nothing.
-              -->
-              <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="openPhase(item, $event)" />
-              <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
-            </li>
-          }
-        </ul>
-      } @else if (accepted().length === 0) {
+    <vk-run-watch [watch]="watch" [headline]="startedLabel()">
+      @if (!watched() && accepted().length === 0) {
         <p class="quiet muted">Nothing was accepted, so no run was created.</p>
       }
-
       <!--
-        The same panel the two retry screens use. Warn, not the failure ramp: a video the server
-        declined is not something the operator can fix here — the URLs come from the stored
-        catalog, not from a box they typed into.
+        Warn, not the failure ramp: a video the server declined is not something the operator can
+        fix here — these URLs come from the stored catalog, not from a box they typed into.
       -->
       <vk-rejects [items]="rejected()" label="not started" />
-    </section>
+    </vk-run-watch>
   }
 
   <!--
@@ -111,8 +76,8 @@
     </div>
     <div class="ingest-body">
       <vk-phase-picker [(skipped)]="skipped" />
-      <button class="btn-primary" type="button" [disabled]="busy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
-        {{ busy() ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
+      <button class="btn-primary" type="button" [disabled]="action.isBusy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
+        {{ action.isBusy('ingest') ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
       </button>
     </div>
   </section>
@@ -147,7 +112,7 @@
       -->
       @if ((ch.videoCount ?? 0) === 0) {
         <vk-empty message="This catalog is empty. Sync the channel to fetch its uploads.">
-          <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
+          <button type="button" [disabled]="action.isBusy()" (click)="sync()">Sync now</button>
         </vk-empty>
       } @else if (onlyNew()) {
         <vk-empty message="Every upload in this catalog is already ingested.">
@@ -197,7 +162,7 @@
                   <label [attr.for]="'pick-' + video.id">{{ video.title }}</label>
                 </td>
                 @if (showPublished()) {
-                  <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
+                  <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ poller.age(video.publishedAt) }}</td>
                 }
                 @if (!onlyNew()) {
                   <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>

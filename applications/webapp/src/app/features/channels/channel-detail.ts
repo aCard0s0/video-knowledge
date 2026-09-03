@@ -1,26 +1,25 @@
 import { Component, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 
 import {
   CreatePipelineRunResponse,
-  RunItem,
   YoutubeChannelVideoSummary,
   YoutubeService,
 } from '../../api/generated';
-import { blank, isUuid, statusVar } from '../../core/domain';
-import { shortUrl } from '../../core/url';
-import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
+import { blank } from '../../core/domain';
+import { acceptedOf, rejectsOf } from '../../core/verdict';
+import { absoluteTime, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
-import { watchRun } from '../../core/watch-run';
+import { firstFailure, valueOf } from '../../core/problem';
+import { actionState } from '../../core/action';
+import { watchRunFromUrl } from '../../core/watch-run';
 import { Capabilities } from '../../core/capabilities';
 import { StatusBadge } from '../../ui/status-badge';
 import { Pager } from '../../ui/pager';
 import { Empty } from '../../ui/empty';
 import { Problem } from '../../ui/problem';
-import { Lane } from '../../ui/lane';
-import { Fault } from '../../ui/fault';
+import { RunWatch } from '../../ui/run-watch';
 import { Rejects } from '../../ui/rejects';
 import { PhasePicker } from '../../ui/phase-picker';
 import { syncQueryParams } from '../../core/url-state';
@@ -44,7 +43,7 @@ const MAX_PER_RUN = 100; // CreatePipelineRunFromYoutubeVideosRequest: @Size(max
 
 @Component({
   selector: 'vk-channel-detail',
-  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, PhasePicker, Lane, Fault, Rejects],
+  imports: [RouterLink, StatusBadge, Pager, Empty, Problem, PhasePicker, RunWatch, Rejects],
   templateUrl: './channel-detail.html',
   styleUrl: './channel-detail.scss',
   // The table's sticky header offset keys off this — see `--ingest-h` in the stylesheet.
@@ -56,7 +55,6 @@ export class ChannelDetail {
   private readonly youtube = inject(YoutubeService);
   protected readonly poller = inject(Poller);
   private readonly capabilities = inject(Capabilities);
-  private readonly router = inject(Router);
 
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly ingestPanel = viewChild<ElementRef<HTMLElement>>('ingestPanel');
@@ -82,21 +80,13 @@ export class ChannelDetail {
   protected readonly onlyNew = signal(true);
   protected readonly picked = signal<Set<string>>(new Set());
   protected readonly skipped = signal<string[]>([]);
-  protected readonly busy = signal(false);
-  private readonly actionFailure = signal<ApiFailure | null>(null);
+  /** Sync and ingest, the two things this screen does to the server. One at a time. */
+  protected readonly action = actionState<'sync' | 'ingest'>();
   protected readonly started = signal<CreatePipelineRunResponse | null>(null);
-  /**
-   * The run being watched, in the URL.
-   *
-   * It lived only inside `started()`, so a refresh — or Back, or a pasted link — dropped the run
-   * this screen had just kicked off and left the operator to find it on the runs board. The
-   * ingest screen already carries it as `?run=`; the watch panel was copied here without it.
-   */
-  private readonly runId = signal('');
   protected readonly maxPerRun = MAX_PER_RUN;
 
   constructor() {
-    syncQueryParams({ page: this.page, onlyNew: this.onlyNew, run: this.runId }, { run: isUuid });
+    syncQueryParams({ page: this.page, onlyNew: this.onlyNew });
     // Ticking "not ingested only" shrinks the list under the page number that came from the URL.
     clampPage(this.page, PAGE_SIZE, this.videos);
 
@@ -152,16 +142,15 @@ export class ChannelDetail {
    * The run this screen just started, advancing in place.
    *
    * Starting a batch used to end the screen: a count and a link, with the work one navigation
-   * away — the dead end the ingest screen had already been given lanes to fix. Same helper, so
-   * the audit tail and the lane build stay fixed in one place for all three screens that draw
-   * them. Idle until an ingest answers: `watchRun` leaves both its resources alone while the id
-   * is undefined.
+   * away — the dead end the ingest screen had already been given lanes to fix. Same helper and
+   * the same `vk-run-watch` panel, so the audit tail, the lane build and the `?run=` contract stay
+   * fixed in one place. Idle until an ingest answers: `watchRunFromUrl` leaves both its resources
+   * alone while the id is empty.
    */
-  private readonly watch = watchRun(() => this.runId() || undefined);
+  protected readonly watch = watchRunFromUrl();
+  private readonly runId = this.watch.runId;
 
   protected readonly watched = this.watch.detail;
-  protected readonly watchedItems = this.watch.items;
-  protected readonly lane = this.watch.lane;
 
   /**
    * A 202 does not mean the work was queued. The same body carries REJECTED items with the
@@ -169,19 +158,27 @@ export class ChannelDetail {
    * this screen used to report — `items.length` — was the number *submitted*, not the number
    * accepted. Fifty duplicates read as fifty started runs.
    */
-  protected readonly accepted = computed(
-    () => this.started()?.items?.filter((i) => i.status === 'ACCEPTED') ?? [],
-  );
-  protected readonly rejected = computed(
-    () => this.started()?.items?.filter((i) => i.status === 'REJECTED') ?? [],
-  );
+  protected readonly accepted = computed(() => acceptedOf(this.started()));
+  protected readonly rejected = computed(() => rejectsOf(this.started()));
 
-  /** Whether there is a run on screen at all — this session's, or one reopened from the URL. */
-  protected readonly watching = computed(() => !!this.runId());
+  /**
+   * Whether there is anything to show — a run this session started, one reopened from the URL, or
+   * an ingest that started *nothing*.
+   *
+   * That last case is why `started()` counts. When every picked video is refused the server creates
+   * no run, so `runId` stays empty — and keying the panel on the id alone hid the whole thing,
+   * including the `vk-rejects` table naming each refusal and the line saying no run was created.
+   * The reasons reached the client and were rendered nowhere.
+   */
+  protected readonly watching = computed(() => !!this.runId() || !!this.started());
 
-  /** "started · N accepted" is only true of a run this visit began; a reopened one is watched. */
-  protected readonly headline = computed(() => {
-    if (!this.started()) return `watching · ${this.runId().slice(0, 8)}`;
+  /**
+   * "started · N accepted" is only true of a run this visit began. A run reopened from `?run=` gets
+   * no label at all: the panel names the run it is watching, which is the honest thing to say
+   * about one this visit did not start.
+   */
+  protected readonly startedLabel = computed(() => {
+    if (!this.started()) return '';
     const rejects = this.rejected().length;
     return `started · ${this.accepted().length} accepted${rejects ? ` · ${rejects} rejected` : ''}`;
   });
@@ -210,11 +207,10 @@ export class ChannelDetail {
 
   protected readonly failure = computed(
     () =>
-      this.actionFailure() ??
+      this.action.failure() ??
       firstFailure(this.channel, this.videos, this.watch.run, this.watch.audit),
   );
 
-  protected readonly statusVar = statusVar;
   protected readonly valueOf = valueOf;
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
@@ -224,22 +220,6 @@ export class ChannelDetail {
     return humanAgeCoarse(value, this.poller.now());
   }
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
-
-  /** Same fallback the other two lane screens use: a title if there is one, else the URL with its
-   *  boilerplate off — `.truncate` clips the tail, which on a watch URL is the video id. */
-  protected label(title: string | undefined, url: string | undefined): string {
-    return blank(title) ? shortUrl(url) : title!;
-  }
-
-  /** A lane segment opens the run screen with the trail filtered to that phase. */
-  protected openPhase(item: RunItem, phase: string): void {
-    void this.router.navigate(['/runs', this.runId()], {
-      queryParams: { item: item.itemId, phase },
-    });
-  }
 
   protected isPicked(video: YoutubeChannelVideoSummary): boolean {
     return !!video.youtubeVideoId && this.picked().has(video.youtubeVideoId);
@@ -268,25 +248,20 @@ export class ChannelDetail {
   }
 
   protected sync(): void {
-    this.busy.set(true);
-    this.actionFailure.set(null);
+    this.action.start('sync');
     this.youtube.syncChannel(this.channelId()).subscribe({
       next: () => {
-        this.busy.set(false);
+        this.action.ok();
         this.channel.reload();
         this.videos.reload();
       },
-      error: (err: unknown) => {
-        this.busy.set(false);
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 
   protected ingest(): void {
     if (this.pickedCount() === 0 || this.overLimit()) return;
-    this.busy.set(true);
-    this.actionFailure.set(null);
+    this.action.start('ingest');
     this.started.set(null);
     this.youtube
       .createRunsFromChannel(this.channelId(), {
@@ -295,7 +270,7 @@ export class ChannelDetail {
       })
       .subscribe({
         next: (response) => {
-          this.busy.set(false);
+          this.action.ok();
           this.started.set(response);
           this.runId.set(response.runId ?? '');
           // Picks are cleared, not re-seeded from the rejects: the response identifies an item by
@@ -304,10 +279,7 @@ export class ChannelDetail {
           this.clearPicks();
           this.videos.reload();
         },
-        error: (err: unknown) => {
-          this.busy.set(false);
-          this.actionFailure.set(toApiFailure(err));
-        },
+        error: (err: unknown) => this.action.fail(err),
       });
   }
 }

@@ -6,39 +6,9 @@ import { Router, RouterOutlet, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { Ingest, parseUrls, rejectsOf } from './ingest';
+import { Ingest, parseUrls } from './ingest';
 import { ItemResultStatusEnum, PipelinesService } from '../../api/generated';
 import { OPTIONAL_PHASES } from '../../core/domain';
-
-describe('rejectsOf', () => {
-  it('keeps only the declined items', () => {
-    expect(
-      rejectsOf({
-        runId: 'r1',
-        items: [
-          { url: 'https://a', status: ItemResultStatusEnum.Accepted },
-          {
-            url: 'https://b',
-            status: ItemResultStatusEnum.Rejected,
-            reason: 'run item is already running',
-          },
-          { url: 'https://c', status: ItemResultStatusEnum.Rejected },
-        ],
-      }),
-    ).toEqual([
-      {
-        url: 'https://b',
-        status: ItemResultStatusEnum.Rejected,
-        reason: 'run item is already running',
-      },
-      { url: 'https://c', status: ItemResultStatusEnum.Rejected },
-    ]);
-  });
-
-  it('has nothing to say before a request has answered', () => {
-    expect(rejectsOf(null)).toEqual([]);
-  });
-});
 
 describe('parseUrls', () => {
   it('counts lines, not tokens — three words on one line were reported as three lines', () => {

@@ -10,16 +10,14 @@ import {
   ItemResult,
   ItemResultStatusEnum,
   PipelinesService,
-  RunItem,
 } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { blank, isUuid, statusVar } from '../../core/domain';
-import { watchRun } from '../../core/watch-run';
-import { absoluteTime, humanAge } from '../../core/time';
+import { blank, statusVar } from '../../core/domain';
+import { acceptedOf, rejectsOf } from '../../core/verdict';
+import { watchRunFromUrl } from '../../core/watch-run';
+import { absoluteTime } from '../../core/time';
 import { shortUrl } from '../../core/url';
-import { syncQueryParams } from '../../core/url-state';
-import { Lane } from '../../ui/lane';
-import { Fault } from '../../ui/fault';
+import { RunWatch } from '../../ui/run-watch';
 import { StatusBadge } from '../../ui/status-badge';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
 import { Problem } from '../../ui/problem';
@@ -33,11 +31,6 @@ const RECENT_SIZE = 50; // one screenful of a range the server now bounds; 200 i
 const RANGES = ['today', 'week', 'all'] as const;
 type RunRange = (typeof RANGES)[number];
 const HTTP_URL = /^https?:\/\//i;
-
-/** The REJECTED items out of either response shape (202 retry, 200 create, 400 create). */
-export function rejectsOf(response: CreatePipelineRunResponse | null): ItemResult[] {
-  return (response?.items ?? []).filter((i) => i.status === 'REJECTED');
-}
 
 /**
  * What the operator typed, read the way the help text promises: **one URL per line**.
@@ -81,8 +74,7 @@ export function parseUrls(raw: string): { valid: string[]; invalid: string[]; du
     RouterLink,
     Problem,
     PhasePicker,
-    Lane,
-    Fault,
+    RunWatch,
     StatusBadge,
     Rejects,
     ErrorCode,
@@ -115,17 +107,11 @@ export class Ingest {
   protected readonly result = signal<CreatePipelineRunResponse | null>(null);
 
   /**
-   * The run being watched, in the URL.
-   *
-   * It used to live only in `result()`, so a refresh — or Back, or a pasted link — dropped the run
-   * the operator had just started and left them to find it again on the runs board. It is the one
-   * piece of state on this screen worth a query param: the textarea is a draft and the phase picker
-   * describes the *next* run, but the run in flight is what someone would want to reopen.
+   * Focused after a submit answers, so the keyboard lands on the result rather than on nothing.
+   * `read: ElementRef` because the ref names a component now — without it the query hands back the
+   * `RunWatch` instance, which has no `nativeElement` to focus.
    */
-  private readonly runId = signal('');
-
-  /** Focused after a submit answers, so the keyboard lands on the result rather than on nothing. */
-  private readonly watchPanel = viewChild<ElementRef<HTMLElement>>('watchPanel');
+  private readonly watchPanel = viewChild('watchPanel', { read: ElementRef });
 
   /** Recomputed on every keystroke so the count and the rejects are visible before submitting. */
   protected readonly parsed = computed(() => parseUrls(this.raw()));
@@ -144,8 +130,13 @@ export class Ingest {
    * Watching the run you just started, here. Submitting used to end the screen: the only feedback
    * was a count, and the actual work was one navigation away. Now the accepted items appear below
    * the form as live lanes, so paste → start → watch happens without moving.
+   *
+   * `watchRunFromUrl` carries the id in the query string as `?run=` — the one piece of state on
+   * this screen worth a link, since the textarea is a draft and the phase picker describes the
+   * *next* run. The handle goes straight to `vk-run-watch`, which draws the panel.
    */
-  private readonly watch = watchRun(() => this.runId() || undefined);
+  protected readonly watch = watchRunFromUrl();
+  protected readonly runId = this.watch.runId;
 
   protected readonly ranges = RANGES;
   protected readonly range = signal<RunRange>('today');
@@ -182,8 +173,6 @@ export class Ingest {
   });
 
   protected readonly watched = this.watch.detail;
-  protected readonly watchedItems = this.watch.items;
-  protected readonly lane = this.watch.lane;
   protected readonly recentRuns = computed(() => valueOf(this.recent)?.items ?? []);
 
   /**
@@ -209,9 +198,6 @@ export class Ingest {
     if (run.id) void this.router.navigate(['/runs', run.id]);
   }
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   /** Title first, then the URL with its boilerplate off — never the raw URL, which clips its id. */
   protected label(title: string | undefined, url: string | undefined): string {
@@ -219,9 +205,7 @@ export class Ingest {
   }
 
 
-  protected readonly accepted = computed(
-    () => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? [],
-  );
+  protected readonly accepted = computed(() => acceptedOf(this.result()));
 
   /**
    * Lines that will not run: the ones the server declined, plus the ones this screen never sent.
@@ -240,15 +224,16 @@ export class Ingest {
     () => !this.retrying() && this.watched()?.status === 'FAILED',
   );
 
-  /** "started · 2 accepted" is only true for the run this session started; a reopened one is watched. */
-  protected readonly headline = computed(() => {
-    const response = this.result();
-    if (response) return `started · ${this.accepted().length} accepted`;
-    return `watching · ${this.runId().slice(0, 8)}`;
-  });
+  /**
+   * "started · 2 accepted" is only true for the run this session started. A run reopened from
+   * `?run=` gets no label at all: the panel names the run it is watching, which is the honest
+   * thing to say about one this visit did not start.
+   */
+  protected readonly startedLabel = computed(() =>
+    this.result() ? `started · ${this.accepted().length} accepted` : '',
+  );
 
   constructor() {
-    syncQueryParams({ run: this.runId }, { run: isUuid });
     this.poller.every(
       () => (this.watch.live() ? POLL_LIVE : POLL_IDLE),
       () => {
@@ -348,20 +333,6 @@ export class Ingest {
         this.actionFailure.set(toApiFailure(err));
         this.retrying.set(false);
       },
-    });
-  }
-
-  /**
-   * A lane segment opens the run screen with the trail already filtered to that phase.
-   *
-   * The segments are buttons on both screens that draw lanes, but only run detail listened: here
-   * they were focusable controls that did nothing, ten per completed item. The trail they filter
-   * does not exist on this screen — so the honest destination is the screen where it does, which
-   * is also where the operator was heading.
-   */
-  protected openPhase(item: RunItem, phase: string): void {
-    void this.router.navigate(['/runs', this.runId()], {
-      queryParams: { item: item.itemId, phase },
     });
   }
 }

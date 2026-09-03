@@ -78,63 +78,36 @@
 </form>
 
 <!--
-  The run you just started, advancing in place. Same lane component as the run screen, so what
-  you learn to read here is what you read when something breaks. `tabindex="-1"` so a finished
-  submit can put the keyboard here — the submit button disables itself and the browser would
-  otherwise drop focus to <body>.
+  The run you just started, advancing in place — `vk-run-watch`, the same panel the channel screen
+  draws, over the same lane component the run screen uses, so what you learn to read here is what
+  you read when something breaks. It appears as soon as there is an id to watch: waiting for the
+  run itself to load flashed the recent list over the run that had just been started.
 -->
-<section class="panel watch" #watchPanel tabindex="-1">
-  @if (watched(); as run) {
-    <div class="panel-head">
-      <span class="eyebrow">{{ headline() }}</span>
-      <a class="mono sm" [routerLink]="['/runs', run.id]">full run →</a>
-    </div>
+@if (runId()) {
+  <vk-run-watch #watchPanel [watch]="watch" [headline]="startedLabel()" [channelLink]="true">
+    <!--
+      Diagnosing a failure and fixing it happen on the same screen. Without this the operator read
+      the phase and the errorCode here, then navigated to the run screen to press the button — and
+      the run screen is where they already were, one screen ago.
 
-    <p class="watch-meta mono sm" aria-live="polite">
-      <vk-status [status]="run.status" />
-      <span class="muted">· {{ watchedItems().length }} item(s) ·
-        <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
+      Wrapped in an `<ng-container>` rather than declared bare: `ng-content select` matches the
+      static root nodes of the projected content, so a control sitting directly inside `@if` would
+      never reach the slot it names.
+    -->
+    <ng-container action>
       @if (canRetry() || retrying()) {
-        <!--
-          Diagnosing a failure and fixing it happen on the same screen. Without this the operator
-          read the phase and the errorCode here, then navigated to the run screen to press the
-          button — and the run screen is where they already were, one screen ago.
-        -->
         <button class="btn-sm retry" type="button" [disabled]="!canRetry()" (click)="retry()">
           {{ retrying() ? 'Retrying…' : 'Retry run' }}
         </button>
       }
-    </p>
+    </ng-container>
 
     <vk-rejects [items]="retryRejects()" />
-
-    <ul class="watch-items">
-      @for (item of watchedItems(); track item.itemId) {
-        <li>
-          <div class="watch-item-head">
-            <span class="spine-dot" [style.background]="statusVar(item.status)" aria-hidden="true"></span>
-            <span class="url" [title]="label(item.videoTitle, item.url)">
-              @if (!blank(item.channelName)) {
-                <a class="channel" routerLink="/videos" [queryParams]="{ channel: item.channelName }">{{ item.channelName }}</a> -
-              }
-              {{ label(item.videoTitle, item.url) }}
-            </span>
-            <vk-status [status]="item.status" />
-          </div>
-          <!--
-            `status` is what tells the lane an item stopped before phase one: with it absent the
-            lane cannot distinguish "reaped while queued" from "finished", and announced a FAILED
-            item as complete. The run screen has always passed it.
-
-            A segment opens the run screen with the trail filtered to that phase. Unwired, these
-            were focusable buttons that did nothing — ten per completed item.
-          -->
-          <vk-lane [segments]="lane(item)" [status]="item.status" (pick)="openPhase(item, $event)" />
-          <vk-fault [errorCode]="item.errorCode" [error]="item.error" />
-        </li>
-      }
-    </ul>
-  } @else {
+  </vk-run-watch>
+} @else {
+  <!-- The ref is on both branches: an all-rejected submit sets no run id, and the keyboard still
+       has to land somewhere other than the top of the document. -->
+  <section class="panel watch" #watchPanel tabindex="-1">
     <div class="panel-head">
       <!-- Chips, not a `<select>`: three ranges, and the one you want is one press away. Same row
            the videos and runs boards use, for the same reason. -->
@@ -227,7 +200,7 @@
                   <a [routerLink]="['/videos', run.videoId]">{{ label(run.videoTitle, run.videoUrl) }}</a>
                 }
               </span>
-              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span>
+              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ poller.age(run.createdAt) }}</span>
             </div>
             @if (disclosure.isOpen(run.id)) {
               <p class="msg mono sm" [id]="'msg-' + run.id">{{ run.error || 'No message recorded.' }}</p>
@@ -243,5 +216,5 @@
         </p>
       }
     }
-  }
-</section>
+  </section>
+}

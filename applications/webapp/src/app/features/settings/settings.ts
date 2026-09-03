@@ -9,7 +9,8 @@ import {
   UpdateConnectionRequest,
 } from '../../api/generated';
 import { absoluteTime } from '../../core/time';
-import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
+import { firstFailure, valueOf } from '../../core/problem';
+import { actionState } from '../../core/action';
 import { Icon } from '../../ui/icon';
 import { Problem } from '../../ui/problem';
 
@@ -152,14 +153,13 @@ type ConnectionForm = FormGroup<{
 export class Settings {
   private readonly connections = inject(ConnectionsService);
 
-  /** Which card is mid-request, so only that one's buttons go busy. */
-  protected readonly busy = signal<ConnectionName | null>(null);
-  /** Two-step reset: the first press arms the card, the second sends it. */
-  protected readonly armed = signal<ConnectionName | null>(null);
-  /** What the last press did, for the `role="status"` line. Empty is the resting state. */
-  protected readonly said = signal('');
+  /**
+   * Save, test and reset, keyed by connection, so only the card mid-request goes busy. The two-step
+   * reset rides the same instance. This screen is where `actionState` was first extracted, as a
+   * local `start`/`fail` pair; six screens carry the same four signals.
+   */
+  protected readonly action = actionState<ConnectionName>();
   protected readonly probes = signal<Record<string, ConnectionTestResult>>({});
-  private readonly actionFailure = signal<ApiFailure | null>(null);
 
   private readonly forms = new Map<ConnectionName, ConnectionForm>();
 
@@ -168,7 +168,7 @@ export class Settings {
   });
 
   protected readonly rows = computed(() => valueOf(this.list) ?? []);
-  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.list));
+  protected readonly failure = computed(() => this.action.failure() ?? firstFailure(this.list));
 
   protected readonly absoluteTime = absoluteTime;
 
@@ -226,41 +226,39 @@ export class Settings {
 
     const body = buildUpdate(row, form.getRawValue());
 
-    this.start(name);
+    this.action.start(name);
     this.connections.updateConnection(name, body).subscribe({
       next: (saved) => {
-        this.busy.set(null);
         // The key box is cleared because its value now lives on the server and cannot come back.
         form.controls.apiKey.setValue('');
         // Nothing on the card necessarily changes — saving the value that was already there is a
         // no-op on screen — so the confirmation has to be said rather than shown. A card with no
         // endpoint would otherwise read "at null", which is the one thing it must not say.
-        this.said.set(
+        this.action.ok(
           saved.supportsBaseUrl
             ? `Saved ${name}. Now ${saved.provider} at ${saved.baseUrl}.`
             : `Saved ${name}. Phase ${saved.enabled ? 'enabled' : 'disabled'}.`,
         );
         this.list.reload();
       },
-      error: (err: unknown) => this.fail(err),
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 
   protected test(row: ConnectionSummary): void {
     const name = row.name!;
-    this.start(name);
+    this.action.start(name);
     this.connections.testConnection(name).subscribe({
       // A failed probe is a successful request: the answer is in the body, not in the error path.
       next: (result) => {
-        this.busy.set(null);
         this.probes.update((all) => ({ ...all, [name]: result }));
-        this.said.set(
+        this.action.ok(
           result.reachable
             ? `${name} answered in ${result.latencyMs}ms.`
             : `${name} did not answer: ${result.error}`,
         );
       },
-      error: (err: unknown) => this.fail(err),
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 
@@ -272,41 +270,22 @@ export class Settings {
    */
   protected reset(row: ConnectionSummary): void {
     const name = row.name!;
-    if (this.armed() !== name) {
-      this.armed.set(name);
-      this.said.set(
-        `Press Confirm reset to drop the stored override for ${name} and go back to the value the server started with.`,
-      );
-      return;
-    }
-    this.armed.set(null);
-    this.start(name);
+    const warning = `Press Confirm reset to drop the stored override for ${name} and go back to the value the server started with.`;
+    if (!this.action.confirm(name, warning)) return;
+
+    this.action.start(name);
     this.connections.resetConnection(name).subscribe({
       next: () => {
-        this.busy.set(null);
         // The card has to be rebuilt from the restored values, so drop the form with the row.
         this.forms.delete(name);
         this.probes.update((all) => {
           const { [name]: _dropped, ...rest } = all;
           return rest;
         });
-        this.said.set(`Reset ${name} to its configured value.`);
+        this.action.ok(`Reset ${name} to its configured value.`);
         this.list.reload();
       },
-      error: (err: unknown) => this.fail(err),
+      error: (err: unknown) => this.action.fail(err),
     });
-  }
-
-  private start(name: ConnectionName): void {
-    this.busy.set(name);
-    this.armed.set(null);
-    this.actionFailure.set(null);
-    this.said.set('');
-  }
-
-  private fail(err: unknown): void {
-    this.busy.set(null);
-    this.said.set('');
-    this.actionFailure.set(toApiFailure(err));
   }
 }

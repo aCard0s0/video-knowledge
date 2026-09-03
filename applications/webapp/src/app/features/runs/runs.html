@@ -52,7 +52,7 @@
               </td>
               <td class="truncate hide-sm">{{ run.channelName || '—' }}</td>
               <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
-              <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</td>
+              <td class="num sm" [title]="absoluteTime(run.createdAt)">{{ poller.age(run.createdAt) }}</td>
             </tr>
           }
         </tbody>
@@ -153,7 +153,7 @@
                 </a>
               </td>
               <td class="num hide-sm">{{ run.videoCount || '—' }}</td>
-              <td class="num sm" [title]="absoluteTime(sortedAt(run))">{{ age(sortedAt(run)) }}</td>
+              <td class="num sm" [title]="absoluteTime(sortedAt(run))">{{ poller.age(sortedAt(run)) }}</td>
               <td class="stick">
                 <span class="row-actions">
                   @if (run.status === 'FAILED') {

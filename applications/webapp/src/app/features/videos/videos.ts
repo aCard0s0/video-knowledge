@@ -4,9 +4,10 @@ import { rxResource } from '@angular/core/rxjs-interop';
 
 import { VideoSummary, VideosService } from '../../api/generated';
 import { VIDEO_STATUSES, blank, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge } from '../../core/time';
+import { absoluteTime } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
+import { firstFailure, valueOf } from '../../core/problem';
+import { actionState } from '../../core/action';
 import { clampPage } from '../../core/paging';
 import { debouncedWrite } from '../../core/debounce';
 import { syncQueryParams } from '../../core/url-state';
@@ -51,12 +52,8 @@ export class Videos {
   protected readonly page = signal(0);
   protected readonly size = PAGE_SIZE;
 
-  /** Two-step delete: the first click arms the row, the second sends it. */
-  protected readonly armed = signal<string | null>(null);
-  protected readonly deleting = signal(false);
-  private readonly actionFailure = signal<ApiFailure | null>(null);
-  /** What the last press did, for the `role="status"` line. Empty is the resting state. */
-  protected readonly said = signal('');
+  /** Two-step delete, keyed by row: which one is armed, which one is in flight, what it said. */
+  protected readonly action = actionState();
 
   constructor() {
     // `status` reaches a `VideoStatus.valueOf` on the server, so an unknown one is a 400 carrying a
@@ -138,15 +135,12 @@ export class Videos {
   protected sourceLabel(video: VideoSummary): string {
     return [video.source, video.sourceVideoId].filter((part) => !blank(part)).join('/') || '—';
   }
-  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.list));
+  protected readonly failure = computed(() => this.action.failure() ?? firstFailure(this.list));
 
   protected readonly statusVar = statusVar;
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected setStatus(value: string): void {
     this.status.set(value);
@@ -176,31 +170,21 @@ export class Videos {
    * `@if` that used to swap this button for a different one.
    */
   protected remove(video: VideoSummary): void {
-    if (!video.id || this.deleting()) return;
+    if (!video.id || this.action.isBusy()) return;
     const label = video.title?.trim() || video.sourceVideoId || video.id;
-    if (this.armed() !== video.id) {
-      this.armed.set(video.id);
-      this.said.set(`Press Confirm delete to remove ${label}.`);
-      return;
-    }
-    this.deleting.set(true);
-    this.actionFailure.set(null);
+    if (!this.action.confirm(video.id, `Press Confirm delete to remove ${label}.`)) return;
+
+    this.action.start(video.id);
     this.videos.deleteVideo(video.id).subscribe({
       next: () => {
-        this.deleting.set(false);
-        this.armed.set(null);
         // The row leaves the table, which on its own looks exactly like a press that did nothing.
-        this.said.set(`Deleted ${label}.`);
+        this.action.ok(`Deleted ${label}.`);
         focusNeighbourRow();
         this.list.reload();
         // Deleting a FAILED video is the other way that count changes.
         this.failedCount.reload();
       },
-      error: (err: unknown) => {
-        this.deleting.set(false);
-        this.said.set('');
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 }

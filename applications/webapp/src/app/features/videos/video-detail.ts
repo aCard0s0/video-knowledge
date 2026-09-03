@@ -22,8 +22,9 @@ import {
   VideosService,
 } from '../../api/generated';
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge, humanDuration, timecode } from '../../core/time';
-import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
+import { absoluteTime, humanDuration, timecode } from '../../core/time';
+import { firstFailure, valueOf } from '../../core/problem';
+import { actionState } from '../../core/action';
 import { clampPage } from '../../core/paging';
 import { Capabilities } from '../../core/capabilities';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
@@ -75,7 +76,7 @@ export class VideoDetail {
   private readonly speakersApi = inject(SpeakersService);
   private readonly phases = inject(VideoPhasesService);
   private readonly capabilities = inject(Capabilities);
-  private readonly poller = inject(Poller);
+  protected readonly poller = inject(Poller);
 
   private readonly player = viewChild<ElementRef<HTMLVideoElement>>('player');
 
@@ -84,14 +85,15 @@ export class VideoDetail {
   protected readonly knowledgeType = signal<string>('');
   protected readonly cursor = signal(0);
 
-  protected readonly running = signal<string | null>(null);
-  protected readonly lastRun = signal<string | null>(null);
-  private readonly actionFailure = signal<ApiFailure | null>(null);
-  protected readonly renaming = signal<string | null>(null);
-  protected readonly renameResult = signal<string | null>(null);
-
-  /** The chip pressed once and awaiting its confirming second press. */
-  protected readonly armed = signal<string | null>(null);
+  /**
+   * Two independent actions, so two states rather than one shared four signals.
+   *
+   * A phase re-run and a speaker rename can be in flight over the same video, their messages
+   * render in different panes, and one `said` would print a rename into the re-run note. What they
+   * do share is the failure panel, which is `firstFailure`'s job below and not this state's.
+   */
+  protected readonly rerun = actionState<OptionalPhase>();
+  protected readonly renameAction = actionState();
 
   /**
    * How long the in-flight rerun has been running.
@@ -139,7 +141,7 @@ export class VideoDetail {
       () => {
         // Not while a rerun is in flight: that request answers with the counts itself and reloads
         // both, and a poll landing mid-wipe would show the artifacts half-deleted.
-        if (this.running()) return;
+        if (this.rerun.isBusy()) return;
         this.detail.reload();
         this.reloadPane();
       },
@@ -260,7 +262,9 @@ export class VideoDetail {
   protected readonly txtUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.txt`);
   protected readonly jsonUrl = computed(() => `${API_V1}/videos/${this.videoId()}/transcription/whisper.json`);
 
-  protected readonly failure = computed(() => this.actionFailure() ?? firstFailure(this.detail));
+  protected readonly failure = computed(
+    () => this.rerun.failure() ?? this.renameAction.failure() ?? firstFailure(this.detail),
+  );
 
   /** The panes get a panel of their own: which artifact list failed is a different question. */
   protected readonly paneFailure = computed(() =>
@@ -271,15 +275,6 @@ export class VideoDetail {
     return frameId ? `${API_V1}/frames/${frameId}/image` : '';
   }
 
-  /**
-   * Relative age against the shared poll clock, the same one every other screen's ages read.
-   *
-   * `parseServerTime` treats a zoneless timestamp as a server bug rather than assuming UTC, which
-   * is the fallback that once hid an hour of skew for a release.
-   */
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected show(pane: Pane): void {
     this.pane.set(pane);
@@ -324,8 +319,8 @@ export class VideoDetail {
   }
 
   protected chipLabel(phase: OptionalPhase): string {
-    if (this.armed() === phase) return `re-run ${phase}?`;
-    if (this.running() === phase) return `${phase}…`;
+    if (this.rerun.armed() === phase) return `re-run ${phase}?`;
+    if (this.rerun.isBusy(phase)) return `${phase}…`;
     return phase;
   }
 
@@ -341,12 +336,9 @@ export class VideoDetail {
    * an empty pane has nothing to destroy.
    */
   protected confirmRun(phase: OptionalPhase): void {
-    if (this.armed() !== phase) {
-      this.armed.set(phase);
-      return;
-    }
-    this.armed.set(null);
-    this.runPhase(phase);
+    // No warning line: the chip relabels itself "re-run PHASE?", and the note under it already
+    // says what a re-run costs.
+    if (this.rerun.confirm(phase)) this.runPhase(phase);
   }
 
   /**
@@ -354,18 +346,14 @@ export class VideoDetail {
    * its own artifacts), so the honest feedback is elapsed time and rows written.
    */
   protected runPhase(phase: OptionalPhase): void {
-    // Also clears an arm left over from a chip the operator never confirmed, so firing an
+    // `start` also clears an arm left over from a chip the operator never confirmed, so firing an
     // empty-state CTA cannot leave a different chip sitting one press from wiping its artifacts.
-    this.armed.set(null);
-    this.running.set(phase);
-    this.actionFailure.set(null);
-    this.lastRun.set(null);
+    this.rerun.start(phase);
     this.startTicking();
     this.phases.runVideoPhase(this.videoId(), phase).subscribe({
       next: (result) => {
         this.stopTicking();
-        this.running.set(null);
-        this.lastRun.set(
+        this.rerun.ok(
           `${result.phase}: ${humanDuration(result.elapsedMs)}${
             result.rowsAffected === null || result.rowsAffected === undefined
               ? ''
@@ -381,8 +369,7 @@ export class VideoDetail {
       },
       error: (err: unknown) => {
         this.stopTicking();
-        this.running.set(null);
-        this.actionFailure.set(toApiFailure(err));
+        this.rerun.fail(err);
       },
     });
   }
@@ -410,27 +397,21 @@ export class VideoDetail {
    */
   protected rename(speaker: SpeakerDto, displayName: string): void {
     if (!speaker.id) return;
-    this.renaming.set(speaker.id);
-    this.renameResult.set(null);
-    this.actionFailure.set(null);
+    this.renameAction.start(speaker.id);
     this.speakersApi.renameSpeaker(speaker.id, { displayName }).subscribe({
       next: (updated) => {
-        this.renaming.set(null);
         if (this.speakers.hasValue()) {
           this.speakers.update((rows) => rows.map((r) => (r.id === updated.id ? updated : r)));
         }
         // A row that silently goes back to looking exactly as it did is indistinguishable from a
         // press that did nothing — the rule the runs board's retry line already follows.
-        this.renameResult.set(
+        this.renameAction.ok(
           updated.displayName
             ? `Saved: ${updated.label} is now “${updated.displayName}”.`
             : `Cleared the name for ${updated.label}.`,
         );
       },
-      error: (err: unknown) => {
-        this.renaming.set(null);
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.renameAction.fail(err),
     });
   }
 
