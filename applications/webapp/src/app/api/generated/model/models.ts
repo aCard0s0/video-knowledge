@@ -25,8 +25,6 @@ export * from './page-response-youtube-channel-summary';
 export * from './page-response-youtube-channel-video-summary';
 export * from './pipeline-capabilities';
 export * from './readiness-result';
-export * from './regenerate-context-result';
-export * from './regenerate-knowledge-result';
 export * from './rename-speaker-request';
 export * from './retry-run-request';
 export * from './run-details';

@@ -27,7 +27,6 @@ public final class VidIngestApiPaths {
     public static final String VIDEO_DETAIL = VIDEO + "/detail";
     public static final String VIDEO_TRANSCRIPTION_WHISPER_TXT = VIDEO_TRANSCRIPTION + "/whisper.txt";
     public static final String VIDEO_TRANSCRIPTION_WHISPER_JSON = VIDEO_TRANSCRIPTION + "/whisper.json";
-    public static final String VIDEO_CONTEXT_REGENERATE = VIDEO + "/context/regenerate";
 
     public static final String PIPELINE_CAPABILITIES = PIPELINES + "/capabilities";
 
@@ -46,7 +45,6 @@ public final class VidIngestApiPaths {
     public static final String KNOWLEDGE_STALE = KNOWLEDGE + "/stale";
 
     public static final String VIDEO_KNOWLEDGE = VIDEO + "/knowledge";
-    public static final String VIDEO_KNOWLEDGE_REGENERATE = VIDEO_KNOWLEDGE + "/regenerate";
     public static final String VIDEO_SPEAKERS = VIDEO + "/speakers";
     public static final String VIDEO_OCR = VIDEO + "/ocr";
     public static final String VIDEO_OCR_FRAMES = VIDEO_OCR + "/frames";

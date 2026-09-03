@@ -66,9 +66,9 @@ public class KnowledgeExtractionService {
      * when M5 fusion ran but found no signals to fuse.
      */
     public int extractKnowledge(Video video) {
-        // The master switch, checked here rather than only in KnowledgePhase.applies(). The phase
-        // gate never covered POST /videos/{id}/knowledge/regenerate, so with the feature off that
-        // endpoint still called the chat model and hung for the full
+        // The master switch, checked here rather than only in KnowledgePhase.applies(). Every
+        // per-phase rerun bypasses applies() by design, so with the feature off the rerun endpoint
+        // still called the chat model and hung for the full
         // vidingest.knowledge.read-timeout (10m by default) before failing. Same shape of guard as
         // SemanticKnowledgeSearchService uses for vidingest.search.semantic-enabled, and naming the
         // property is the point: a 409 that does not say which flag to flip is a worse answer than

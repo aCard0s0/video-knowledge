@@ -14,7 +14,7 @@ import java.util.List;
  *
  * <p>A report rather than a bulk re-extract. One video costs ~2.5 minutes of LLM time, so doing them
  * all in one request would hold it open for hours and need async machinery that
- * {@code POST /videos/{videoId}/knowledge/regenerate} already makes unnecessary: read this, then
+ * {@code POST /videos/{videoId}/phases/KNOWLEDGE/run} already makes unnecessary: read this, then
  * drive that per video at whatever rate suits the deployment.
  *
  * @param currentPromptVersion what {@code KnowledgeExtractionPrompt.PROMPT_VERSION} is now

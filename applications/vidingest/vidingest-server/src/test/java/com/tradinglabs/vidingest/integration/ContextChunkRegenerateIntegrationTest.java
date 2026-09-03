@@ -25,6 +25,15 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+/**
+ * Drives CONTEXT through the per-phase rerun endpoint. It used to drive the
+ * {@code /context/regenerate} twin, which called {@code ContextChunkGenerationService} directly and
+ * so could not see the status handling {@code ContextPhase} wraps it in. Going through the phase is
+ * also what keeps the transaction-boundary assertion below honest about the pipeline's own path.
+ *
+ * <p>{@code VideoPhaseRunnerService} bypasses {@code applies(ctx)} by design, so this still runs
+ * with {@code vidingest.search.semantic-enabled=false} as the base class sets it.
+ */
 class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest {
 
     @Autowired
@@ -70,7 +79,7 @@ class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest
                 .build());
 
         HttpClient client = HttpClient.newHttpClient();
-        URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/videos/" + video.getId() + "/context/regenerate");
+        URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/videos/" + video.getId() + "/phases/CONTEXT/run");
         HttpResponse<String> res = client.send(
                 HttpRequest.newBuilder(uri)
                         .header("Content-Type", "application/json")
@@ -81,7 +90,7 @@ class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest
         assertThat(res.statusCode()).isEqualTo(200);
 
         JsonNode json = objectMapper.readTree(res.body());
-        int chunks = json.get("chunks").asInt();
+        int chunks = json.get("rowsAffected").asInt();
         assertThat(chunks).isGreaterThan(0);
         assertThat(json.get("videoId").asText()).isEqualTo(video.getId().toString());
 
@@ -106,7 +115,7 @@ class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest
                 .build());
 
         HttpClient client = HttpClient.newHttpClient();
-        URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/videos/" + video.getId() + "/context/regenerate");
+        URI uri = URI.create("http://localhost:" + port + "/vidingest/api/v1/videos/" + video.getId() + "/phases/CONTEXT/run");
         HttpResponse<String> res = client.send(
                 HttpRequest.newBuilder(uri)
                         .header("Content-Type", "application/json")
@@ -116,7 +125,7 @@ class ContextChunkRegenerateIntegrationTest extends BaseVidingestIntegrationTest
         );
 
         assertThat(res.statusCode()).isEqualTo(200);
-        assertThat(objectMapper.readTree(res.body()).get("chunks").asInt()).isZero();
+        assertThat(objectMapper.readTree(res.body()).get("rowsAffected").asInt()).isZero();
         assertThat(contextChunkRepository.count()).isZero();
     }
 }

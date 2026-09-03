@@ -3,7 +3,6 @@ package com.tradinglabs.vidingest.cli;
 import com.tradinglabs.vidingest.api.common.PageResponse;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitDto;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
-import com.tradinglabs.vidingest.api.knowledge.RegenerateKnowledgeResult;
 import com.tradinglabs.vidingest.api.knowledge.SearchKnowledgeHit;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunRequest;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunResponse;
@@ -15,6 +14,7 @@ import com.tradinglabs.vidingest.api.videos.DeleteVideoResult;
 import com.tradinglabs.vidingest.api.videos.DownloadToDiskResult;
 import com.tradinglabs.vidingest.api.videos.DownloadVideoResponse;
 import com.tradinglabs.vidingest.api.videos.VideoSummary;
+import com.tradinglabs.vidingest.api.videos.RunVideoPhaseResult;
 import com.tradinglabs.vidingest.client.VidingestClient;
 import com.tradinglabs.vidingest.client.VidingestClientException;
 import com.tradinglabs.vidingest.client.VidingestClientProperties;
@@ -497,9 +497,9 @@ public class IngestCommands {
     public String regenerateKnowledge(@ShellOption(help = "Video UUID") String videoId) {
         try {
             UUID uuid = UUID.fromString(videoId);
-            RegenerateKnowledgeResult result = client.regenerateKnowledge(uuid);
-            return String.format("Knowledge regenerated for %s: %d units persisted",
-                    result.videoId(), result.knowledgeUnitCount());
+            RunVideoPhaseResult result = client.runVideoPhase(uuid, "KNOWLEDGE");
+            return String.format("Knowledge regenerated for %s: %s units persisted in %dms",
+                    result.videoId(), result.rowsAffected(), result.elapsedMs());
         } catch (Exception e) {
             log.error("regenerate-knowledge failed", e);
             return formatError("RegenerateKnowledge", e);

@@ -27,8 +27,6 @@ import { PageResponseTranscriptionSegmentSummary } from '../model/page-response-
 // @ts-ignore
 import { PageResponseVideoSummary } from '../model/page-response-video-summary';
 // @ts-ignore
-import { RegenerateContextResult } from '../model/regenerate-context-result';
-// @ts-ignore
 import { VideoDetail } from '../model/video-detail';
 // @ts-ignore
 import { VideoSummary } from '../model/video-summary';
@@ -519,63 +517,6 @@ export class VideosService extends BaseService {
             {
                 context: localVarHttpContext,
                 params: localVarQueryParameters.toHttpParams(),
-                responseType: <any>responseType_,
-                ...(withCredentials ? { withCredentials } : {}),
-                headers: localVarHeaders,
-                observe: observe,
-                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
-                reportProgress: reportProgress
-            }
-        );
-    }
-
-    /**
-     * Regenerate context chunks for a video
-     * Uses the configured embeddings provider to generate context chunks for semantic search.
-     * @endpoint post /api/v1/videos/{videoId}/context/regenerate
-     * @param videoId 
-     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-     * @param reportProgress flag to report request and response progress.
-     * @param options additional options
-     */
-    public regenerateContext(videoId: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<RegenerateContextResult>;
-    public regenerateContext(videoId: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<RegenerateContextResult>>;
-    public regenerateContext(videoId: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<RegenerateContextResult>>;
-    public regenerateContext(videoId: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
-        if (videoId === null || videoId === undefined) {
-            throw new Error('Required parameter videoId was null or undefined when calling regenerateContext.');
-        }
-
-        let localVarHeaders = this.defaultHeaders;
-
-        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
-            'application/json'
-        ]);
-        if (localVarHttpHeaderAcceptSelected !== undefined) {
-            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
-        }
-
-        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
-
-        const localVarTransferCache: boolean = options?.transferCache ?? true;
-
-
-        let responseType_: 'text' | 'json' | 'blob' = 'json';
-        if (localVarHttpHeaderAcceptSelected) {
-            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-                responseType_ = 'text';
-            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-                responseType_ = 'json';
-            } else {
-                responseType_ = 'blob';
-            }
-        }
-
-        let localVarPath = `/api/v1/videos/${this.configuration.encodeParam({name: "videoId", value: videoId, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: "uuid"})}/context/regenerate`;
-        const { basePath, withCredentials } = this.configuration;
-        return this.httpClient.request<RegenerateContextResult>('post', `${basePath}${localVarPath}`,
-            {
-                context: localVarHttpContext,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

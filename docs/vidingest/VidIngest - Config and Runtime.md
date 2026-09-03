@@ -309,7 +309,7 @@ Notes:
   `Qwen3-Embedding-0.6B` or `bge-m3` for 1536 fails at the server. Measured on this box: 2560
   native, 1536 with the field, unit-normalised, cosine 0.49 between two distinct inputs.
 - Semantic search results depend on context-chunk generation during ingestion; ingest without `TRANSCRIBE` or `CONTEXT` in `skipPhases`.
-- For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`.
+- For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/phases/CONTEXT/run`.
 
 #### Troubleshooting (semantic search)
 

@@ -318,7 +318,7 @@ for the new tables live at `db/changelog/changesets/007-*.sql` through `012-*.sq
 
   ```bash
   curl -s localhost:8051/vidingest/api/v1/knowledge/stale | jq -r '.videos[].videoId' \
-    | while read id; do curl -s -X POST "localhost:8051/vidingest/api/v1/videos/$id/knowledge/regenerate"; done
+    | while read id; do curl -s -X POST "localhost:8051/vidingest/api/v1/videos/$id/phases/KNOWLEDGE/run"; done
   ```
 
   `truncated` says the limit cut the list short, so a short list is not mistaken for finished. This
@@ -367,7 +367,7 @@ All under `/vidingest/api/v1`. Existing endpoints unchanged; new endpoints:
 |--------|------|-------------|
 | `GET`   | `/knowledge/search?query=&type=&limit=`            | Cross-video semantic search over `vidingest_knowledge_units` |
 | `GET`   | `/videos/{videoId}/knowledge?type=`                | All knowledge units for a video, optional type filter |
-| `POST`  | `/videos/{videoId}/knowledge/regenerate`           | Re-run `KnowledgePhase` against current multimodal segments |
+| `POST`  | `/videos/{videoId}/phases/KNOWLEDGE/run`           | Re-run `KnowledgePhase` against current multimodal segments |
 | `GET`   | `/videos/{videoId}/speakers`                       | Speakers + segment counts |
 | `PATCH` | `/speakers/{speakerId}`                            | Rename a speaker (`{"displayName": "..."}` or blank to clear) |
 | `GET`   | `/videos/{videoId}/multimodal-timeline?fromSeconds=&toSeconds=` | Fused timeline rows, optional time clip |
@@ -385,7 +385,7 @@ list and parameter reference.
 
 - `searchKnowledge(query, type, limit)`
 - `getKnowledgeUnits(videoId, type)`
-- `regenerateKnowledge(videoId)`
+- `runVideoPhase(videoId, "KNOWLEDGE")`
 - `getSpeakers(videoId)`
 - `renameSpeaker(speakerId, displayName)`
 - `getMultimodalTimeline(videoId, fromSeconds, toSeconds)`

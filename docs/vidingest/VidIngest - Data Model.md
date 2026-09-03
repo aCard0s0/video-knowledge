@@ -195,7 +195,7 @@ Repository: `com.tradinglabs.vidingest.core.transcription.repo.TranscriptionSegm
 
 ### `vidingest_context_chunks` (ContextChunk)
 
-Text chunks with vector embeddings for semantic search. Populated by the pipeline `CONTEXT` phase (when enabled) or via the manual regenerate endpoint (`POST /api/v1/videos/{id}/context/regenerate`).
+Text chunks with vector embeddings for semantic search. Populated by the pipeline `CONTEXT` phase (when enabled) or by re-running that phase alone (`POST /api/v1/videos/{id}/phases/CONTEXT/run`).
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
