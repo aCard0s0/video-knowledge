@@ -21,12 +21,12 @@ where the lease lives. If you are debugging "a run", you are almost always debug
 - **The lease pair exists because `phase_updated_at` cannot tell you anything.** It moves only on a
   phase *transition*, so a phase legitimately running for hours is indistinguishable from abandoned
   work. Two independent answers guard reaping, and they fail in opposite directions:
-  `PipelineService.isItemOwned` is blind to other instances but never wrong about this one;
+  `RunItemLeaseService.isOwnedHere` is blind to other instances but never wrong about this one;
   `lease_owner` / `lease_expires_at` see every instance but go stale if this process stops
   heartbeating. An item is reaped only when **neither** claims it.
 - **Ownership is claimed before the executor submit, the lease after the concurrency gate.** The
   gap is the point: an item queued behind the gate is `PENDING` with **no lease**, so the sweep
-  covers `PENDING` too and `isItemOwned` is the only thing keeping queued work alive. Before that,
+  covers `PENDING` too and the local claim is the only thing keeping queued work alive. Before that,
   a process dying with items queued left them unreachable and every retry refused.
 
 ## Shape
@@ -46,10 +46,10 @@ where the lease lives. If you are debugging "a run", you are almost always debug
 
 ## If you change this
 
-- **Hits:** `RunItemLifecycleService`, `RunItemLeaseService` (all lease writes),
-  `PipelineService.renewLeases` (must stay well under `vidingest.lease.ttl`), `StuckItemReconciler`,
-  `ProgressPipelineRunReconciler`, `RunDetailsMapper`, and the console's lane build
-  (`core/lane.ts`) which reads `failedPhase`.
+- **Hits:** `RunItemLifecycleService`, `RunItemLeaseService` (every lease write, the in-memory
+  claim, and the `renewLeases` heartbeat — which must stay well under `vidingest.lease.ttl`),
+  `StuckItemReconciler`, `ProgressPipelineRunReconciler`, `RunDetailsMapper`, and the console's
+  lane build (`core/lane.ts`) which reads `failedPhase`.
 - **Does not hit:** run status directly. Changing an item status without calling
   `RunAggregationService.refreshRunState` leaves the run where it was.
 

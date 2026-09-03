@@ -23,7 +23,7 @@ neither claim covers is failed.
 
 `phase_updated_at` moves only on a phase *transition*, so a phase legitimately running for hours —
 KNOWLEDGE and DIARIZE both do on a long video — looks identical to abandoned work. One answer is
-not enough, and the two available answers fail in **opposite** directions: `isItemOwned` cannot see
+not enough, and the two available answers fail in **opposite** directions: `isOwnedHere` cannot see
 other instances but is never wrong about this one; the lease sees every instance but goes stale if
 this process stops heartbeating. Requiring both to say "not mine" is the whole design.
 
@@ -35,11 +35,12 @@ started nor taken a lease — ownership is the only thing standing between it an
 1. `StuckItemReconciler.reconcileStuckItems` runs on `vidingest.reconciler.intervalMs` (default
    300 000, initial delay 60 000) — `StuckItemReconciler.java:54-56`.
 2. `findByStatusInAndPhaseUpdatedAtBefore(SWEEPABLE, threshold)` — `:57-58`.
-3. Per item: skip if `PipelineService.isItemOwned` (`PipelineService.java:378`); skip if the lease
-   is live (`RunItemLeaseService.isLive`); otherwise fail it.
-4. Leases are heartbeated by `PipelineService.renewLeases` on
+3. Per item: skip if `RunItemLeaseService.isOwnedHere` (`RunItemLeaseService.java:108`); skip if
+   the lease is live (`RunItemLeaseService.isLive`); otherwise fail it. Both answers come from the
+   same service on purpose — the claim used to be a private field on `PipelineService`.
+4. Leases are heartbeated by `RunItemLeaseService.renewLeases` on
    `vidingest.lease.heartbeatMs` (default 120 000) — **must stay well under `vidingest.lease.ttl`**
-   — `PipelineService.java:404-406`. Renewal is scoped by owner, so a heartbeat can never extend a
+   — `RunItemLeaseService.java:163-165`. Renewal is scoped by owner, so a heartbeat can never extend a
    lease another instance took over.
 5. Separately, at startup only: `ProgressPipelineRunReconciler.reconcileInProgressPipelineRuns` fires
    on `ApplicationReadyEvent` — **not on a schedule** — re-derives each `IN_PROGRESS` run from its

@@ -33,13 +33,13 @@ from skipped.
 
 1. `PipelineController.requestedSkips(request)` — `null` when the list is absent — `PipelineController.java:119`.
 2. Run retry: `PipelineService.enqueueRetryBatch` — `:135`. Item retry: `enqueueRetryItem` — `:241`.
-3. `resolveSkips` falls back to the run's persisted set — `PipelineService.java:280`.
+3. `resolveSkips` falls back to the run's persisted set — `PipelineService.java:262`.
 4. `RunLifecycleService.prepareRetry` **validates and mutates in one call**, writes the effective
    `skipPhases` back and sets `phase = CREATED` — `RunLifecycleService.java:42`. The run-level gate
    ("only a FAILED run may be retried") is answered *first* and separately; a retry that accepts
    nothing must leave the run `FAILED`.
 5. Item eligibility: not `COMPLETED`, not `CANCELLED`, not claimed — the same question the sweep
-   asks. Rejections come back in the body — `PipelineService.java:212`, `:229`.
+   asks. Rejections come back in the body — `PipelineService.java:193`, `:211`.
 6. Per-phase rerun: `POST /api/v1/videos/{videoId}/phases/{phase}/run` →
    `VideoPhaseRunnerService.runPhase` — `VideoPhaseRunnerService.java:58`,
    `VidIngestApiPaths.java:64`. Only `TRANSCRIBE`..`CONTEXT` are reachable — `isOptional()` is the gate.

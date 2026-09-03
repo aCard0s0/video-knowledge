@@ -46,13 +46,13 @@ class StuckItemReconcilerTest {
     @Mock
     private RunAggregationService runAggregationService;
     @Mock
-    private PipelineService pipelineService;
+    private RunItemLeaseService runItemLeaseService;
     @Mock
     private PipelineMetrics pipelineMetrics;
 
     private StuckItemReconciler reconciler() {
         return new StuckItemReconciler(runItemRepository, runItemLifecycleService,
-                runAggregationService, pipelineService, pipelineMetrics, Duration.ofHours(1));
+                runAggregationService, runItemLeaseService, pipelineMetrics, Duration.ofHours(1));
     }
 
     @Test
@@ -60,7 +60,7 @@ class StuckItemReconcilerTest {
         PipelineRunItem item = staleItem();
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemOwned(item.getId())).thenReturn(true);
+        when(runItemLeaseService.isOwnedHere(item.getId())).thenReturn(true);
 
         reconciler().reconcileStuckItems();
 
@@ -78,7 +78,7 @@ class StuckItemReconcilerTest {
         item.setLeaseExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
+        when(runItemLeaseService.isOwnedHere(item.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -93,7 +93,7 @@ class StuckItemReconcilerTest {
         item.setLeaseExpiresAt(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(30));
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
+        when(runItemLeaseService.isOwnedHere(item.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -105,7 +105,7 @@ class StuckItemReconcilerTest {
         PipelineRunItem item = staleItem();
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(item));
-        when(pipelineService.isItemOwned(item.getId())).thenReturn(false);
+        when(runItemLeaseService.isOwnedHere(item.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -119,8 +119,8 @@ class StuckItemReconcilerTest {
         PipelineRunItem abandoned = staleItem();
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(live, abandoned));
-        when(pipelineService.isItemOwned(live.getId())).thenReturn(true);
-        when(pipelineService.isItemOwned(abandoned.getId())).thenReturn(false);
+        when(runItemLeaseService.isOwnedHere(live.getId())).thenReturn(true);
+        when(runItemLeaseService.isOwnedHere(abandoned.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -138,7 +138,7 @@ class StuckItemReconcilerTest {
         PipelineRunItem queued = stalePendingItem();
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(queued));
-        when(pipelineService.isItemOwned(queued.getId())).thenReturn(false);
+        when(runItemLeaseService.isOwnedHere(queued.getId())).thenReturn(false);
 
         reconciler().reconcileStuckItems();
 
@@ -155,7 +155,7 @@ class StuckItemReconcilerTest {
         PipelineRunItem queued = stalePendingItem();
         when(runItemRepository.findByStatusInAndPhaseUpdatedAtBefore(anyCollection(), any()))
                 .thenReturn(List.of(queued));
-        when(pipelineService.isItemOwned(queued.getId())).thenReturn(true);
+        when(runItemLeaseService.isOwnedHere(queued.getId())).thenReturn(true);
 
         reconciler().reconcileStuckItems();
 

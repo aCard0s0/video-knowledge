@@ -964,11 +964,14 @@ second worker wipe-and-repopulating the same video alongside the first.
 
 Ownership has two answers, because they fail in opposite directions:
 
-- `PipelineService.isItemOwned` — items this JVM has claimed, queued behind the concurrency gate
-  as well as executing. Blind to other instances, never wrong about this one.
-- `RunItemLeaseService` (`lease_owner` / `lease_expires_at`, renewed by a heartbeat) — visible to
-  every instance, but goes stale if the owner stops heartbeating, which is the signature of a
-  process that died.
+- `RunItemLeaseService.isOwnedHere` — items this JVM has claimed, queued behind the concurrency
+  gate as well as executing. Blind to other instances, never wrong about this one.
+- `RunItemLeaseService.isLive` (`lease_owner` / `lease_expires_at`, renewed by that service's
+  `renewLeases` heartbeat) — visible to every instance, but goes stale if the owner stops
+  heartbeating, which is the signature of a process that died.
+
+Both are on the one service. The first was a private set on `PipelineService` exposed as
+`isItemOwned`/`hasWorkInFlight`, which is what made the reconciler depend on the orchestrator.
 
 An item is abandoned only when neither claims it. The sweep covers `PENDING` because an item
 whose owner died while it was still queued never reaches `IN_PROGRESS` — and nothing else in the
