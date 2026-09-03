@@ -10,7 +10,8 @@ import {
 import { blank } from '../../core/domain';
 import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
-import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
+import { firstFailure, valueOf } from '../../core/problem';
+import { actionState } from '../../core/action';
 import { watchRunFromUrl } from '../../core/watch-run';
 import { Capabilities } from '../../core/capabilities';
 import { StatusBadge } from '../../ui/status-badge';
@@ -78,8 +79,8 @@ export class ChannelDetail {
   protected readonly onlyNew = signal(true);
   protected readonly picked = signal<Set<string>>(new Set());
   protected readonly skipped = signal<string[]>([]);
-  protected readonly busy = signal(false);
-  private readonly actionFailure = signal<ApiFailure | null>(null);
+  /** Sync and ingest, the two things this screen does to the server. One at a time. */
+  protected readonly action = actionState<'sync' | 'ingest'>();
   protected readonly started = signal<CreatePipelineRunResponse | null>(null);
   protected readonly maxPerRun = MAX_PER_RUN;
 
@@ -201,7 +202,7 @@ export class ChannelDetail {
 
   protected readonly failure = computed(
     () =>
-      this.actionFailure() ??
+      this.action.failure() ??
       firstFailure(this.channel, this.videos, this.watch.run, this.watch.audit),
   );
 
@@ -245,25 +246,20 @@ export class ChannelDetail {
   }
 
   protected sync(): void {
-    this.busy.set(true);
-    this.actionFailure.set(null);
+    this.action.start('sync');
     this.youtube.syncChannel(this.channelId()).subscribe({
       next: () => {
-        this.busy.set(false);
+        this.action.ok();
         this.channel.reload();
         this.videos.reload();
       },
-      error: (err: unknown) => {
-        this.busy.set(false);
-        this.actionFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 
   protected ingest(): void {
     if (this.pickedCount() === 0 || this.overLimit()) return;
-    this.busy.set(true);
-    this.actionFailure.set(null);
+    this.action.start('ingest');
     this.started.set(null);
     this.youtube
       .createRunsFromChannel(this.channelId(), {
@@ -272,7 +268,7 @@ export class ChannelDetail {
       })
       .subscribe({
         next: (response) => {
-          this.busy.set(false);
+          this.action.ok();
           this.started.set(response);
           this.runId.set(response.runId ?? '');
           // Picks are cleared, not re-seeded from the rejects: the response identifies an item by
@@ -281,10 +277,7 @@ export class ChannelDetail {
           this.clearPicks();
           this.videos.reload();
         },
-        error: (err: unknown) => {
-          this.busy.set(false);
-          this.actionFailure.set(toApiFailure(err));
-        },
+        error: (err: unknown) => this.action.fail(err),
       });
   }
 }

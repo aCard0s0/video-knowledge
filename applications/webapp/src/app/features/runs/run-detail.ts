@@ -25,7 +25,8 @@ import { absoluteTime, clockTime, humanAge, humanDuration, msBetween } from '../
 import { LaneSegment, Rerun, SegmentState, laneTotalMs, paintRerun } from '../../core/lane';
 import { Capabilities } from '../../core/capabilities';
 import { watchRun } from '../../core/watch-run';
-import { ApiFailure, firstFailure, toApiFailure } from '../../core/problem';
+import { firstFailure } from '../../core/problem';
+import { actionState } from '../../core/action';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
 import { Lane } from '../../ui/lane';
@@ -81,21 +82,18 @@ export class RunDetail {
    */
   private readonly watch = watchRun(() => this.runId());
 
-  protected readonly retrying = signal(false);
-  protected readonly retryFailure = signal<ApiFailure | null>(null);
-  protected readonly retryRejects = signal<ItemResult[]>([]);
   /**
-   * What the last action did, for the `role="status"` line — the same voice the runs board's
-   * `retrySaid` gives its own retry. A queued retry moves the run back to PENDING and the button
-   * out of the head, which on its own is indistinguishable from a press that did nothing. A
-   * per-phase re-run repaints its own row, so this line is the one place its rows-written count
-   * lands. Empty when a retry queued nothing: the rejects and problem panels are saying why.
+   * Retry the run, retry one item, re-run one phase — three actions, one at a time, all of them
+   * mutating the run in front of the operator. `'retry'` keys the two retries and the phase name
+   * keys a re-run, so the trail's arm and its in-flight row come off the same state.
+   *
+   * `said` is the same voice the runs board's `retrySaid` gives its own retry: a queued retry moves
+   * the run back to PENDING and the button out of the head, which on its own is indistinguishable
+   * from a press that did nothing, and a per-phase re-run's rows-written count has nowhere else to
+   * land. Empty when a retry queued nothing — the rejects and problem panels are saying why.
    */
-  protected readonly said = signal('');
-
-  /** The phase row one press from wiping its artifacts, and the one currently doing it. */
-  protected readonly armedPhase = signal<string | null>(null);
-  protected readonly runningPhase = signal<string | null>(null);
+  protected readonly action = actionState();
+  protected readonly retryRejects = signal<ItemResult[]>([]);
   /** Every re-run this screen has fired, overlaid on the run's own trail. See {@link Rerun}. */
   protected readonly reruns = signal<Record<string, Rerun>>({});
   /**
@@ -140,7 +138,7 @@ export class RunDetail {
     if (Object.keys(reruns).length === 0) {
       return new Map(items.map((item) => [item.itemId, this.runLane(item)] as const));
     }
-    const now = this.runningPhase() ? this.poller.now() : 0;
+    const now = this.action.isBusy() ? this.poller.now() : 0;
     return new Map(
       items.map((item) => {
         const painted = this.runLane(item).map((seg) =>
@@ -330,7 +328,7 @@ export class RunDetail {
   protected select(item: RunItem): void {
     this.picked.set(item.itemId ?? '');
     this.openPhase.set('');
-    this.armedPhase.set(null);
+    this.action.disarm();
   }
 
   protected pickPhase(item: RunItem, phase: string): void {
@@ -343,7 +341,7 @@ export class RunDetail {
    * lane leaves that row behind — a second press would then wipe a phase of a *different* item.
    */
   protected togglePhase(phase: string): void {
-    this.armedPhase.set(null);
+    this.action.disarm();
     this.openPhase.set(this.openPhase() === phase ? '' : phase);
   }
 
@@ -365,8 +363,8 @@ export class RunDetail {
   }
 
   protected rerunLabel(phase: string): string {
-    if (this.armedPhase() === phase) return 'Wipe & re-run?';
-    if (this.runningPhase() === phase) return 'Running…';
+    if (this.action.armed() === phase) return 'Wipe & re-run?';
+    if (this.action.isBusy(phase)) return 'Running…';
     return 'Re-run';
   }
 
@@ -377,12 +375,9 @@ export class RunDetail {
    * out besides Cancel.
    */
   protected confirmRerun(item: RunItem, phase: string): void {
-    if (this.armedPhase() !== phase) {
-      this.armedPhase.set(phase);
-      return;
-    }
-    this.armedPhase.set(null);
-    this.rerunPhase(item, phase);
+    // No warning line: the button relabels itself "Wipe & re-run?", which says the same thing in
+    // the place the press will happen.
+    if (this.action.confirm(phase)) this.rerunPhase(item, phase);
   }
 
   /**
@@ -397,14 +392,11 @@ export class RunDetail {
   private rerunPhase(item: RunItem, phase: string): void {
     const key = rerunKey(item.itemId, phase);
     const startedMs = Date.now();
-    this.runningPhase.set(phase);
-    this.retryFailure.set(null);
-    this.said.set('');
+    this.action.start(phase);
     this.reruns.update((all) => ({ ...all, [key]: { at: new Date(startedMs).toISOString(), startedMs, ms: null } }));
 
     this.videoPhases.runVideoPhase(item.videoId!, phase).subscribe({
       next: (result) => {
-        this.runningPhase.set(null);
         // The server's own measurement, not the round trip: it is what the phase actually cost,
         // and it is the number the log line beside it carries.
         const ms = result.elapsedMs ?? Date.now() - startedMs;
@@ -413,18 +405,17 @@ export class RunDetail {
           [key]: { ...all[key], ms, rows: result.rowsAffected },
         }));
         const rows = result.rowsAffected === null || result.rowsAffected === undefined ? '' : `, ${result.rowsAffected} row(s)`;
-        this.said.set(`re-ran ${result.phase}: ${humanDuration(ms)}${rows}`);
+        this.action.ok(`re-ran ${result.phase}: ${humanDuration(ms)}${rows}`);
         this.watch.reload();
       },
       error: (err: unknown) => {
-        this.runningPhase.set(null);
         // Kept rather than dropped: a failed re-run is the state the row should be reporting, and
         // dropping it would silently restore the successful run underneath as if nothing happened.
         this.reruns.update((all) => ({
           ...all,
           [key]: { ...all[key], ms: Date.now() - startedMs, failed: true },
         }));
-        this.retryFailure.set(toApiFailure(err));
+        this.action.fail(err);
       },
     });
   }
@@ -448,27 +439,20 @@ export class RunDetail {
   }
 
   private send(request: Observable<CreatePipelineRunResponse>): void {
-    this.retrying.set(true);
-    this.retryFailure.set(null);
+    this.action.start('retry');
     this.retryRejects.set([]);
-    this.said.set('');
     request.subscribe({
       next: (response) => {
-        this.retrying.set(false);
         // 202 does not mean the work was queued. `enqueueRetryBatch` answers with REJECTED items
         // and a reason when it could take nothing — already running, already cancelled — and
         // discarding that body made a retry that did nothing at all look like it had worked.
         const items = response.items ?? [];
         const queued = items.filter((i) => i.status === 'ACCEPTED').length;
         this.retryRejects.set(items.filter((i) => i.status === 'REJECTED'));
-        this.said.set(queued ? `Queued ${queued} item(s).` : '');
+        this.action.ok(queued ? `Queued ${queued} item(s).` : '');
         this.watch.reload();
       },
-      error: (err: unknown) => {
-        this.retrying.set(false);
-        this.said.set('');
-        this.retryFailure.set(toApiFailure(err));
-      },
+      error: (err: unknown) => this.action.fail(err),
     });
   }
 }

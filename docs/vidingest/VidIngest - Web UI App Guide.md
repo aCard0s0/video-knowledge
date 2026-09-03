@@ -45,6 +45,7 @@ applications/webapp/
   src/app/core/                   domain.ts (mirrored enums) · time.ts (UTC parsing, durations)
                                   lane.ts (+ spec) · problem.ts (ProblemDetail, firstFailure)
                                   audit.ts (tail paging, + spec) · paging.ts (clampPage, + spec)
+                                  action.ts (busy/armed/said/failure, + spec)
                                   watch-run.ts (run + audit + lanes + ?run=, shared by 3 screens)
                                   poller.ts · url-state.ts · api-base.ts
   src/app/ui/                     lane · run-watch (+spec) · problem · fault · rejects · empty
@@ -317,7 +318,9 @@ than the SPA shell.
   line, always in the DOM so it is a region to announce into rather than one that appears already
   spoken, reads `Press Confirm delete to remove <title>.` and then `Deleted <title>.` — the same
   shape the runs board gives a retry — literally, now: `.said` is one class in `styles.scss` rather
-  than the same four declarations under two names.
+  than the same four declarations under two names. The *state* behind it is shared too, since
+  Sep 2026: `actionState()` in `core/action.ts` holds the `busy`/`armed`/`said`/`failure` four that
+  six screens had written by hand, keyed so one instance covers a list.
 - **Videos triage is one press too, and the count is on the chip.** A `<select>` of nine statuses
   put the screen's whole reason for existing two clicks away and showed no number; the row of chips
   is the runs board's, with `FAILED` carrying its total from one extra one-row query. Nine chips wrap

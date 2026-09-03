@@ -24,7 +24,7 @@
       <!-- Where the ingested half of this catalog ended up; `?channelName` already filters it. -->
       <a class="mono sm" routerLink="/videos" [queryParams]="{ channel: ch.displayName }">Ingested videos →</a>
       <a class="mono sm" [href]="ch.url" target="_blank" rel="noopener">Open on YouTube ↗</a>
-      <button type="button" [disabled]="busy()" (click)="sync()">{{ busy() ? 'Working…' : 'Sync now' }}</button>
+      <button type="button" [disabled]="action.isBusy()" (click)="sync()">{{ action.isBusy('sync') ? 'Working…' : 'Sync now' }}</button>
     </div>
   </div>
 
@@ -76,8 +76,8 @@
     </div>
     <div class="ingest-body">
       <vk-phase-picker [(skipped)]="skipped" />
-      <button class="btn-primary" type="button" [disabled]="busy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
-        {{ busy() ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
+      <button class="btn-primary" type="button" [disabled]="action.isBusy() || pickedCount() === 0 || overLimit()" (click)="ingest()">
+        {{ action.isBusy('ingest') ? 'Starting…' : 'Ingest ' + pickedCount() + ' video(s)' }}
       </button>
     </div>
   </section>
@@ -112,7 +112,7 @@
       -->
       @if ((ch.videoCount ?? 0) === 0) {
         <vk-empty message="This catalog is empty. Sync the channel to fetch its uploads.">
-          <button type="button" [disabled]="busy()" (click)="sync()">Sync now</button>
+          <button type="button" [disabled]="action.isBusy()" (click)="sync()">Sync now</button>
         </vk-empty>
       } @else if (onlyNew()) {
         <vk-empty message="Every upload in this catalog is already ingested.">

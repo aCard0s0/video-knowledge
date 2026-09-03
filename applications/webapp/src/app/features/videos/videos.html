@@ -2,7 +2,7 @@
 <!-- Present even when empty, so it is a region a screen reader can announce into rather than one
      that appears with its text already in place. A deleted row leaves the table, and a row silently
      disappearing is indistinguishable from a press that did nothing. -->
-<p class="said mono muted" role="status">{{ said() }}</p>
+<p class="said mono muted" role="status">{{ action.said() }}</p>
 
 <section class="panel">
   <div class="panel-head">
@@ -132,24 +132,24 @@
                   <button
                     class="btn-sm icon-btn"
                     type="button"
-                    [class.btn-danger]="armed() === video.id"
-                    [attr.aria-disabled]="deleting() ? 'true' : null"
-                    [title]="armed() === video.id ? (deleting() ? 'Deleting…' : 'Confirm delete') : 'Delete'"
+                    [class.btn-danger]="action.armed() === video.id"
+                    [attr.aria-disabled]="action.isBusy() ? 'true' : null"
+                    [title]="action.busy() === video.id ? 'Deleting…' : action.armed() === video.id ? 'Confirm delete' : 'Delete'"
                     (click)="remove(video)"
                   >
                     <!-- The icons carry their name in `title` *and* in a hidden span: a `title`
                          alone is a tooltip no touch device and no screen reader is obliged to read. -->
-                    <vk-icon [name]="armed() === video.id ? 'check' : 'trash'" />
+                    <vk-icon [name]="action.armed() === video.id ? 'check' : 'trash'" />
                     <span class="sr-only">
-                      {{ armed() === video.id ? (deleting() ? 'Deleting…' : 'Confirm delete') : 'Delete' }}
+                      {{ action.busy() === video.id ? 'Deleting…' : action.armed() === video.id ? 'Confirm delete' : 'Delete' }}
                     </span>
                   </button>
-                  @if (armed() === video.id) {
+                  @if (action.armed() === video.id) {
                     <button
                       class="btn-sm icon-btn"
                       type="button"
                       title="Keep the video"
-                      (click)="armed.set(null); said.set('')"
+                      (click)="action.cancel()"
                     >
                       <vk-icon name="close" />
                       <span class="sr-only">Keep the video</span>

@@ -2,7 +2,7 @@
 <!-- Present even when empty, so it is a region a screen reader can announce into rather than one
      that appears with its text already in place. A removed row leaves the table, and a row silently
      disappearing is indistinguishable from a press that did nothing. -->
-<p class="said mono muted" role="status">{{ said() }}</p>
+<p class="said mono muted" role="status">{{ action.said() }}</p>
 
 <form class="panel add" [formGroup]="form" (ngSubmit)="add()">
   <div class="fields">
@@ -39,9 +39,9 @@
         autocomplete="off"
       />
     </div>
-    <button class="btn-primary mono add-btn" type="submit" [disabled]="busy() === 'add'">
-      <vk-icon name="refresh" [spin]="busy() === 'add'" />
-      {{ busy() === 'add' ? 'adding…' : 'add & sync' }}
+    <button class="btn-primary mono add-btn" type="submit" [disabled]="action.busy() === 'add'">
+      <vk-icon name="refresh" [spin]="action.busy() === 'add'" />
+      {{ action.busy() === 'add' ? 'adding…' : 'add & sync' }}
     </button>
   </div>
 </form>
@@ -120,13 +120,13 @@
                   <button
                     class="btn-sm icon-btn"
                     type="button"
-                    [disabled]="busy() === channel.id"
-                    [title]="busy() === channel.id ? 'Syncing…' : 'Sync now'"
+                    [disabled]="action.busy() === channel.id"
+                    [title]="action.busy() === channel.id ? 'Syncing…' : 'Sync now'"
                     (click)="sync(channel)"
                   >
                     <!-- The label used to say "Syncing…"; with it gone the icon has to. -->
-                    <vk-icon name="refresh" [spin]="busy() === channel.id" />
-                    <span class="sr-only">{{ busy() === channel.id ? 'Syncing…' : 'Sync now' }}</span>
+                    <vk-icon name="refresh" [spin]="action.busy() === channel.id" />
+                    <span class="sr-only">{{ action.busy() === channel.id ? 'Syncing…' : 'Sync now' }}</span>
                   </button>
                   <!--
                     One button that changes its icon, not two swapped by an `@if`: Angular destroys
@@ -139,21 +139,21 @@
                   <button
                     class="btn-sm icon-btn btn-danger"
                     type="button"
-                    [attr.aria-disabled]="busy() === channel.id ? 'true' : null"
-                    [title]="armed() === channel.id ? 'Confirm remove' : busy() === channel.id ? 'Removing…' : 'Remove'"
+                    [attr.aria-disabled]="action.busy() === channel.id ? 'true' : null"
+                    [title]="action.armed() === channel.id ? 'Confirm remove' : action.busy() === channel.id ? 'Removing…' : 'Remove'"
                     (click)="remove(channel)"
                   >
-                    <vk-icon [name]="armed() === channel.id ? 'check' : 'trash'" />
+                    <vk-icon [name]="action.armed() === channel.id ? 'check' : 'trash'" />
                     <span class="sr-only">
-                      {{ armed() === channel.id ? 'Confirm remove' : busy() === channel.id ? 'Removing…' : 'Remove' }}
+                      {{ action.armed() === channel.id ? 'Confirm remove' : action.busy() === channel.id ? 'Removing…' : 'Remove' }}
                     </span>
                   </button>
-                  @if (armed() === channel.id) {
+                  @if (action.armed() === channel.id) {
                     <button
                       class="btn-sm icon-btn"
                       type="button"
                       title="Keep the channel"
-                      (click)="armed.set(null); said.set('')"
+                      (click)="action.cancel()"
                     >
                       <vk-icon name="close" />
                       <span class="sr-only">Keep the channel</span>

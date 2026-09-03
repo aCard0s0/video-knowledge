@@ -57,23 +57,23 @@
     </div>
 
     <section class="panel side">
-      <div class="reruns" (keydown.escape)="armed.set(null)">
+      <div class="reruns" (keydown.escape)="rerun.disarm()">
         <span class="eyebrow">re-run a phase</span>
         <div class="phase-buttons">
           @for (phase of optionalPhases; track phase) {
             <button
               class="btn-sm mono"
               type="button"
-              [class.armed]="armed() === phase"
+              [class.armed]="rerun.armed() === phase"
               [class.unavailable]="refused(phase)"
-              [disabled]="running() !== null || refused(phase)"
+              [disabled]="rerun.isBusy() || refused(phase)"
               (click)="confirmRun(phase)"
             >
               {{ chipLabel(phase) }}
             </button>
           }
-          @if (armed()) {
-            <button class="btn-sm mono" type="button" (click)="armed.set(null)">Cancel</button>
+          @if (rerun.armed()) {
+            <button class="btn-sm mono" type="button" (click)="rerun.disarm()">Cancel</button>
           }
         </div>
 
@@ -93,11 +93,11 @@
           synchronous and can run for minutes — OCR over seventeen frames measured past ten, with
           nothing but a 10px ellipsis to say the request was still open.
         -->
-        <p class="note mono run-result" role="status" [class.live]="running()">
-          @if (running(); as phase) {
-            {{ phase }} running — {{ humanDuration(elapsedMs()) }} elapsed
+        <p class="note mono run-result" role="status" [class.live]="rerun.isBusy()">
+          @if (rerun.busy(); as running) {
+            {{ running }} running — {{ humanDuration(elapsedMs()) }} elapsed
           } @else {
-            {{ lastRun() }}
+            {{ rerun.said() }}
           }
         </p>
       </div>
@@ -350,7 +350,7 @@
               change nothing on screen but the button flipping back from "Saving…", which is
               indistinguishable from a press that did nothing.
             -->
-            <p class="rename-result note mono" role="status">{{ renameResult() }}</p>
+            <p class="rename-result note mono" role="status">{{ renameAction.said() }}</p>
             <table class="grid" translate="no">
               <thead>
                 <tr>
@@ -384,12 +384,12 @@
                         <button
                           class="btn-sm icon-btn"
                           type="button"
-                          [disabled]="renaming() === speaker.id"
-                          [title]="renaming() === speaker.id ? 'Saving…' : 'Save name'"
+                          [disabled]="renameAction.isBusy(speaker.id)"
+                          [title]="renameAction.isBusy(speaker.id) ? 'Saving…' : 'Save name'"
                           (click)="rename(speaker, nameInput.value)"
                         >
                           <vk-icon name="check" />
-                          <span class="sr-only">{{ renaming() === speaker.id ? 'Saving…' : 'Save name' }}</span>
+                          <span class="sr-only">{{ renameAction.isBusy(speaker.id) ? 'Saving…' : 'Save name' }}</span>
                         </button>
                       </span>
                     </td>

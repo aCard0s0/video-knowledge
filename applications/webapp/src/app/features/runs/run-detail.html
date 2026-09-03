@@ -30,22 +30,22 @@
     <div class="head-actions">
       <a class="mono sm" routerLink="/runs">← all runs</a>
       @if (retryable()) {
-        <button class="btn-primary" type="button" [disabled]="retrying()" (click)="retryRun()">
-          {{ retrying() ? 'Retrying…' : 'Retry run' }}
+        <button class="btn-primary" type="button" [disabled]="action.isBusy()" (click)="retryRun()">
+          {{ action.isBusy('retry') ? 'Retrying…' : 'Retry run' }}
         </button>
       }
     </div>
   </div>
 
   <vk-problem [failure]="failure()" />
-  <vk-problem [failure]="retryFailure()" />
+  <vk-problem [failure]="action.failure()" />
 
   <vk-rejects [items]="retryRejects()" />
   <!-- Always in the DOM, so a screen reader has a live region to announce into rather than one that
        appears with its own text already in it. A queued retry takes the run back to PENDING and the
        Retry button out of the head, which on its own looks exactly like a press that did nothing.
        A per-phase re-run repaints its own row; the count of rows it wrote lands here. -->
-  <p class="said mono muted" role="status">{{ said() }}</p>
+  <p class="said mono muted" role="status">{{ action.said() }}</p>
 
   @if (retryable()) {
     <details class="panel opts">
@@ -98,7 +98,7 @@
                 </a>
               }
               @if (retryableItem(item)) {
-                <button class="btn-sm" type="button" [disabled]="retrying()" (click)="retryItem(item)">Retry item</button>
+                <button class="btn-sm" type="button" [disabled]="action.isBusy()" (click)="retryItem(item)">Retry item</button>
               }
             </span>
           </div>
@@ -191,14 +191,14 @@
                         <button
                           class="btn-sm"
                           type="button"
-                          [class.armed]="armedPhase() === row.seg.phase"
-                          [disabled]="runningPhase() !== null"
+                          [class.armed]="action.armed() === row.seg.phase"
+                          [disabled]="action.isBusy()"
                           (click)="confirmRerun(item, row.seg.phase)"
                         >
                           {{ rerunLabel(row.seg.phase) }}
                         </button>
-                        @if (armedPhase() === row.seg.phase) {
-                          <button class="btn-sm" type="button" (click)="armedPhase.set(null)">Cancel</button>
+                        @if (action.armed() === row.seg.phase) {
+                          <button class="btn-sm" type="button" (click)="action.disarm()">Cancel</button>
                         }
                       </span>
                     }

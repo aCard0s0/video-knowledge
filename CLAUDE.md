@@ -495,8 +495,19 @@ ingest to the channel screen without the param, so a refresh dropped the run the
 started until it was fixed a second time. Each screen keeps only what differs — its head label, and
 what can be *done* to the run (ingest projects a Retry button into the `[action]` slot). **Which** failure a screen
 shows is `firstFailure` in `core/problem.ts`: load failures in precedence order, with the action the
-operator just took in front of the call as `actionFailure() ?? firstFailure(…)`. Both are called from an injection context, like
+operator just took in front of the call as `action.failure() ?? firstFailure(…)`. Both are called from an injection context, like
 `syncQueryParams` and `clampPage`.
+
+**An action is four signals, not four flags** — `busy`, `armed`, `said`, `failure` — and they live
+together in `actionState()` (`core/action.ts`) because every transition writes several at once:
+`start` clears the last failure *and* the last message, `fail` clears the message, `ok` sets it.
+Open-coded on six screens that rule got missed; `settings.ts` had already extracted the pair
+locally, which is what said it belonged one level up. `busy`/`armed` are **keyed**, so one instance
+covers a list (which row is armed, which row is in flight). Two calls back out of an arm and the
+difference is behavioural: `cancel()` also drops the warning the arm wrote ("Press Confirm delete to
+remove X."), `disarm()` keeps `said` because there the control names its own consequence and the
+line is holding the *previous* result. The runs board and ingest are deliberately not on it — a
+batch retry's in-flight state is a `Set` of ids, and ingest has no arm and no status line.
 
 **A page number outlives the list it came from.** Delete the only row on page 2 and the response is
 0 rows with a total of 25, so the screen renders its "nothing matches" empty state over 25 rows
