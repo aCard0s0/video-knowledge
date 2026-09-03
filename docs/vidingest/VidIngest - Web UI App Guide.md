@@ -135,9 +135,13 @@ than the SPA shell.
   only reject blank, non-http and in-request duplicates, and the client filters all three.
   five runs instead of standing empty.
 - **Runs triage is one click, and the board says why.** Status is a row of chips rather than a
-  select, the FAILED chip carries its count (one extra one-row query — that number is why the
-  screen gets opened), and FAILED rows carry a Retry button so triage does not require a
-  navigation first. `error` is on every `RunSummary`, so the reason renders in a full-width row
+  select, every chip carries its count — FAILED because that number is why the screen gets opened —
+  and FAILED rows carry a Retry button so triage does not require a navigation first. `GET
+  /pipelines` has no group-by, so a count is a one-row query, but only **three** of the five are:
+  `PENDING` and `IN_PROGRESS` come off the live tables' own responses, since those are already
+  queries for those statuses and a `PageResponse.total` counts the query rather than the page.
+  Asking again was two extra requests on every 2s tick and one number with two sources, which could
+  disagree on screen. `error` is on every `RunSummary`, so the reason renders in a full-width row
   under its run rather than one navigation away: fourteen rows all reading `UPSTREAM_TOOL_FAILURE`
   are told apart only by the message tail, so it gets the width to wrap rather than a clip that
   lands the ellipsis on the discriminating half. The retry's own answer is read too — see

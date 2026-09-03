@@ -25,6 +25,17 @@ import { Fault } from '../../ui/fault';
 const PAGE_SIZE = 25;
 
 /**
+ * The three statuses nothing else on this screen already counts.
+ *
+ * `GET /pipelines` has no group-by, so a chip's count is one one-row query — but the two live
+ * tables above the history carry theirs already: `running` and `pending` *are* queries for those
+ * statuses, and a `PageResponse.total` counts the query, not the page. Asking again cost two extra
+ * requests on every 2s tick and, worse, gave one number two sources — the IN_PROGRESS chip could
+ * read 3 from its own response while the table under it listed 2 from another.
+ */
+const COUNTED_STATUSES = ['COMPLETED', 'FAILED', 'CANCELLED'] as const;
+
+/**
  * Where the run is, for a run that can still move. A FAILED run reports `phase: "DONE"`, so this
  * asks `isLive` first; the fault row underneath carries the reason once the run cannot move.
  *
@@ -99,22 +110,19 @@ export class Runs {
   protected readonly pending = rxResource({ stream: () => this.pipelines.listRuns('PENDING', 0, PAGE_SIZE) });
 
   /**
-   * One extra one-row query so the FAILED chip can carry a count: that number is the whole reason
-   * this screen gets opened, and a select hides it behind a click.
-   */
-  /**
-   * A count behind every chip, not only FAILED.
+   * A count behind every chip, not only FAILED — that number is the whole reason this screen gets
+   * opened, and a `<select>` hid it behind a click.
    *
-   * `GET /pipelines` has no group-by, so this is one one-row query per status — five `count(*)`s
-   * against the index on `status`, forked together so they land as one value. The alternative was
-   * counting the page in hand, which is wrong the moment there are more than 25 runs, and wrong in
-   * the way that looks right.
+   * Three one-row `count(*)`s against the index on `status`, forked together so they land as one
+   * value; the other two statuses come off the live tables' own responses (see
+   * {@link COUNTED_STATUSES}). Counting the page in hand instead would be wrong the moment there
+   * are more than 25 runs, and wrong in the way that looks right.
    */
   protected readonly counts = rxResource({
     stream: () =>
       forkJoin(
         Object.fromEntries(
-          RUN_STATUSES.map((s) => [s, this.pipelines.listRuns(s, 0, 1)] as const),
+          COUNTED_STATUSES.map((s) => [s, this.pipelines.listRuns(s, 0, 1)] as const),
         ),
       ),
   });
@@ -184,17 +192,25 @@ export class Runs {
     return blank(run.videoUrl) ? '—' : shortUrl(run.videoUrl!);
   }
 
-  private readonly countByStatus = computed(() => valueOf(this.counts) ?? {});
-  protected readonly failed = computed(() => this.countByStatus()['FAILED']?.total ?? 0);
+  /** All five totals as plain numbers, whichever response each one arrived in. */
+  private readonly countByStatus = computed<Record<string, number>>(() => ({
+    PENDING: valueOf(this.pending)?.total ?? 0,
+    IN_PROGRESS: valueOf(this.running)?.total ?? 0,
+    ...Object.fromEntries(
+      Object.entries(valueOf(this.counts) ?? {}).map(([status, page]) => [status, page?.total ?? 0]),
+    ),
+  }));
 
   /** `0` reads as `undefined` to the template's `@if … as`, which is what keeps an empty chip bare. */
   protected countOf(status: string): number | undefined {
     if (status === 'ALL') {
       // The chip's own filter is "no filter", so its count is the five totals — one more addition
-      // rather than a sixth query for a number the other five already carry.
-      return Object.values(this.countByStatus()).reduce((n, page) => n + (page?.total ?? 0), 0) || undefined;
+      // rather than a sixth query for a number the other five already carry. Held back until the
+      // counted three have landed: a sum of two of five is a wrong number, not a partial one.
+      if (!this.counts.hasValue()) return undefined;
+      return Object.values(this.countByStatus()).reduce((n, total) => n + total, 0) || undefined;
     }
-    return this.countByStatus()[status]?.total || undefined;
+    return this.countByStatus()[status] || undefined;
   }
   /**
    * What "retry all" would actually take: the FAILED runs on the page in front of the operator, not
