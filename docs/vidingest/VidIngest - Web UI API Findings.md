@@ -132,12 +132,20 @@ the table with the panel reporting it and re-firing on the 15s poll. `toISOStrin
 halves of the conversion the input needs: local wall clock → the UTC instant it names, carrying the
 offset that says so.
 
-### 6. Absent values are `""`, not `null`
+### 6. Absent values are `null` — and were `""` until Sep 2026
 
-`errorCode`, `error`, `videoId`, `channelName`, `videoTitle`, `previousPhase` all come back as
-empty strings. One `blank()` guard keeps empty badges from rendering.
+`errorCode`, `error`, `videoId`, `channelName`, `videoTitle`, `previousPhase` come back as `null`
+when absent. They were empty strings: the mapper layer null-guarded every field into `""`, so a
+caller could not tell "no error" from "an empty error", and `RunLiveSummaryService` served five
+`""` fields its projection does not carry at all. The mappers now pass the value through and the
+records type the ids and instants (`UUID`, `OffsetDateTime`).
 
-`VideoSummary.pipelineId` is the same: `""` once the run row is gone, since
+Nothing in the console changed for it, and that is the property worth knowing: `""` was already
+falsy, so every `@if (v.pipelineId)` and `?.slice(0, 8)` covers `null` unchanged. `blank()` covers
+both conventions and still has to, because the records that are still hand-built server-side send
+`""`.
+
+`VideoSummary.pipelineId` is `null` once the run row is gone, since
 `vidingest_videos.pipeline_run_id` is `ON DELETE SET NULL`. The videos list guards it with `blank()`
 and renders `—` rather than a link to `/runs/`, which is what an unguarded `routerLink` would build.
 
@@ -166,6 +174,25 @@ offered them as a filter.
 Skippable and rerunnable phases are the same seven (`PipelineRunPhase.isOptional()`), confirmed
 live: `Unsupported phase: METADATA. Allowed: TRANSCRIBE, DIARIZE, FRAME_SAMPLE, OCR, FUSE,
 KNOWLEDGE, CONTEXT`.
+
+**Typing the record fields is not enough to delete these lists, and was measured (Sep 2026).**
+The obvious fix — move the server enums into `vidingest-api` and declare `RunSummary.status` as
+`RunStatus` — does not produce a shared union. springdoc **inlines** an enum per property rather
+than `$ref`-ing a component schema: `ConnectionSummary.name` is already
+`{"type":"string","enum":[…]}` in the spec, not a `$ref`, and openapi-generator turns each of those
+into its own TS `enum` (`ConnectionSummaryNameEnum`, `KnowledgeUnitDtoTypeEnum`). So the console
+would gain `RunSummaryStatusEnum`, `RunDetailsStatusEnum`, `RunItemStatusEnum` — three names for
+one concept, none of them list-able as a literal union — and a TS string enum is **not comparable
+to a string literal**, so the ~18 `run.status === 'FAILED'` sites would each have to change to a
+mangled member. That is worse than the hand-mirroring it replaces. The enum move was made and
+reverted on this branch for exactly that reason.
+
+What would actually work is making springdoc emit these as **component schemas**: either
+`@Schema(enumAsRef = true)` on each enum (which needs `swagger-annotations` added to
+`vidingest-api`, currently jackson + validation only) or a springdoc customizer in the server that
+hoists inline enum schemas into `components` generically. Either one gives a single `run-status.ts`
+with both the union and the values, and these lists can go. Verify against a live
+`/v3/api-docs` before believing it.
 
 ### 8. Colliding operationIds — fixed
 

@@ -48,11 +48,6 @@ public class RunDetailsMapper {
         }
 
         RunVideoPreview previewVideo = videos.stream().min(RunVideoPreview.PREVIEW_ORDER).orElse(null);
-        String previewVideoId = previewVideo != null ? previewVideo.videoId().toString() : "";
-        String previewChannelName = previewVideo != null ? safe(previewVideo.channelName()) : "";
-        String previewVideoTitle = previewVideo != null ? safe(previewVideo.title()) : "";
-
-        int videoCount = videos.size();
 
         List<RunDetails.RunItem> itemDtos;
         if (!items.isEmpty()) {
@@ -60,61 +55,59 @@ public class RunDetailsMapper {
                     .map(item -> {
                         RunVideoPreview itemVideo = item.getVideoId() != null ? videoById.get(item.getVideoId()) : null;
                         return new RunDetails.RunItem(
-                                item.getId() != null ? item.getId().toString() : "",
-                                safe(item.getUrl()),
-                                item.getStatus() != null ? item.getStatus().name() : "",
-                                item.getPhase() != null ? item.getPhase().name() : "",
-                                item.getFailedPhase() != null ? item.getFailedPhase().name() : "",
-                                item.getPhaseUpdatedAt() != null ? item.getPhaseUpdatedAt().toString() : "",
-                                item.getErrorCode() != null ? item.getErrorCode().name() : "",
-                                safe(item.getError()),
-                                item.getVideoId() != null ? item.getVideoId().toString() : "",
-                                itemVideo != null ? safe(itemVideo.channelName()) : "",
-                                itemVideo != null ? safe(itemVideo.title()) : "",
+                                item.getId(),
+                                item.getUrl(),
+                                item.getStatus() != null ? item.getStatus().name() : null,
+                                item.getPhase() != null ? item.getPhase().name() : null,
+                                item.getFailedPhase() != null ? item.getFailedPhase().name() : null,
+                                item.getPhaseUpdatedAt(),
+                                item.getErrorCode() != null ? item.getErrorCode().name() : null,
+                                item.getError(),
+                                item.getVideoId(),
+                                itemVideo != null ? itemVideo.channelName() : null,
+                                itemVideo != null ? itemVideo.title() : null,
                                 item.getAttempt() != null ? item.getAttempt() : 1
                         );
                     })
                     .toList();
         } else {
+            // A run with no item rows yet: describe it as a single synthetic item so the screen has
+            // one lane to draw. The preview video is the run's own, since no item claims it.
             itemDtos = List.of(new RunDetails.RunItem(
-                    "",
-                    safe(run.getVideoUrl()),
-                    run.getStatus() != null ? run.getStatus().name() : "",
-                    run.getPhase() != null ? run.getPhase().name() : "",
-                    "",
-                    run.getPhaseUpdatedAt() != null ? run.getPhaseUpdatedAt().toString() : "",
-                    run.getErrorCode() != null ? run.getErrorCode().name() : "",
-                    safe(run.getError()),
-                    previewVideoId,
-                    previewChannelName,
-                    previewVideoTitle,
+                    null,
+                    run.getVideoUrl(),
+                    run.getStatus() != null ? run.getStatus().name() : null,
+                    run.getPhase() != null ? run.getPhase().name() : null,
+                    null,
+                    run.getPhaseUpdatedAt(),
+                    run.getErrorCode() != null ? run.getErrorCode().name() : null,
+                    run.getError(),
+                    previewVideo != null ? previewVideo.videoId() : null,
+                    previewVideo != null ? previewVideo.channelName() : null,
+                    previewVideo != null ? previewVideo.title() : null,
                     1
             ));
         }
 
         return new RunDetails(
-                run.getId() != null ? run.getId().toString() : "",
-                run.getStatus() != null ? run.getStatus().name() : "",
-                run.getPhase() != null ? run.getPhase().name() : "",
-                run.getPhaseUpdatedAt() != null ? run.getPhaseUpdatedAt().toString() : "",
-                run.getErrorCode() != null ? run.getErrorCode().name() : "",
-                safe(run.getError()),
-                safe(run.getVideoUrl()),
-                previewVideoId,
-                previewChannelName,
-                previewVideoTitle,
-                videoCount,
+                run.getId(),
+                run.getStatus() != null ? run.getStatus().name() : null,
+                run.getPhase() != null ? run.getPhase().name() : null,
+                run.getPhaseUpdatedAt(),
+                run.getErrorCode() != null ? run.getErrorCode().name() : null,
+                run.getError(),
+                run.getVideoUrl(),
+                previewVideo != null ? previewVideo.videoId() : null,
+                previewVideo != null ? previewVideo.channelName() : null,
+                previewVideo != null ? previewVideo.title() : null,
+                videos.size(),
                 itemDtos,
-                run.getCreatedAt() != null ? run.getCreatedAt().toString() : "",
-                run.getUpdatedAt() != null ? run.getUpdatedAt().toString() : "",
+                run.getCreatedAt(),
+                run.getUpdatedAt(),
                 // EnumSet iterates in enum order, so this arrives in pipeline order.
                 run.getSkipPhases() != null
                         ? run.getSkipPhases().stream().map(Enum::name).toList()
                         : List.of()
         );
-    }
-
-    private String safe(String value) {
-        return value != null ? value : "";
     }
 }

@@ -56,7 +56,7 @@ class RunDetailsMapperTest {
         RunDetails details = mapper.toDetails(run(runId));
 
         // COMPLETED outranks PENDING, same as the run-list card.
-        assertThat(details.videoId()).isEqualTo(completed.toString());
+        assertThat(details.videoId()).isEqualTo(completed);
         assertThat(details.videoTitle()).isEqualTo("completed video");
         assertThat(details.videoCount()).isEqualTo(2);
         verify(videoRepository).findRunVideoPreviews(List.of(runId));
@@ -92,8 +92,9 @@ class RunDetailsMapperTest {
         RunDetails details = mapper.toDetails(run(runId));
 
         assertThat(details.items()).hasSize(1);
-        assertThat(details.items().get(0).itemId()).isEmpty();
-        assertThat(details.videoId()).isEmpty();
+        // Absent, not empty: there is no item row and no video, and the record now says so.
+        assertThat(details.items().get(0).itemId()).isNull();
+        assertThat(details.videoId()).isNull();
         assertThat(details.videoCount()).isZero();
     }
 

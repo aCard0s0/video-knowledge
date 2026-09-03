@@ -11,26 +11,25 @@ public class RunSummaryMapper {
     /**
      * Builds the run-list {@link RunSummary} from a lightweight {@link RunVideoPreview} preview row
      * instead of a full {@code Video} entity, so the list view never hydrates JSONB metadata (#266).
+     *
+     * <p>Ids, instants and nullable text pass straight through — the record types them. What is
+     * left is the enum-to-name conversion, which stays until those enums live in
+     * {@code vidingest-api}.
      */
     public RunSummary toSummary(PipelineRun run, RunVideoPreview preview, int videoCount) {
         return new RunSummary(
-                run.getId() != null ? run.getId().toString() : "",
-                run.getStatus() != null ? run.getStatus().name() : "",
-                run.getPhase() != null ? run.getPhase().name() : "",
-                run.getErrorCode() != null ? run.getErrorCode().name() : "",
-                safe(run.getError()),
-                safe(run.getVideoUrl()),
-                preview != null && preview.videoId() != null ? preview.videoId().toString() : "",
-                preview != null ? safe(preview.channelName()) : "",
-                preview != null ? safe(preview.title()) : "",
+                run.getId(),
+                run.getStatus() != null ? run.getStatus().name() : null,
+                run.getPhase() != null ? run.getPhase().name() : null,
+                run.getErrorCode() != null ? run.getErrorCode().name() : null,
+                run.getError(),
+                run.getVideoUrl(),
+                preview != null ? preview.videoId() : null,
+                preview != null ? preview.channelName() : null,
+                preview != null ? preview.title() : null,
                 videoCount,
-                run.getCreatedAt() != null ? run.getCreatedAt().toString() : "",
-                run.getUpdatedAt() != null ? run.getUpdatedAt().toString() : ""
+                run.getCreatedAt(),
+                run.getUpdatedAt()
         );
     }
-
-    private String safe(String value) {
-        return value != null ? value : "";
-    }
 }
-

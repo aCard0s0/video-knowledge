@@ -22,6 +22,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.mockito.Mockito.doThrow;
@@ -69,15 +70,15 @@ class VideosControllerWebMvcTest {
         UUID id = UUID.fromString("5a4b99e4-e22e-4a50-8acb-5e1fe47b65df");
 
         var video = new VideoSummary(
-                id.toString(),
-                "run-1",
+                id,
+                UUID.fromString("11111111-1111-1111-1111-111111111111"),
                 "Test video",
                 "YOUTUBE",
                 "abc123",
                 "COMPLETED",
                 "/tmp/video.mp4",
                 "Test channel",
-                "2026-06-03T10:00:00Z"
+                OffsetDateTime.parse("2026-06-03T10:00:00Z")
         );
         var transcription = new VideoTranscriptionDetails(
                 true,

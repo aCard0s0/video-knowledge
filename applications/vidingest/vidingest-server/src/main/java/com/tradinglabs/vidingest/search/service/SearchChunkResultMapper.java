@@ -8,18 +8,13 @@ public class SearchChunkResultMapper {
 
     public SearchChunkResult toResult(SemanticSearchService.SearchResult row) {
         return new SearchChunkResult(
-                row.chunkId() != null ? row.chunkId().toString() : "",
-                row.videoId() != null ? row.videoId().toString() : "",
+                row.chunkId(),
+                row.videoId(),
                 row.chunkIndex(),
-                safe(row.snippet()),
-                safe(row.videoTitle()),
-                safe(row.channelName()),
-                safe(row.filePath())
+                row.snippet(),
+                row.videoTitle(),
+                row.channelName(),
+                row.filePath()
         );
     }
-
-    private String safe(String value) {
-        return value != null ? value : "";
-    }
 }
-

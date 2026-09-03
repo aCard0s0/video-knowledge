@@ -1,9 +1,13 @@
 package com.tradinglabs.vidingest.api.pipeline;
 
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/** One append-only audit event for a run item. See {@link RunSummary} on the typing. */
 public record RunItemAuditEvent(
-        String id,
-        String runId,
-        String itemId,
+        UUID id,
+        UUID runId,
+        UUID itemId,
         String eventType,
         int attempt,
         String phase,
@@ -11,7 +15,7 @@ public record RunItemAuditEvent(
         String status,
         String errorCode,
         String error,
-        String videoId,
-        String occurredAt
+        UUID videoId,
+        OffsetDateTime occurredAt
 ) {
 }

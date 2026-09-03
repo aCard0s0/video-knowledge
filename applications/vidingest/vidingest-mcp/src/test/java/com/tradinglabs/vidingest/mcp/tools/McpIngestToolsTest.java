@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Set;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,7 +43,7 @@ class McpIngestToolsTest {
     @Test
     void listVideosAggregatesPagesUntilTotalIsReached() {
         VideoSummary v1 = new VideoSummary(
-                "00000000-0000-0000-0000-000000000001",
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 null,
                 "Video 1",
                 "YOUTUBE",
@@ -50,10 +51,10 @@ class McpIngestToolsTest {
                 "DOWNLOADED",
                 "/videos/v1.mp4",
                 "Channel",
-                "2026-03-15T10:00:00"
+                OffsetDateTime.parse("2026-03-15T10:00:00Z")
         );
         VideoSummary v2 = new VideoSummary(
-                "00000000-0000-0000-0000-000000000002",
+                UUID.fromString("00000000-0000-0000-0000-000000000002"),
                 null,
                 "Video 2",
                 "YOUTUBE",
@@ -61,7 +62,7 @@ class McpIngestToolsTest {
                 "DOWNLOADED",
                 "/videos/v2.mp4",
                 "Channel",
-                "2026-03-15T10:00:01"
+                OffsetDateTime.parse("2026-03-15T10:00:01Z")
         );
 
         when(client.listVideos(0, 200)).thenReturn(new PageResponse<>(List.of(v1, v2), 0, 200, 2));
@@ -76,18 +77,18 @@ class McpIngestToolsTest {
     @Test
     void listPipelineRunsDelegatesToClientWithDefaults() {
         RunSummary summary = new RunSummary(
-                "73d1d901-0f69-4327-875c-6bb46cd80f00",
+                UUID.fromString("73d1d901-0f69-4327-875c-6bb46cd80f00"),
                 "FAILED",
-                "",
-                "",
+                null,
+                null,
                 "network timeout",
                 "https://www.youtube.com/watch?v=abc123",
-                "",
-                "",
-                "",
+                null,
+                null,
+                null,
                 0,
-                "2026-03-15T10:00:00",
-                "2026-03-15T10:01:00"
+                OffsetDateTime.parse("2026-03-15T10:00:00Z"),
+                OffsetDateTime.parse("2026-03-15T10:01:00Z")
         );
         when(client.listPipelines("ALL", null, null)).thenReturn(new PageResponse<>(List.of(summary), 0, 20, 1));
 
@@ -114,8 +115,8 @@ class McpIngestToolsTest {
     @Test
     void searchVideosDelegatesToClient() {
         SearchChunkResult result = new SearchChunkResult(
-                "f0afeb11-2bd9-470f-88fc-caa620632bc4",
-                "eadf1978-f899-4f22-90ea-0929879f8253",
+                UUID.fromString("f0afeb11-2bd9-470f-88fc-caa620632bc4"),
+                UUID.fromString("eadf1978-f899-4f22-90ea-0929879f8253"),
                 3,
                 "snippet",
                 "Title",
