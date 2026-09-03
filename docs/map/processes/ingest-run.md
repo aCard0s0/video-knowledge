@@ -32,18 +32,18 @@ unreachable forever.
 
 1. `PipelineController.create` accepts the body — `PipelineController.java:52-54`. If **every** URL
    is rejected it answers **400 with a `CreatePipelineRunResponse` body**, not a ProblemDetail.
-2. `PipelineService.enqueuePipelineRunBatch(urls, skipPhases)` — `PipelineService.java:107`.
+2. `PipelineService.enqueuePipelineRunBatch(urls, skipPhases)` — `PipelineService.java:87`.
    `RunLifecycleService.createPipelineRun` writes the run with `phase = CREATED` and the persisted
    `skipPhases` — `RunLifecycleService.java:23`.
-3. `enqueueItem` claims ownership, then submits — `PipelineService.java:284`.
+3. `enqueueItem` claims ownership, then submits — `PipelineService.java:266`.
 4. `runPipelineRunItem` passes a `Semaphore` (`vidingest.ingestion.concurrency`, default 4) — the
-   executor itself is unbounded so shutdown waits only for in-flight work — `PipelineService.java:55`, `:311`.
+   executor itself is unbounded so shutdown waits only for in-flight work — `PipelineService.java:53`, `:293`.
 5. `executePhases` walks `PipelinePhaseRegistry.phases()` in order; each phase gates itself via
-   `applies(ctx)` — `PipelineService.java:425`.
+   `applies(ctx)` — `PipelineService.java:339`.
 6. Every transition calls `RunAggregationService.updateRunPhase` and writes a
    `PipelineRunItemEvent` through `PipelineAuditService`.
 7. `finalizeSuccess` then `refreshRunState` — which takes `SELECT … FOR UPDATE` on the run
-   *before* reading items — `PipelineService.java:498`, `RunAggregationService.java:72`.
+   *before* reading items — `PipelineService.java:412`, `RunAggregationService.java:72`.
 
 ## If you change this
 

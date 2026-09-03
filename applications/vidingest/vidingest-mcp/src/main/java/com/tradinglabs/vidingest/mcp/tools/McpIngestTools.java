@@ -4,7 +4,6 @@ import com.tradinglabs.vidingest.api.common.PageResponse;
 import com.tradinglabs.vidingest.api.fusion.MultimodalSegmentDto;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitDto;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
-import com.tradinglabs.vidingest.api.knowledge.RegenerateKnowledgeResult;
 import com.tradinglabs.vidingest.api.knowledge.SearchKnowledgeHit;
 import com.tradinglabs.vidingest.api.ocr.OcrFrameGroup;
 import com.tradinglabs.vidingest.api.pipeline.CreatePipelineRunRequest;
@@ -17,6 +16,7 @@ import com.tradinglabs.vidingest.api.videos.DeleteVideoResult;
 import com.tradinglabs.vidingest.api.videos.DownloadToDiskResult;
 import com.tradinglabs.vidingest.api.videos.DownloadVideoResponse;
 import com.tradinglabs.vidingest.api.videos.VideoSummary;
+import com.tradinglabs.vidingest.api.videos.RunVideoPhaseResult;
 import com.tradinglabs.vidingest.client.VidingestClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -194,11 +194,11 @@ public class McpIngestTools {
     @McpTool(description = "Re-run LLM knowledge extraction for a single video. Wipes prior knowledge units "
             + "and re-derives them from the current multimodal segments. Equivalent to running the M6 KNOWLEDGE "
             + "phase in isolation — useful after fixing OCR / fusion problems or upgrading the chat model.")
-    public RegenerateKnowledgeResult regenerateKnowledge(
+    public RunVideoPhaseResult regenerateKnowledge(
             @McpToolParam(description = "Video UUID") String videoId
     ) {
         log.info("MCP: Regenerating knowledge for video {}", videoId);
-        return client.regenerateKnowledge(UUID.fromString(videoId));
+        return client.runVideoPhase(UUID.fromString(videoId), "KNOWLEDGE");
     }
 
     @McpTool(description = "List speakers identified in a video by the M2 diarization phase, with "

@@ -310,7 +310,7 @@ than the SPA shell.
 - **A FAILED video no longer dead-ends.** Why it failed lives on the run (`error`, `errorCode`) and
   on its item (`failedPhase`), none of which is on a `VideoSummary` — but `pipelineId` is, and was
   rendered nowhere, so six FAILED rows had nothing to click. A `Run` column carries the id as a link
-  and `—` where the run row is gone (`ON DELETE SET NULL` makes that `""`). It fits at 1440px because
+  and `—` where the run row is gone (`ON DELETE SET NULL` makes that `null`). It fits at 1440px because
   the title and channel caps leave slack, and it is `hide-sm` like the two columns beside it.
 - **A two-press delete has to keep its focus.** The confirm used to be a *different* button swapped
   in by an `@if`, so Angular destroyed the one the operator was standing on and focus fell to
@@ -478,11 +478,11 @@ than the SPA shell.
   about the same event.
 - **`previousPhase` and `itemId` were on every event and rendered nowhere.** The trail gives
   `previousPhase` a `From` column; the feed dropped it, which on `ITEM_RETRY_REQUESTED` left the row
-  naming **no** phase at all — that event's own `phase` is `""` and `previousPhase` is the only one
+  naming **no** phase at all — that event's own `phase` is absent and `previousPhase` is the only one
   it carries. `itemId` now rides the run link as `?item=`, the deep link run detail already honours,
   so a row on a 100-URL run opens the item it belongs to instead of a list to search. No `?phase=`:
   that filters the trail, and a row here is one event, not a request to see only that step.
-- **`""` is absent in the Phase column too.** The trail renders `{{ event.phase || '—' }}` with a
+- **An absent phase is a dash in the Phase column too.** The trail renders `{{ event.phase || '—' }}` with a
   comment naming `ITEM_RETRY_REQUESTED`; the feed rendered it bare, so seven rows had an empty cell
   where the rule (finding 6) says a dash goes.
 - **The run-id filter takes what the screen shows, or says so.** `?runId` is a `UUID` parameter and

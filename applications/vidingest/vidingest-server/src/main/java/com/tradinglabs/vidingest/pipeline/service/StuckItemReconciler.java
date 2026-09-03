@@ -31,7 +31,7 @@ public class StuckItemReconciler {
     private final PipelineRunItemRepository runItemRepository;
     private final RunItemLifecycleService runItemLifecycleService;
     private final RunAggregationService runAggregationService;
-    private final PipelineService pipelineService;
+    private final RunItemLeaseService runItemLeaseService;
     private final PipelineMetrics pipelineMetrics;
     private final Duration staleAfter;
 
@@ -39,14 +39,14 @@ public class StuckItemReconciler {
             PipelineRunItemRepository runItemRepository,
             RunItemLifecycleService runItemLifecycleService,
             RunAggregationService runAggregationService,
-            PipelineService pipelineService,
+            RunItemLeaseService runItemLeaseService,
             PipelineMetrics pipelineMetrics,
             @Value("${vidingest.reconciler.itemStaleAfter:PT1H}") Duration staleAfter
     ) {
         this.runItemRepository = runItemRepository;
         this.runItemLifecycleService = runItemLifecycleService;
         this.runAggregationService = runAggregationService;
-        this.pipelineService = pipelineService;
+        this.runItemLeaseService = runItemLeaseService;
         this.pipelineMetrics = pipelineMetrics;
         this.staleAfter = staleAfter;
     }
@@ -72,14 +72,16 @@ public class StuckItemReconciler {
             // the first.
             //
             // Two answers, because they fail in opposite directions. The lease sees every
-            // instance's work but goes stale if this process stops heartbeating; the ownership
-            // set cannot see other instances but is never wrong about this one. An item is
-            // abandoned only when neither claims it.
+            // instance's work but goes stale if this process stops heartbeating; the local claim
+            // cannot see other instances but is never wrong about this one. An item is abandoned
+            // only when neither claims it. Both come from RunItemLeaseService: asking
+            // PipelineService for the first one meant depending on the whole orchestrator to read
+            // one of its private fields.
             //
             // Ownership, not just in-flight: a PENDING item is queued behind this JVM's gate and
             // has neither started nor taken a lease, so those two would both say "abandoned" for
             // work that is merely waiting its turn.
-            if (pipelineService.isItemOwned(item.getId())) {
+            if (runItemLeaseService.isOwnedHere(item.getId())) {
                 skippedLive++;
                 continue;
             }

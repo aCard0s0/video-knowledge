@@ -309,7 +309,7 @@ Notes:
   `Qwen3-Embedding-0.6B` or `bge-m3` for 1536 fails at the server. Measured on this box: 2560
   native, 1536 with the field, unit-normalised, cosine 0.49 between two distinct inputs.
 - Semantic search results depend on context-chunk generation during ingestion; ingest without `TRANSCRIBE` or `CONTEXT` in `skipPhases`.
-- For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/context/regenerate`.
+- For videos ingested before semantic search was enabled, regenerate context chunks via `POST /vidingest/api/v1/videos/{videoId}/phases/CONTEXT/run`.
 
 #### Troubleshooting (semantic search)
 
@@ -964,11 +964,14 @@ second worker wipe-and-repopulating the same video alongside the first.
 
 Ownership has two answers, because they fail in opposite directions:
 
-- `PipelineService.isItemOwned` — items this JVM has claimed, queued behind the concurrency gate
-  as well as executing. Blind to other instances, never wrong about this one.
-- `RunItemLeaseService` (`lease_owner` / `lease_expires_at`, renewed by a heartbeat) — visible to
-  every instance, but goes stale if the owner stops heartbeating, which is the signature of a
-  process that died.
+- `RunItemLeaseService.isOwnedHere` — items this JVM has claimed, queued behind the concurrency
+  gate as well as executing. Blind to other instances, never wrong about this one.
+- `RunItemLeaseService.isLive` (`lease_owner` / `lease_expires_at`, renewed by that service's
+  `renewLeases` heartbeat) — visible to every instance, but goes stale if the owner stops
+  heartbeating, which is the signature of a process that died.
+
+Both are on the one service. The first was a private set on `PipelineService` exposed as
+`isItemOwned`/`hasWorkInFlight`, which is what made the reconciler depend on the orchestrator.
 
 An item is abandoned only when neither claims it. The sweep covers `PENDING` because an item
 whose owner died while it was still queued never reaches `IN_PROGRESS` — and nothing else in the

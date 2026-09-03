@@ -8,11 +8,9 @@ import com.tradinglabs.vidingest.core.knowledge.domain.KnowledgeUnit;
 import com.tradinglabs.vidingest.core.knowledge.mapper.KnowledgeUnitMapper;
 import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository;
 import com.tradinglabs.vidingest.core.knowledge.repo.KnowledgeUnitRepository.KnowledgeUnitView;
-import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeExtractionService;
 import com.tradinglabs.vidingest.core.knowledge.service.KnowledgeQueryService;
 import com.tradinglabs.vidingest.core.knowledge.service.SemanticKnowledgeSearchService;
 import com.tradinglabs.vidingest.search.exceptions.SemanticSearchUnavailableException;
-import com.tradinglabs.vidingest.videos.domain.Video;
 import com.tradinglabs.vidingest.videos.repo.VideoRepository;
 import com.tradinglabs.vidingest.videos.service.VideoQueryService;
 import org.junit.jupiter.api.Test;
@@ -24,14 +22,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -49,8 +45,6 @@ class KnowledgeControllerWebMvcTest {
 
     @MockitoBean
     private SemanticKnowledgeSearchService searchService;
-    @MockitoBean
-    private KnowledgeExtractionService extractionService;
     @MockitoBean
     private KnowledgeUnitRepository knowledgeUnitRepository;
     @MockitoBean
@@ -174,19 +168,5 @@ class KnowledgeControllerWebMvcTest {
 
         mockMvc.perform(get("/api/v1/videos/{videoId}/knowledge", videoId))
                 .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void regenerateRunsExtractionAndReturnsResult() throws Exception {
-        UUID videoId = UUID.fromString("55555555-5555-5555-5555-555555555555");
-        Video video = new Video();
-        video.setId(videoId);
-        when(videoRepository.findById(videoId)).thenReturn(Optional.of(video));
-        when(extractionService.extractKnowledge(video)).thenReturn(7);
-
-        mockMvc.perform(post("/api/v1/videos/{videoId}/knowledge/regenerate", videoId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.videoId").value(videoId.toString()))
-                .andExpect(jsonPath("$.knowledgeUnitCount").value(7));
     }
 }

@@ -19,8 +19,6 @@ import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 // @ts-ignore
 import { KnowledgeUnitDto } from '../model/knowledge-unit-dto';
 // @ts-ignore
-import { RegenerateKnowledgeResult } from '../model/regenerate-knowledge-result';
-// @ts-ignore
 import { SearchKnowledgeHit } from '../model/search-knowledge-hit';
 // @ts-ignore
 import { StaleKnowledgeReport } from '../model/stale-knowledge-report';
@@ -43,7 +41,7 @@ export class KnowledgeService extends BaseService {
 
     /**
      * Videos extracted under an older prompt than this server sends
-     * metadata.prompt_version is written on every knowledge unit; this reads it. A prompt upgrade changes what extraction means, so older rows are not comparable with newer ones. Pair with POST /videos/{videoId}/knowledge/regenerate per video: one video is minutes of LLM time, so this reports rather than re-extracts. &#x60;truncated&#x60; says the limit cut the list short.
+     * metadata.prompt_version is written on every knowledge unit; this reads it. A prompt upgrade changes what extraction means, so older rows are not comparable with newer ones. Pair with POST /videos/{videoId}/phases/KNOWLEDGE/run per video: one video is minutes of LLM time, so this reports rather than re-extracts. &#x60;truncated&#x60; says the limit cut the list short.
      * @endpoint get /api/v1/knowledge/stale
      * @param limit 
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -167,63 +165,6 @@ export class KnowledgeService extends BaseService {
             {
                 context: localVarHttpContext,
                 params: localVarQueryParameters.toHttpParams(),
-                responseType: <any>responseType_,
-                ...(withCredentials ? { withCredentials } : {}),
-                headers: localVarHeaders,
-                observe: observe,
-                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
-                reportProgress: reportProgress
-            }
-        );
-    }
-
-    /**
-     * Re-run knowledge extraction for a video
-     * Mirrors POST /videos/{id}/context/regenerate. Wipes existing knowledge units for the video and re-runs the M6 KnowledgeExtractionService against the current multimodal segments.
-     * @endpoint post /api/v1/videos/{videoId}/knowledge/regenerate
-     * @param videoId 
-     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-     * @param reportProgress flag to report request and response progress.
-     * @param options additional options
-     */
-    public regenerateKnowledge(videoId: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<RegenerateKnowledgeResult>;
-    public regenerateKnowledge(videoId: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<RegenerateKnowledgeResult>>;
-    public regenerateKnowledge(videoId: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<RegenerateKnowledgeResult>>;
-    public regenerateKnowledge(videoId: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
-        if (videoId === null || videoId === undefined) {
-            throw new Error('Required parameter videoId was null or undefined when calling regenerateKnowledge.');
-        }
-
-        let localVarHeaders = this.defaultHeaders;
-
-        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
-            'application/json'
-        ]);
-        if (localVarHttpHeaderAcceptSelected !== undefined) {
-            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
-        }
-
-        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
-
-        const localVarTransferCache: boolean = options?.transferCache ?? true;
-
-
-        let responseType_: 'text' | 'json' | 'blob' = 'json';
-        if (localVarHttpHeaderAcceptSelected) {
-            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-                responseType_ = 'text';
-            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-                responseType_ = 'json';
-            } else {
-                responseType_ = 'blob';
-            }
-        }
-
-        let localVarPath = `/api/v1/videos/${this.configuration.encodeParam({name: "videoId", value: videoId, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: "uuid"})}/knowledge/regenerate`;
-        const { basePath, withCredentials } = this.configuration;
-        return this.httpClient.request<RegenerateKnowledgeResult>('post', `${basePath}${localVarPath}`,
-            {
-                context: localVarHttpContext,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

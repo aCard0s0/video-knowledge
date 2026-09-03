@@ -46,25 +46,26 @@ public class RunLiveSummaryService {
         return result;
     }
 
+    /**
+     * The polling projection carries status, phase, error and the two instants — nothing about the
+     * video. Those fields are {@code null} here, which is the honest answer: this row does not know
+     * them. They used to be {@code ""}, indistinguishable from a run whose video genuinely has no
+     * title, so a caller could not tell "not carried by this endpoint" from "empty".
+     */
     private RunSummary toSummary(PipelineRunLiveSummaryRow row) {
         return new RunSummary(
-                row.getId() != null ? row.getId().toString() : "",
-                row.getStatus() != null ? row.getStatus().name() : "",
-                row.getPhase() != null ? row.getPhase().name() : "",
-                row.getErrorCode() != null ? row.getErrorCode().name() : "",
-                safe(row.getError()),
-                "",
-                "",
-                "",
-                "",
+                row.getId(),
+                row.getStatus() != null ? row.getStatus().name() : null,
+                row.getPhase() != null ? row.getPhase().name() : null,
+                row.getErrorCode() != null ? row.getErrorCode().name() : null,
+                row.getError(),
+                null,
+                null,
+                null,
+                null,
                 0,
-                row.getCreatedAt() != null ? row.getCreatedAt().toString() : "",
-                row.getUpdatedAt() != null ? row.getUpdatedAt().toString() : ""
+                row.getCreatedAt(),
+                row.getUpdatedAt()
         );
     }
-
-    private static String safe(String value) {
-        return value != null ? value : "";
-    }
 }
-

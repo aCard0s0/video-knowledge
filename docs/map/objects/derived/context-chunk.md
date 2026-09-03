@@ -38,7 +38,7 @@ what `/api/v1/search` searches.
 ## If you change this
 
 - **Hits:** `ContextPhase`, `OllamaEmbeddingsClient` and its openai-compatible sibling,
-  `SearchController` (`/api/v1/search`), `/videos/{id}/context/regenerate`, and the
+  `SearchController` (`/api/v1/search`), `POST /videos/{id}/phases/CONTEXT/run`, and the
   `pgvector/pgvector:pg17` requirement — `vector` is the only extension the schema creates.
 - **Does not hit:** knowledge search. Separate table, separate index, separate endpoint.
 

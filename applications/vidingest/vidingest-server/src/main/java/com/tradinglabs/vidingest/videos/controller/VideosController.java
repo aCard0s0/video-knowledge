@@ -9,11 +9,9 @@ import com.tradinglabs.vidingest.api.videos.DeleteVideoResult;
 import com.tradinglabs.vidingest.api.videos.DownloadToDiskResult;
 import com.tradinglabs.vidingest.api.videos.DownloadVideoRequest;
 import com.tradinglabs.vidingest.api.videos.DownloadVideoResponse;
-import com.tradinglabs.vidingest.api.videos.RegenerateContextResult;
 import com.tradinglabs.vidingest.api.videos.VideoSummary;
 import com.tradinglabs.vidingest.core.download.service.DownloadService;
 import com.tradinglabs.vidingest.core.transcription.service.VideoTranscriptionQueryService;
-import com.tradinglabs.vidingest.search.service.embedding.ContextChunkGenerationService;
 import com.tradinglabs.vidingest.videos.service.VideoDeleteService;
 import com.tradinglabs.vidingest.videos.service.VideoDetailQueryService;
 import com.tradinglabs.vidingest.videos.service.VideoQueryService;
@@ -51,7 +49,6 @@ public class VideosController {
     private final VideoDeleteService videoDeleteService;
     private final VideoSummaryMapper videoSummaryMapper;
     private final VideoTranscriptionQueryService videoTranscriptionQueryService;
-    private final ContextChunkGenerationService contextChunkGenerationService;
     private final VideoDetailQueryService videoDetailQueryService;
 
     @PostMapping("/download")
@@ -125,16 +122,6 @@ public class VideosController {
     public DeleteVideoResult delete(@PathVariable UUID videoId) throws IOException {
         videoDeleteService.deleteVideo(videoId);
         return new DeleteVideoResult("deleted", videoId.toString());
-    }
-
-    @PostMapping("/{videoId}/context/regenerate")
-    @ResponseStatus(HttpStatus.OK)
-    @Operation(operationId = "regenerateContext", summary = "Regenerate context chunks for a video", description = "Uses the configured embeddings provider to generate context chunks for semantic search.")
-    public RegenerateContextResult regenerateContext(@PathVariable UUID videoId) throws IOException {
-        Video video = videoQueryService.getById(videoId);
-        log.info("REST regenerate context: videoId={}", videoId);
-        int chunks = contextChunkGenerationService.regenerateFor(video);
-        return new RegenerateContextResult(videoId, chunks);
     }
 
     private void validateHttpUrl(String url) {

@@ -65,7 +65,7 @@ class RunSummaryPageServiceTest {
         assertThat(page.items()).hasSize(1);
         RunSummary summary = page.items().get(0);
         // COMPLETED ranks above PENDING, so it is chosen as the preview.
-        assertThat(summary.videoId()).isEqualTo(completedVideo.toString());
+        assertThat(summary.videoId()).isEqualTo(completedVideo);
         assertThat(summary.videoTitle()).isEqualTo("completed video");
         assertThat(summary.videoCount()).isEqualTo(2);
 

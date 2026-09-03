@@ -20,13 +20,11 @@ import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
@@ -53,24 +51,6 @@ public class PipelineService {
      * from swamping the box and the connection pool.
      */
     private final Semaphore ingestionGate;
-
-    /**
-     * Run items executing phases right now, in this JVM. Read by {@link StuckItemReconciler},
-     * which cannot otherwise tell a genuinely abandoned item from one sitting in a phase that
-     * legitimately takes hours — {@code phase_updated_at} only moves on a phase *transition*.
-     */
-    private final Set<UUID> inFlightItemIds = ConcurrentHashMap.newKeySet();
-
-    /**
-     * Run items this JVM has taken responsibility for — queued behind the gate as well as
-     * executing. Wider than {@link #inFlightItemIds} on purpose, and the two cannot be merged:
-     * the heartbeat iterates the in-flight set, and a queued item holds no lease to renew.
-     *
-     * <p>This is what makes a {@code PENDING} item safe to reap. Such an item is either waiting on
-     * our gate or was abandoned by a process that is gone, and only the owner can tell those
-     * apart — {@code phase_updated_at} is stamped at creation for both.
-     */
-    private final Set<UUID> ownedItemIds = ConcurrentHashMap.newKeySet();
 
     public PipelineService(
             VideoRepository videoRepository,
@@ -206,8 +186,9 @@ public class PipelineService {
      * restart were simply lost, with the run stuck IN_PROGRESS and no error to show for it.
      *
      * <p>The question that actually matters is whether someone is running the item right now, and
-     * the lease from PR #8 answers it across instances; {@code ownedItemIds} covers the window
-     * before this JVM's own item has claimed one. Anything else non-terminal is fair game.
+     * the lease from PR #8 answers it across instances; the claim {@code RunItemLeaseService}
+     * holds covers the window before this JVM's own item has taken one. Anything else
+     * non-terminal is fair game.
      */
     private String retryRejection(PipelineRunItem item) {
         if (item.getId() == null) {
@@ -220,7 +201,8 @@ public class PipelineService {
             // Deliberate terminal state (duplicate video), not a failure to recover from.
             return "run item was cancelled";
         }
-        if (ownedItemIds.contains(item.getId()) || RunItemLeaseService.isLive(item.getLeaseExpiresAt())) {
+        if (runItemLeaseService.isOwnedHere(item.getId())
+                || RunItemLeaseService.isLive(item.getLeaseExpiresAt())) {
             return "run item is already running";
         }
         return null;
@@ -284,7 +266,7 @@ public class PipelineService {
     private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
         // Claimed before the submit, not inside the task: between the two the item is PENDING with
         // nothing running, which is precisely what the reconciler now reaps.
-        ownedItemIds.add(itemId);
+        runItemLeaseService.claim(itemId);
         try {
             ingestionExecutor.submit(() -> {
                 try {
@@ -297,13 +279,13 @@ public class PipelineService {
                     log.error("Pipeline run {} item {} died outside its own error handling", runId, itemId, t);
                 } finally {
                     // Covers every exit, including the interrupt that returns before the gate.
-                    ownedItemIds.remove(itemId);
+                    runItemLeaseService.unclaim(itemId);
                 }
             });
         } catch (RuntimeException e) {
             // Rejected at submit (shutdown): the task will never run, so nothing else would drop
             // the claim, and the item would look live to the reconciler forever.
-            ownedItemIds.remove(itemId);
+            runItemLeaseService.unclaim(itemId);
             throw e;
         }
     }
@@ -317,15 +299,9 @@ public class PipelineService {
             log.warn("Interrupted waiting for an ingestion slot: runId={}, itemId={}", runId, itemId);
             return;
         }
-        inFlightItemIds.add(itemId);
-        // Claimed after the gate, so a queued item is never counted as running. Best-effort:
-        // losing the lease write costs us reap protection, not correctness, and failing the
-        // item here would be worse than proceeding without it.
-        try {
-            runItemLeaseService.acquire(itemId);
-        } catch (Exception e) {
-            log.warn("Could not acquire lease for item {}: {}", itemId, e.getMessage());
-        }
+        // Leased after the gate, so a queued item is never counted as running. Best-effort, and
+        // the policy lives in RunItemLeaseService rather than here.
+        runItemLeaseService.acquire(itemId);
         // Started after the gate so elapsedMs stays execution time, not queue wait.
         long itemStartNs = System.nanoTime();
         try {
@@ -354,71 +330,9 @@ public class PipelineService {
             runAggregationService.refreshRunState(runId);
             pipelineMetrics.incrementFailed(code);
         } finally {
-            inFlightItemIds.remove(itemId);
-            try {
-                runItemLeaseService.release(itemId);
-            } catch (Exception e) {
-                log.warn("Could not release lease for item {}: {}", itemId, e.getMessage());
-            }
+            runItemLeaseService.release(itemId);
             ingestionGate.release();
             pipelineMetrics.refreshInflightGauge();
-        }
-    }
-
-    /**
-     * Whether this JVM has taken responsibility for {@code itemId} — executing it, or holding it
-     * queued behind the gate. Narrower than the lease in one direction (it says nothing about
-     * other instances) and wider in another (it covers items that have not started, which hold no
-     * lease yet), so the reconciler and the retry path consult both.
-     *
-     * <p>Replaces {@code isItemInFlight}, which answered only for items past the gate and so had
-     * nothing to say about the PENDING ones this now protects. The in-flight set is still what the
-     * heartbeat renews — leases exist only past the gate.
-     */
-    public boolean isItemOwned(UUID itemId) {
-        return ownedItemIds.contains(itemId);
-    }
-
-    /**
-     * Whether this instance is holding any ingestion work at all — running or queued behind the
-     * gate.
-     *
-     * <p>The set empties in the submitted task's outermost {@code finally}, which is the last
-     * thing to run after {@link #runPipelineRunItem} has released its lease. That ordering is why
-     * this, and not a run's status, is the honest answer to "is the pipeline finished writing?":
-     * {@code refreshRunState} makes a run terminal *before* the lease release writes to
-     * {@code vidingest_pipeline_run_items} again, so a caller that stops at COMPLETED is still
-     * racing a write. The integration tests wipe those tables between methods and deadlocked
-     * against exactly that window.
-     */
-    public boolean hasWorkInFlight() {
-        return !ownedItemIds.isEmpty();
-    }
-
-    /**
-     * Keeps this instance's leases alive while it is executing items. Lives here because this is
-     * where both halves already are — the in-flight set and the lease service. The interval must
-     * stay well below {@code vidingest.lease.ttl}; the defaults leave a 5x margin, so several
-     * consecutive misses are needed before live work looks abandoned.
-     */
-    @Scheduled(fixedDelayString = "${vidingest.lease.heartbeatMs:120000}",
-            initialDelayString = "${vidingest.lease.heartbeatMs:120000}")
-    public void renewLeases() {
-        Set<UUID> inFlight = Set.copyOf(inFlightItemIds);
-        if (inFlight.isEmpty()) {
-            return;
-        }
-        try {
-            int renewed = runItemLeaseService.renew(inFlight);
-            if (renewed < inFlight.size()) {
-                // Someone else owns an item we think we are running, or the row is gone. Worth
-                // seeing: it is the shape a split brain or a premature reap would take.
-                log.warn("Lease heartbeat renewed {} of {} in-flight items", renewed, inFlight.size());
-            }
-        } catch (Exception e) {
-            // A heartbeat failure must not kill the scheduler thread; the next tick retries and
-            // the TTL margin covers several misses.
-            log.error("Lease heartbeat failed: {}", e.getMessage(), e);
         }
     }
 

@@ -182,7 +182,13 @@ export function isLive(status: string | null | undefined): boolean {
   return status === 'PENDING' || status === 'IN_PROGRESS';
 }
 
-/** The API returns "" for absent values, not null. */
+/**
+ * True for absent or whitespace-only.
+ *
+ * Covers both wire conventions on purpose. The run, video, audit and search records now send
+ * `null` for an absent value; the ones still hand-built server-side send `""`. Either way a
+ * caller asks this rather than testing for one of them.
+ */
 export function blank(value: string | null | undefined): boolean {
   return value === null || value === undefined || value.trim() === '';
 }

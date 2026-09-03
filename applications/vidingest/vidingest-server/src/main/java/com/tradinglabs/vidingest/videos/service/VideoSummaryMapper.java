@@ -9,20 +9,15 @@ public class VideoSummaryMapper {
 
     public VideoSummary toSummary(Video video) {
         return new VideoSummary(
-                video.getId() != null ? video.getId().toString() : "",
-                video.getPipelineRun() != null && video.getPipelineRun().getId() != null ? video.getPipelineRun().getId().toString() : "",
-                safe(video.getTitle()),
-                safe(video.getSource()),
-                safe(video.getSourceVideoId()),
-                video.getStatus() != null ? video.getStatus().name() : "",
-                safe(video.getFilePath()),
-                safe(video.getChannelName()),
-                video.getCreatedAt() != null ? video.getCreatedAt().toString() : ""
+                video.getId(),
+                video.getPipelineRun() != null ? video.getPipelineRun().getId() : null,
+                video.getTitle(),
+                video.getSource(),
+                video.getSourceVideoId(),
+                video.getStatus() != null ? video.getStatus().name() : null,
+                video.getFilePath(),
+                video.getChannelName(),
+                video.getCreatedAt()
         );
     }
-
-    private String safe(String value) {
-        return value != null ? value : "";
-    }
 }
-

@@ -102,7 +102,7 @@ public interface KnowledgeUnitRepository extends JpaRepository<KnowledgeUnit, UU
      *
      * <p>A listing rather than a bulk re-extract: one video takes ~2.5 minutes of LLM time, so a
      * bulk endpoint would hold a request open for hours and need its own async machinery. The
-     * existing per-video {@code POST /videos/{id}/knowledge/regenerate} already does the work, and
+     * existing per-video {@code POST /videos/{id}/phases/KNOWLEDGE/run} already does the work, and
      * a caller can drive it from this list at whatever rate it likes.
      *
      * <p>{@code MIN(...)} rather than a per-row filter, because a video is stale if <em>any</em> of

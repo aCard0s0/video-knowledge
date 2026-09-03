@@ -1,22 +1,25 @@
 package com.tradinglabs.vidingest.api.pipeline;
 
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 
+/** The run-detail read model. See {@link RunSummary} on the typing. */
 public record RunDetails(
-        String id,
+        UUID id,
         String status,
         String phase,
-        String phaseUpdatedAt,
+        OffsetDateTime phaseUpdatedAt,
         String errorCode,
         String error,
         String videoUrl,
-        String videoId,
+        UUID videoId,
         String channelName,
         String videoTitle,
         int videoCount,
         List<RunItem> items,
-        String createdAt,
-        String updatedAt,
+        OffsetDateTime createdAt,
+        OffsetDateTime updatedAt,
         // The optional phases this run is configured to skip, in pipeline order. Read it to seed a
         // retry: the lane cannot answer this, because a phase after the one that failed was never
         // reached and that is indistinguishable from skipped. A retry that omits skipPhases
@@ -25,19 +28,18 @@ public record RunDetails(
 ) {
 
     public record RunItem(
-            String itemId,
+            UUID itemId,
             String url,
             String status,
             String phase,
             String failedPhase,
-            String phaseUpdatedAt,
+            OffsetDateTime phaseUpdatedAt,
             String errorCode,
             String error,
-            String videoId,
+            UUID videoId,
             String channelName,
             String videoTitle,
             int attempt
     ) {
     }
 }
-

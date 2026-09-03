@@ -197,18 +197,21 @@ writes no status — every `PipelineRun` status write goes through `RunAggregati
 on a phase *transition*, so a phase that legitimately runs for hours is indistinguishable from
 abandoned work by timestamp alone, and failing a live item invites an operator retry that runs
 a second worker over the same video. Two independent answers guard it, because they fail in
-opposite directions: `PipelineService.isItemOwned` is blind to other instances but never
+opposite directions: `RunItemLeaseService.isOwnedHere` is blind to other instances but never
 wrong about this one, and the `lease_owner`/`lease_expires_at` columns on
 `vidingest_pipeline_run_items` see every instance but go stale if this process stops
-heartbeating. An item is reaped only when neither claims it. `RunItemLeaseService` owns the
-writes, `PipelineService.renewLeases` heartbeats them on a schedule that must stay well under
-`vidingest.lease.ttl`, and `ProgressPipelineRunReconciler` leaves a run alone entirely while
+heartbeating. An item is reaped only when neither claims it. **Both answers live on
+`RunItemLeaseService`** — the in-memory claim, the lease writes, and the `renewLeases` heartbeat,
+which runs on a schedule that must stay well under `vidingest.lease.ttl`. They used to be split,
+with the claim set private to `PipelineService` and exposed through `isItemOwned`/`hasWorkInFlight`
+so the reconciler could read it; that made `StuckItemReconciler` depend on the whole orchestrator
+to ask one question about ownership. Meanwhile `ProgressPipelineRunReconciler` leaves a run alone entirely while
 any of its items holds a live lease. Lease renewal is scoped by owner, so a heartbeat can
 never extend a lease another instance took over.
 
 Ownership is claimed *before* the executor submit and the lease *after* the gate, and the gap
 between them is the point: an item queued behind the gate is `PENDING` with no lease, so the
-sweep covers `PENDING` too and `isItemOwned` is the only thing that keeps queued work from being
+sweep covers `PENDING` too and the claim is the only thing that keeps queued work from being
 reaped. Nothing else ever revisits a `PENDING` item — before Aug 2026 a process that died with
 items queued left them unreachable, their run stuck `IN_PROGRESS`, and every retry refused.
 **Retry eligibility asks the same question**: any item not `COMPLETED`, not `CANCELLED` and not

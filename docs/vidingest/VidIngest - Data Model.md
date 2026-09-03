@@ -77,7 +77,7 @@ One row per submitted URL within a batch `PipelineRun`. Tracks per-item status/p
 | `video_id` | UUID | FK -> vidingest_videos, nullable, ON DELETE SET NULL | Produced video (when available) |
 | `attempt` | INT | NOT NULL | Retries reuse the same run id and item id; this counts them |
 | `lease_owner` | VARCHAR(160) | nullable | Instance holding the item. Written only by `RunItemLeaseService`, scoped by owner |
-| `lease_expires_at` | TIMESTAMPTZ | nullable | Lease TTL. With `lease_owner`, one of the **two** independent answers the reaper needs — the other is `PipelineService.isItemOwned` |
+| `lease_expires_at` | TIMESTAMPTZ | nullable | Lease TTL. With `lease_owner`, one of the **two** independent answers the reaper needs — the other is `RunItemLeaseService.isOwnedHere` |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Set on persist |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Updated on every save |
 
@@ -195,7 +195,7 @@ Repository: `com.tradinglabs.vidingest.core.transcription.repo.TranscriptionSegm
 
 ### `vidingest_context_chunks` (ContextChunk)
 
-Text chunks with vector embeddings for semantic search. Populated by the pipeline `CONTEXT` phase (when enabled) or via the manual regenerate endpoint (`POST /api/v1/videos/{id}/context/regenerate`).
+Text chunks with vector embeddings for semantic search. Populated by the pipeline `CONTEXT` phase (when enabled) or by re-running that phase alone (`POST /api/v1/videos/{id}/phases/CONTEXT/run`).
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|

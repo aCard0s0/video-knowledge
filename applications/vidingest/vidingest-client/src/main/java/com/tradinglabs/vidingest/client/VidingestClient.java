@@ -4,7 +4,6 @@ import com.tradinglabs.vidingest.api.common.PageResponse;
 import com.tradinglabs.vidingest.api.fusion.MultimodalSegmentDto;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitDto;
 import com.tradinglabs.vidingest.api.knowledge.KnowledgeUnitType;
-import com.tradinglabs.vidingest.api.knowledge.RegenerateKnowledgeResult;
 import com.tradinglabs.vidingest.api.knowledge.SearchKnowledgeHit;
 import com.tradinglabs.vidingest.api.ocr.OcrFrameGroup;
 import com.tradinglabs.vidingest.api.paths.VidIngestApiPaths;
@@ -19,6 +18,7 @@ import com.tradinglabs.vidingest.api.speakers.SpeakerDto;
 import com.tradinglabs.vidingest.api.videos.DeleteVideoResult;
 import com.tradinglabs.vidingest.api.videos.DownloadVideoRequest;
 import com.tradinglabs.vidingest.api.videos.DownloadVideoResponse;
+import com.tradinglabs.vidingest.api.videos.RunVideoPhaseResult;
 import com.tradinglabs.vidingest.api.videos.VideoSummary;
 import com.tradinglabs.web.client.RestClientErrorSupport;
 import lombok.RequiredArgsConstructor;
@@ -299,14 +299,26 @@ public class VidingestClient {
         }
     }
 
-    /** Re-runs knowledge extraction for a video; mirrors the {@code /context/regenerate} endpoint. */
-    public RegenerateKnowledgeResult regenerateKnowledge(UUID videoId) {
-        String endpoint = VidIngestApiPaths.VIDEO_KNOWLEDGE_REGENERATE.replace("{videoId}", videoId.toString());
+    /**
+     * Re-runs one pipeline phase against an already-ingested video, synchronously.
+     *
+     * <p>One method for all seven optional phases, replacing the per-phase twins
+     * ({@code /knowledge/regenerate}, {@code /context/regenerate}) this client used to carry: the
+     * server routes every phase through {@code PipelinePhaseRegistry}, so a rerun cannot drift
+     * from what the pipeline runs, and a caller naming a mandatory or unknown phase gets a 400
+     * rather than a missing method.
+     *
+     * @param phase TRANSCRIBE | DIARIZE | FRAME_SAMPLE | OCR | FUSE | KNOWLEDGE | CONTEXT
+     */
+    public RunVideoPhaseResult runVideoPhase(UUID videoId, String phase) {
+        String endpoint = VidIngestApiPaths.VIDEO_PHASE_RUN
+                .replace("{videoId}", videoId.toString())
+                .replace("{phase}", phase);
         try {
-            RegenerateKnowledgeResult body = restClient.post()
-                    .uri(VidIngestApiPaths.VIDEO_KNOWLEDGE_REGENERATE, videoId)
+            RunVideoPhaseResult body = restClient.post()
+                    .uri(VidIngestApiPaths.VIDEO_PHASE_RUN, videoId, phase)
                     .retrieve()
-                    .body(RegenerateKnowledgeResult.class);
+                    .body(RunVideoPhaseResult.class);
             return requireBody(body, endpoint);
         } catch (RestClientResponseException e) {
             throw wrapHttpError(endpoint, e);

@@ -6,6 +6,7 @@ import com.tradinglabs.vidingest.client.VidingestClient;
 import com.tradinglabs.vidingest.client.VidingestClientProperties;
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,15 +37,15 @@ class IngestCommandsTest {
 
         UUID id = UUID.randomUUID();
         when(client.getVideo(id)).thenReturn(new VideoSummary(
-                id.toString(),
-                "pipeline-id",
+                id,
+                UUID.fromString("22222222-2222-2222-2222-222222222222"),
                 "Some Title",
                 "youtube",
                 "abc",
                 "COMPLETED",
                 "/data/videos/abc.mp4",
                 "Channel",
-                "2026-04-28T12:00:00"
+                OffsetDateTime.parse("2026-04-28T12:00:00Z")
         ));
 
         String out = commands.delete(id.toString(), false);
