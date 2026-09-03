@@ -42,7 +42,7 @@ help and the dispatcher are all generated from that row, and `./vk doctor` runs 
 that fails if a row and a function disagree. The file's own header block says this; read it before
 editing. It follows the `project-cli` skill in `~/.claude/skills/`.
 
-`./vk test` is **hermetic** — 412 server unit tests plus 148 console tests, no daemon, no network —
+`./vk test` is **hermetic** — 412 server unit tests plus 166 console tests, no daemon, no network —
 and names on stderr the suite it skipped. `./vk test integration` is the Testcontainers half, and
 `./vk test server -- -Dtest=FusePhaseTest` passes anything after `--` to the harness. The raw
 Maven forms below still matter for a targeted run, and their traps are unchanged.
