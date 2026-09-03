@@ -16,6 +16,7 @@ import {
 } from '../../api/generated';
 import { SpeakerDto } from '../../api/generated';
 import { OPTIONAL_PHASES } from '../../core/domain';
+import { Poller } from '../../core/poller';
 
 const VIDEO_ID = '11111111-2222-3333-4444-555555555555';
 
@@ -49,7 +50,12 @@ class Host {}
 
 async function screen({ disabled = [], units = [], query = {}, speakers = [] }: Options = {}) {
   const runVideoPhase = vi.fn(() => new Observable(() => {}));
-  const listVideoSpeakers = vi.fn(() => of(speakers));
+  // First fetch answers; a refetch hangs. A poll reload holds the previous value while the request
+  // is open, and that open window is what the pane-survives-a-reload test below stands in.
+  let speakerFetches = 0;
+  const listVideoSpeakers = vi.fn(() =>
+    ++speakerFetches === 1 ? of(speakers) : new Observable<unknown[]>(() => {}),
+  );
   const renameSpeaker = vi.fn((id: string, body: { displayName: string }) =>
     of({ ...(speakers as SpeakerDto[]).find((s) => s.id === id), displayName: body.displayName }),
   );
@@ -379,5 +385,37 @@ describe('video detail: renaming a speaker leaves the other rows alone', () => {
     tick();
 
     expect(el.querySelector('.rename-result')!.textContent).toContain('Cleared');
+  });
+});
+
+describe('video detail: a poll reload never replaces the visible pane', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  /**
+   * The constructor reloads the visible pane on every poll tick, and `reload()` reports
+   * `isLoading()` while the previous value is still held — so a bare `isLoading()` branch tore the
+   * pane down to "Loading…" on every tick: scroll lost on every pane, and on this one the inputs
+   * destroyed with any name typed but not yet saved. The loading text is for the first fetch only,
+   * `isLoading() && !hasValue()` — the guard every list screen already carries.
+   */
+  it('keeps the speakers table — and typed, unsaved text — through a reload', async () => {
+    const { el, tick } = await screen({
+      query: { pane: 'speakers' },
+      speakers: [{ id: 's1', videoId: VIDEO_ID, label: 'SPEAKER_00', displayName: '', segmentCount: 18 }],
+    });
+
+    const input = el.querySelector<HTMLInputElement>('table.grid tbody input')!;
+    input.value = 'Host, unsaved';
+
+    // Pause and unpause: the unpause fires every registered poll callback, which is the same path
+    // a tick takes. The refetch never answers (see the mock in `screen`), so the resource sits in
+    // `reloading` holding its previous rows — the window every real poll opens for 2s–15s.
+    const poller = TestBed.inject(Poller);
+    poller.toggle();
+    poller.toggle();
+    tick();
+
+    expect(el.textContent).not.toContain('Loading speakers…');
+    expect(el.querySelector<HTMLInputElement>('table.grid tbody input')!.value).toBe('Host, unsaved');
   });
 });
