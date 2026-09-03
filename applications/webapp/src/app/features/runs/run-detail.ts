@@ -21,11 +21,12 @@ import {
   isLive,
   statusVar,
 } from '../../core/domain';
-import { absoluteTime, clockTime, humanAge, humanDuration, msBetween } from '../../core/time';
+import { absoluteTime, clockTime, humanDuration, msBetween } from '../../core/time';
 import { LaneSegment, Rerun, SegmentState, laneTotalMs, paintRerun } from '../../core/lane';
 import { Capabilities } from '../../core/capabilities';
 import { watchRun } from '../../core/watch-run';
 import { firstFailure } from '../../core/problem';
+import { acceptedOf, rejectsOf } from '../../core/verdict';
 import { actionState } from '../../core/action';
 import { syncQueryParams } from '../../core/url-state';
 import { StatusBadge } from '../../ui/status-badge';
@@ -313,9 +314,6 @@ export class RunDetail {
     return pane ? { pane } : {};
   }
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected gap(event: RunItemAuditEvent, index: number): string {
     const list = this.timeline();
@@ -443,12 +441,10 @@ export class RunDetail {
     this.retryRejects.set([]);
     request.subscribe({
       next: (response) => {
-        // 202 does not mean the work was queued. `enqueueRetryBatch` answers with REJECTED items
-        // and a reason when it could take nothing — already running, already cancelled — and
-        // discarding that body made a retry that did nothing at all look like it had worked.
-        const items = response.items ?? [];
-        const queued = items.filter((i) => i.status === 'ACCEPTED').length;
-        this.retryRejects.set(items.filter((i) => i.status === 'REJECTED'));
+        // 202 does not mean the work was queued: the same body carries REJECTED items and a reason
+        // when it could take nothing. See `core/verdict.ts`.
+        const queued = acceptedOf(response).length;
+        this.retryRejects.set(rejectsOf(response));
         this.action.ok(queued ? `Queued ${queued} item(s).` : '');
         this.watch.reload();
       },

@@ -472,7 +472,9 @@ ProblemDetail) when every URL was rejected; **`/health/ready` answers 503 carryi
 `HttpErrorResponse.error` and says "server unreachable" only on status 0 — treating any error as
 unreachable hid the one line naming the broken dependency); and **a 202 on either retry endpoint
 does not mean the work was queued** — the same body carries `REJECTED` items with a reason
-("already running", "was cancelled"), so the response is read, never discarded.
+("already running", "was cancelled"), so the response is read, never discarded (`core/verdict.ts`
+is that read, once, for the four screens that make it; `POST /pipelines` answers **400 with the
+same body** when every URL was rejected, which is why it takes a nullable response).
 
 **`failedPhase` is not always a phase.** It is `CREATED` for an item reaped while still queued and
 `DONE` on a clean finish, so `LANE_PHASES.indexOf` answers `-1` — call `isLanePhase()` before

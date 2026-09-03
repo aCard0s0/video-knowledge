@@ -13,8 +13,9 @@ import {
 } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { blank, statusVar } from '../../core/domain';
+import { acceptedOf, rejectsOf } from '../../core/verdict';
 import { watchRunFromUrl } from '../../core/watch-run';
-import { absoluteTime, humanAge } from '../../core/time';
+import { absoluteTime } from '../../core/time';
 import { shortUrl } from '../../core/url';
 import { RunWatch } from '../../ui/run-watch';
 import { StatusBadge } from '../../ui/status-badge';
@@ -30,11 +31,6 @@ const RECENT_SIZE = 50; // one screenful of a range the server now bounds; 200 i
 const RANGES = ['today', 'week', 'all'] as const;
 type RunRange = (typeof RANGES)[number];
 const HTTP_URL = /^https?:\/\//i;
-
-/** The REJECTED items out of either response shape (202 retry, 200 create, 400 create). */
-export function rejectsOf(response: CreatePipelineRunResponse | null): ItemResult[] {
-  return (response?.items ?? []).filter((i) => i.status === 'REJECTED');
-}
 
 /**
  * What the operator typed, read the way the help text promises: **one URL per line**.
@@ -202,9 +198,6 @@ export class Ingest {
     if (run.id) void this.router.navigate(['/runs', run.id]);
   }
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   /** Title first, then the URL with its boilerplate off — never the raw URL, which clips its id. */
   protected label(title: string | undefined, url: string | undefined): string {
@@ -212,9 +205,7 @@ export class Ingest {
   }
 
 
-  protected readonly accepted = computed(
-    () => this.result()?.items?.filter((i) => i.status === 'ACCEPTED') ?? [],
-  );
+  protected readonly accepted = computed(() => acceptedOf(this.result()));
 
   /**
    * Lines that will not run: the ones the server declined, plus the ones this screen never sent.

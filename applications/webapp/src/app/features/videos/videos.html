@@ -118,7 +118,7 @@
               <!-- Both halves go through `blank()`: `""` is how this API says absent, and an
                    unguarded pair renders a bare "/seed0001". -->
               <td class="mono sm muted hide-sm">{{ sourceLabel(video) }}</td>
-              <td class="num sm" [title]="absoluteTime(video.createdAt)">{{ age(video.createdAt) }}</td>
+              <td class="num sm" [title]="absoluteTime(video.createdAt)">{{ poller.age(video.createdAt) }}</td>
               <td class="stick">
                 <span class="row-actions">
                   <!--

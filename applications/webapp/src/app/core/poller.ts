@@ -1,5 +1,7 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 
+import { humanAge } from './time';
+
 /**
  * The REST API has no SSE and no websocket, so every "live" number here is polled. One shared
  * clock and one shared pause switch keep that honest: the rail shows when the last tick landed
@@ -38,6 +40,19 @@ export class Poller {
 
   stopped(): boolean {
     return this.paused() || this.hidden();
+  }
+
+  /**
+   * How long ago, against the shared clock — so one tick refreshes every age on the screen at once.
+   *
+   * Here rather than on each screen because `humanAge` needs a `now` and the only honest `now` is
+   * this one: eight components wrote the same three-line method over it, and the panel extracted
+   * from two of them made that eight rather than seven. A screen that wants a different clock says
+   * so — the video screen's rerun timer and the rail's wall clock both tick on their own, because
+   * this one stops while the operator has polling paused.
+   */
+  age(value: string | null | undefined): string {
+    return humanAge(value, this.now());
   }
 
   toggle(): void {

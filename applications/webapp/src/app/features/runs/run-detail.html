@@ -11,9 +11,9 @@
       <p class="sub mono sm">
         <vk-status [status]="detail.status" />
         · {{ items().length }} item(s) · started
-        <span [title]="absoluteTime(detail.createdAt)">{{ age(detail.createdAt) }}</span>
+        <span [title]="absoluteTime(detail.createdAt)">{{ poller.age(detail.createdAt) }}</span>
         <!-- Started 21h ago but last moved 8h ago is the difference between slow and abandoned. -->
-        · last moved <span [title]="absoluteTime(detail.updatedAt)">{{ age(detail.updatedAt) }}</span>
+        · last moved <span [title]="absoluteTime(detail.updatedAt)">{{ poller.age(detail.updatedAt) }}</span>
         @if (detail.channelName) {
           · {{ detail.channelName }}
         }

@@ -5,7 +5,7 @@ import { rxResource, toSignal } from '@angular/core/rxjs-interop';
 
 import { YoutubeChannelSummary, YoutubeService } from '../../api/generated';
 import { blank, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
+import { absoluteTime, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, Poller } from '../../core/poller';
 import { firstFailure, valueOf } from '../../core/problem';
 import { actionState } from '../../core/action';
@@ -70,9 +70,6 @@ export class Channels {
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   /** The sync column: a half-hourly schedule has no second hand, and the tooltip has the instant. */
   protected syncAge(value: string | undefined): string {

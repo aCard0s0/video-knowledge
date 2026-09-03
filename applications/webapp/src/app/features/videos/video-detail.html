@@ -109,7 +109,7 @@
              Absolute time in the title, as every other age on every screen already carries. -->
         @if (v.createdAt) {
           <dt>ingested</dt>
-          <dd [title]="absoluteTime(v.createdAt)">{{ age(v.createdAt) }}</dd>
+          <dd [title]="absoluteTime(v.createdAt)">{{ poller.age(v.createdAt) }}</dd>
         }
         @if (transcription(); as t) {
           <dt>transcript</dt>
@@ -122,7 +122,7 @@
                 · {{ t.fullTextChars }} chars
               }
               @if (t.updatedAt) {
-                <br /><span class="muted" [title]="absoluteTime(t.updatedAt)">written {{ age(t.updatedAt) }}</span>
+                <br /><span class="muted" [title]="absoluteTime(t.updatedAt)">written {{ poller.age(t.updatedAt) }}</span>
               }
             } @else {
               none

@@ -8,7 +8,8 @@ import {
   YoutubeService,
 } from '../../api/generated';
 import { blank } from '../../core/domain';
-import { absoluteTime, humanAge, humanAgeCoarse } from '../../core/time';
+import { acceptedOf, rejectsOf } from '../../core/verdict';
+import { absoluteTime, humanAgeCoarse } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { firstFailure, valueOf } from '../../core/problem';
 import { actionState } from '../../core/action';
@@ -157,15 +158,19 @@ export class ChannelDetail {
    * this screen used to report — `items.length` — was the number *submitted*, not the number
    * accepted. Fifty duplicates read as fifty started runs.
    */
-  protected readonly accepted = computed(
-    () => this.started()?.items?.filter((i) => i.status === 'ACCEPTED') ?? [],
-  );
-  protected readonly rejected = computed(
-    () => this.started()?.items?.filter((i) => i.status === 'REJECTED') ?? [],
-  );
+  protected readonly accepted = computed(() => acceptedOf(this.started()));
+  protected readonly rejected = computed(() => rejectsOf(this.started()));
 
-  /** Whether there is a run on screen at all — this session's, or one reopened from the URL. */
-  protected readonly watching = computed(() => !!this.runId());
+  /**
+   * Whether there is anything to show — a run this session started, one reopened from the URL, or
+   * an ingest that started *nothing*.
+   *
+   * That last case is why `started()` counts. When every picked video is refused the server creates
+   * no run, so `runId` stays empty — and keying the panel on the id alone hid the whole thing,
+   * including the `vk-rejects` table naming each refusal and the line saying no run was created.
+   * The reasons reached the client and were rendered nowhere.
+   */
+  protected readonly watching = computed(() => !!this.runId() || !!this.started());
 
   /**
    * "started · N accepted" is only true of a run this visit began. A run reopened from `?run=` gets
@@ -215,9 +220,6 @@ export class ChannelDetail {
     return humanAgeCoarse(value, this.poller.now());
   }
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected isPicked(video: YoutubeChannelVideoSummary): boolean {
     return !!video.youtubeVideoId && this.picked().has(video.youtubeVideoId);

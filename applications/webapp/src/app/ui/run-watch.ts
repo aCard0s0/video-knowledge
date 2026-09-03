@@ -3,7 +3,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { RunItem } from '../api/generated';
 import { blank, statusVar } from '../core/domain';
-import { absoluteTime, humanAge } from '../core/time';
+import { absoluteTime } from '../core/time';
 import { Poller } from '../core/poller';
 import { shortUrl } from '../core/url';
 import { WatchedRun } from '../core/watch-run';
@@ -38,14 +38,18 @@ import { StatusBadge } from './status-badge';
   template: `
     <div class="panel-head">
       <span class="eyebrow">{{ eyebrow() }}</span>
-      <a class="mono sm" [routerLink]="['/runs', watch().runId()]">full run →</a>
+      <!-- No id means no run was created — an ingest the server refused outright. The panel still
+           renders, because the reasons are the only thing it has to say. -->
+      @if (watch().runId(); as id) {
+        <a class="mono sm" [routerLink]="['/runs', id]">full run →</a>
+      }
     </div>
 
     @if (watch().detail(); as run) {
       <p class="watch-meta mono sm" aria-live="polite">
         <vk-status [status]="run.status" />
         <span class="muted">· {{ items().length }} item(s) ·
-          <span [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span></span>
+          <span [title]="absoluteTime(run.createdAt)">{{ poller.age(run.createdAt) }}</span></span>
         <ng-content select="[action]" />
       </p>
     }
@@ -107,7 +111,7 @@ export class RunWatch {
   readonly channelLink = input(false);
 
   private readonly router = inject(Router);
-  private readonly poller = inject(Poller);
+  protected readonly poller = inject(Poller);
 
   protected readonly items = computed(() => this.watch().items());
 
@@ -119,9 +123,6 @@ export class RunWatch {
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   /** Title first, then the URL with its boilerplate off — never the raw URL, which clips its id. */
   protected label(item: RunItem): string {

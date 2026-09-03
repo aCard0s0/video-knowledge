@@ -162,7 +162,7 @@
                   <label [attr.for]="'pick-' + video.id">{{ video.title }}</label>
                 </td>
                 @if (showPublished()) {
-                  <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ age(video.publishedAt) }}</td>
+                  <td class="num sm" [title]="absoluteTime(video.publishedAt)">{{ poller.age(video.publishedAt) }}</td>
                 }
                 @if (!onlyNew()) {
                   <td class="mono sm" [class.muted]="video.ingested">{{ video.ingested ? 'ingested' : 'new' }}</td>

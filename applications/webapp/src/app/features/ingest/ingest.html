@@ -200,7 +200,7 @@
                   <a [routerLink]="['/videos', run.videoId]">{{ label(run.videoTitle, run.videoUrl) }}</a>
                 }
               </span>
-              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ age(run.createdAt) }}</span>
+              <span class="mono sm muted age" [title]="absoluteTime(run.createdAt)">{{ poller.age(run.createdAt) }}</span>
             </div>
             @if (disclosure.isOpen(run.id)) {
               <p class="msg mono sm" [id]="'msg-' + run.id">{{ run.error || 'No message recorded.' }}</p>

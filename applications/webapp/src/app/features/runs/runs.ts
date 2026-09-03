@@ -7,8 +7,9 @@ import { catchError, map } from 'rxjs/operators';
 import { ItemResult, PipelinesService, RunSummary } from '../../api/generated';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { RUN_STATUSES, blank, isLanePhase, isLive, statusVar } from '../../core/domain';
-import { humanAge, absoluteTime, parseServerTime } from '../../core/time';
+import { absoluteTime, parseServerTime } from '../../core/time';
 import { ApiFailure, firstFailure, toApiFailure, valueOf } from '../../core/problem';
+import { acceptedOf, rejectsOf } from '../../core/verdict';
 import { clampPage } from '../../core/paging';
 import { shortUrl } from '../../core/url';
 import { syncQueryParams } from '../../core/url-state';
@@ -182,9 +183,6 @@ export class Runs {
   protected readonly marker = marker;
   protected readonly hasFault = hasFault;
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected label(run: RunSummary): string {
     if (!blank(run.videoTitle)) return run.videoTitle!;
@@ -301,8 +299,8 @@ export class Runs {
       ids.map((id) =>
         this.pipelines.retryRun(id).pipe(
           map((response) => ({
-            queued: (response.items ?? []).some((i) => i.status === 'ACCEPTED'),
-            rejects: (response.items ?? []).filter((i) => i.status === 'REJECTED'),
+            queued: acceptedOf(response).length > 0,
+            rejects: rejectsOf(response),
             failure: null as ApiFailure | null,
           })),
           catchError((err: unknown) =>

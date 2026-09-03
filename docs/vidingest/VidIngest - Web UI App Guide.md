@@ -46,8 +46,10 @@ applications/webapp/
                                   lane.ts (+ spec) · problem.ts (ProblemDetail, firstFailure)
                                   audit.ts (tail paging, + spec) · paging.ts (clampPage, + spec)
                                   action.ts (busy/armed/said/failure, + spec)
+                                  verdict.ts (a 2xx is not an acceptance, + spec)
                                   watch-run.ts (run + audit + lanes + ?run=, shared by 3 screens)
-                                  poller.ts · url-state.ts · api-base.ts
+                                  poller.ts (the shared clock, and every age off it)
+                                  url-state.ts · api-base.ts
   src/app/ui/                     lane · run-watch (+spec) · problem · fault · rejects · empty
                                   pager · phase-picker · status-badge
   src/app/features/               ingest (+spec) · channels (+detail) · runs (+detail) · videos (+detail) · audit
@@ -419,7 +421,11 @@ than the SPA shell.
   `vk-rejects`. Warn rather than the failure
   ramp, and labelled `not started` rather than `not retried`: a video declined here is not
   something the operator can fix, because the URL came from the stored catalog and not from a box
-  they typed into.
+  they typed into. **An ingest that starts nothing still shows why** (Sep 2026): when every picked
+  video is refused the server creates no run, so `runId` stays empty — and the panel was keyed on
+  that id, which hid the whole thing including the table naming each refusal. The reasons reached
+  the client and were rendered nowhere. `watching()` counts `started()` too, and the panel drops its
+  `full run →` link when there is no run to open.
 - **The channel screen is one screen wide.** The ingest CTA sat ~1000px below the fold on a
   fifty-row page — tick a box at the top, scroll a full screen to press it, with the selection
   count out of sight the whole time it was being built — so the panel is `position: sticky` against

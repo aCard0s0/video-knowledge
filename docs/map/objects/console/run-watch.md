@@ -36,6 +36,11 @@ inline it cost the same correction twice.
   started; the markup was a second copy of the same 45 lines. `watchRunFromUrl` owns the param
   (`watch-run.ts:86`) and `ui/run-watch.ts` owns the panel, so neither can be half-copied again.
 
+- **A panel with no run id still has something to say.** An ingest the server refuses outright
+  creates no run, so the id is empty — the panel renders anyway, carrying the per-video reasons,
+  and drops only its `full run →` link. Keying the panel on the id hid the refusals entirely on the
+  channel screen (fixed Sep 2026, `channel-detail.spec.ts`).
+
 ## Shape
 
 - `watchRun(runId)` — `watch-run.ts:27`; called from an injection context, resources die with the component

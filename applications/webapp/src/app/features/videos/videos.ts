@@ -4,7 +4,7 @@ import { rxResource } from '@angular/core/rxjs-interop';
 
 import { VideoSummary, VideosService } from '../../api/generated';
 import { VIDEO_STATUSES, blank, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge } from '../../core/time';
+import { absoluteTime } from '../../core/time';
 import { POLL_IDLE, POLL_LIVE, Poller } from '../../core/poller';
 import { firstFailure, valueOf } from '../../core/problem';
 import { actionState } from '../../core/action';
@@ -141,9 +141,6 @@ export class Videos {
   protected readonly absoluteTime = absoluteTime;
   protected readonly blank = blank;
 
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected setStatus(value: string): void {
     this.status.set(value);

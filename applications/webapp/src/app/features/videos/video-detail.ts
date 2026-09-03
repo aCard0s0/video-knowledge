@@ -22,7 +22,7 @@ import {
   VideosService,
 } from '../../api/generated';
 import { KNOWLEDGE_TYPES, OPTIONAL_PHASES, OptionalPhase, statusVar } from '../../core/domain';
-import { absoluteTime, humanAge, humanDuration, timecode } from '../../core/time';
+import { absoluteTime, humanDuration, timecode } from '../../core/time';
 import { firstFailure, valueOf } from '../../core/problem';
 import { actionState } from '../../core/action';
 import { clampPage } from '../../core/paging';
@@ -76,7 +76,7 @@ export class VideoDetail {
   private readonly speakersApi = inject(SpeakersService);
   private readonly phases = inject(VideoPhasesService);
   private readonly capabilities = inject(Capabilities);
-  private readonly poller = inject(Poller);
+  protected readonly poller = inject(Poller);
 
   private readonly player = viewChild<ElementRef<HTMLVideoElement>>('player');
 
@@ -275,15 +275,6 @@ export class VideoDetail {
     return frameId ? `${API_V1}/frames/${frameId}/image` : '';
   }
 
-  /**
-   * Relative age against the shared poll clock, the same one every other screen's ages read.
-   *
-   * `parseServerTime` treats a zoneless timestamp as a server bug rather than assuming UTC, which
-   * is the fallback that once hid an hour of skew for a release.
-   */
-  protected age(value: string | undefined): string {
-    return humanAge(value, this.poller.now());
-  }
 
   protected show(pane: Pane): void {
     this.pane.set(pane);
