@@ -45,7 +45,7 @@ add the row.
 | adding an **endpoint** | [regenerate-client](../processes/regenerate-client.md) — path constant, `operationId`, `api:gen`, and the manual `domain.ts` pass |
 | a **server enum constant** | [domain.ts enums](../objects/console/domain-enums.md). Nothing fails; the console just stops recognising the value |
 | an **error body** | [ApiFailure](../objects/console/api-failure.md). Three responses do not look like failures: 400-with-a-body on create, 503-with-the-report on readiness, 202-carrying-`REJECTED` on retry |
-| anything the **lane screens** draw | [watchRun](../objects/console/run-watch.md). Two screens, one file — that is why it exists |
+| anything the **lane screens** draw | [watchRun](../objects/console/run-watch.md). Three screens, one file — that is why it exists; the panel two of them share is `ui/run-watch.ts` |
 | a **colour** | `applications/webapp/src/styles/_tokens.scss`. Never a raw hex in a component; two measured themes, not an inversion |
 
 ## Changing the build or the runtime

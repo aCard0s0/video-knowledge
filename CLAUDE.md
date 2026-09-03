@@ -486,9 +486,14 @@ taking page 4 alone left ninety items with no events at all — and `buildLane` 
 `ITEM_PHASE_ENTERED` as ten hatched "skipped" boxes, so phases that ran reported themselves as
 turned off. `core/audit.ts` takes whole pages from the end (capped at four) and concatenates.
 
-**Two screens draw lanes**, run detail and ingest, and both take the run, its audit tail and the
-built lanes from `core/watch-run.ts` — declared inline they cost the same correction twice (the tail
-paging above, and the lane build moving out of the template's read path). **Which** failure a screen
+**Three screens draw lanes** — run detail, ingest and channel detail — and all three take the run,
+its audit tail and the built lanes from `core/watch-run.ts`, declared inline they cost the same
+correction twice (the tail paging above, and the lane build moving out of the template's read
+path). The two that *start* a run also draw the same panel around it, `ui/run-watch.ts`, and reach
+it through `watchRunFromUrl()`, which owns the `?run=` query param: that panel was copied from
+ingest to the channel screen without the param, so a refresh dropped the run the operator had just
+started until it was fixed a second time. Each screen keeps only what differs — its head label, and
+what can be *done* to the run (ingest projects a Retry button into the `[action]` slot). **Which** failure a screen
 shows is `firstFailure` in `core/problem.ts`: load failures in precedence order, with the action the
 operator just took in front of the call as `actionFailure() ?? firstFailure(…)`. Both are called from an injection context, like
 `syncQueryParams` and `clampPage`.

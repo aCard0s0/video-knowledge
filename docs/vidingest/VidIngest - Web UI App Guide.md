@@ -45,10 +45,10 @@ applications/webapp/
   src/app/core/                   domain.ts (mirrored enums) · time.ts (UTC parsing, durations)
                                   lane.ts (+ spec) · problem.ts (ProblemDetail, firstFailure)
                                   audit.ts (tail paging, + spec) · paging.ts (clampPage, + spec)
-                                  watch-run.ts (run + audit + lanes, shared by 2 screens)
+                                  watch-run.ts (run + audit + lanes + ?run=, shared by 3 screens)
                                   poller.ts · url-state.ts · api-base.ts
-  src/app/ui/                     lane · problem · fault · rejects · empty · pager · phase-picker
-                                  status-badge
+  src/app/ui/                     lane · run-watch (+spec) · problem · fault · rejects · empty
+                                  pager · phase-picker · status-badge
   src/app/features/               ingest (+spec) · channels (+detail) · runs (+detail) · videos (+detail) · audit
   src/styles/_tokens.scss         the corrected palette (this file's tokens win over MASTER.md)
 ```
@@ -407,7 +407,9 @@ than the SPA shell.
   video(s)` and a link, which is the dead end ingest had already been given lanes to fix — and the
   N was `items.length`, so videos the server *refused* were counted as started. The panel now reads
   `1 accepted · 1 rejected`, watches the run in place through the same `core/watch-run.ts` that
-  feeds ingest and run detail, and hands the refusals to `vk-rejects`. Warn rather than the failure
+  feeds ingest and run detail — and now through the same panel, `ui/run-watch.ts`, which is where
+  the `?run=` param this screen was copied without ended up — and hands the refusals to
+  `vk-rejects`. Warn rather than the failure
   ramp, and labelled `not started` rather than `not retried`: a video declined here is not
   something the operator can fix, because the URL came from the stored catalog and not from a box
   they typed into.
@@ -501,8 +503,10 @@ than the SPA shell.
 
 The one visualization: per run item, the ten phases as a horizontal track whose segment widths
 are proportional to measured duration (`core/lane.ts`, unit-tested in `core/lane.spec.ts`). Both
-screens that draw lanes — run detail and ingest — get the run, the audit tail and the built lanes
-from `core/watch-run.ts`, so a correction to either fetch lands once.
+screens that draw lanes — run detail, ingest and channel detail — get the run, the audit tail and
+the built lanes from `core/watch-run.ts`, so a correction to either fetch lands once. The two that
+start a run draw one panel around it, `ui/run-watch.ts`: head, meta line and one row per item, with
+each screen supplying only its head label and whatever can be done to the run.
 Skipped phases render as hatched voids and stay individually visible (which ones were turned off
 is information); consecutive *unreached* phases collapse into a single void carrying their count,
 because an item that dies in METADATA otherwise renders as nine identical empty boxes. The failed
