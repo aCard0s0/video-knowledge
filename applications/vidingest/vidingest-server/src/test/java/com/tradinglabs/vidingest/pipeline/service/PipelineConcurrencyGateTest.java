@@ -86,6 +86,10 @@ class PipelineConcurrencyGateTest {
     @BeforeEach
     void setUp() {
         executor = Executors.newVirtualThreadPerTaskExecutor();
+        // Open both lease-service gates: a mock's default false would reject the claim at submit
+        // and skip execution at the lease, and nothing would ever reach the semaphore under test.
+        when(runItemLeaseService.claim(any())).thenReturn(true);
+        when(runItemLeaseService.acquire(any())).thenReturn(true);
     }
 
     @AfterEach

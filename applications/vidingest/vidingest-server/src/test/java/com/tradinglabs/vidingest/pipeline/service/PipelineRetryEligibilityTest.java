@@ -71,6 +71,10 @@ class PipelineRetryEligibilityTest {
         // No phases registered: an enqueued item runs an empty pipeline and finishes immediately.
         // This test is about what gets enqueued, not what happens afterwards.
         when(pipelinePhaseRegistry.phases()).thenReturn(List.of());
+        // Both gates open by default — a mock's false would silently reject every enqueue.
+        // Individual tests close one to pin the refusal path.
+        when(runItemLeaseService.claim(any())).thenReturn(true);
+        when(runItemLeaseService.acquire(any())).thenReturn(true);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         service = new PipelineService(
                 videoRepository, runLifecycle, runItemLifecycleService, runAggregationService,
@@ -216,6 +220,61 @@ class PipelineRetryEligibilityTest {
         service.enqueueRetryBatch(runId, Set.of());
 
         verify(runLifecycle).prepareRetry(runId, Set.of());
+    }
+
+    /**
+     * The claim is the submission guard. Eligibility said yes for both concurrent retries — the
+     * race the run-row lock closes upstream — so the last line of defence is the claim at
+     * enqueue time: whoever loses it must answer REJECTED, never submit a second worker.
+     */
+    @Test
+    void refusesToSubmitAnItemWhoseClaimIsAlreadyHeld() {
+        PipelineRunItem failed = item(RunStatus.FAILED);
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(failed));
+        when(runItemLeaseService.claim(failed.getId())).thenReturn(false);
+
+        CreatePipelineRunResponse response = service.enqueueRetryBatch(runId, Set.of());
+
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .isEqualTo(ItemStatus.REJECTED);
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::reason)
+                .isEqualTo("run item is already running");
+    }
+
+    /** Same guard on the single-item door. */
+    @Test
+    void singleItemRetryRefusesToSubmitWhenTheClaimIsAlreadyHeld() {
+        PipelineRunItem failed = item(RunStatus.FAILED);
+        when(pipelineRunItemRepository.findByIdAndPipelineRun_Id(failed.getId(), runId))
+                .thenReturn(java.util.Optional.of(failed));
+        when(runItemLeaseService.claim(failed.getId())).thenReturn(false);
+
+        CreatePipelineRunResponse response = service.enqueueRetryItem(runId, failed.getId(), null);
+
+        assertThat(response.items()).singleElement()
+                .extracting(CreatePipelineRunResponse.ItemResult::status)
+                .isEqualTo(ItemStatus.REJECTED);
+    }
+
+    /**
+     * The cross-instance half of the same guard: the claim was won here, but by execution time
+     * another instance holds a live database lease. The item must not run — no completion, no
+     * aggregation — and the claim must still be dropped so the reconciler's view stays honest.
+     */
+    @Test
+    void anItemWhoseLeaseAnotherInstanceHoldsIsNotExecuted() {
+        PipelineRunItem failed = item(RunStatus.FAILED);
+        when(runItemLifecycleService.listItems(runId)).thenReturn(List.of(failed));
+        when(runItemLeaseService.acquire(failed.getId())).thenReturn(false);
+
+        service.enqueueRetryBatch(runId, Set.of());
+
+        // The submitted task ends by dropping the claim; waiting on that pins "ran to the end".
+        verify(runItemLeaseService, org.mockito.Mockito.timeout(5000)).unclaim(failed.getId());
+        verify(runItemLifecycleService, never()).markCompleted(any());
+        verify(runAggregationService, never()).refreshRunState(any());
     }
 
     private PipelineRunItem item(RunStatus status) {

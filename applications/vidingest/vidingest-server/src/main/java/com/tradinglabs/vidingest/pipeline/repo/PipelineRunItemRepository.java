@@ -44,16 +44,24 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
      */
     List<PipelineRunItem> findByStatusInAndPhaseUpdatedAtBefore(Collection<RunStatus> statuses, OffsetDateTime before);
 
-    /** Claims (or re-claims) an item for {@code owner} until {@code expiresAt}. */
+    /**
+     * Claims (or re-claims) an item for {@code owner} until {@code expiresAt} — but never over a
+     * live lease held by someone else. Returns 0 when another instance provably owns the item
+     * right now (or the row is gone), and the caller must not execute it: an unconditional write
+     * here let two instances that had both enqueued the same item silently stomp each other's
+     * lease and run the same video side by side.
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query("""
             UPDATE PipelineRunItem i
                SET i.leaseOwner = :owner, i.leaseExpiresAt = :expiresAt
              WHERE i.id = :itemId
+               AND (i.leaseOwner = :owner OR i.leaseExpiresAt IS NULL OR i.leaseExpiresAt < :now)
             """)
     int acquireLease(@Param("itemId") UUID itemId,
                      @Param("owner") String owner,
+                     @Param("now") OffsetDateTime now,
                      @Param("expiresAt") OffsetDateTime expiresAt);
 
     /**
@@ -71,15 +79,19 @@ public interface PipelineRunItemRepository extends JpaRepository<PipelineRunItem
                     @Param("owner") String owner,
                     @Param("expiresAt") OffsetDateTime expiresAt);
 
-    /** Drops the lease once the item is no longer being executed. */
+    /**
+     * Drops the lease once the item is no longer being executed. Scoped by owner for the same
+     * reason {@link #renewLeases} is: a release from an instance that failed to acquire must not
+     * clear the lease of the instance that is actually running the item.
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query("""
             UPDATE PipelineRunItem i
                SET i.leaseOwner = null, i.leaseExpiresAt = null
-             WHERE i.id = :itemId
+             WHERE i.id = :itemId AND i.leaseOwner = :owner
             """)
-    int releaseLease(@Param("itemId") UUID itemId);
+    int releaseLease(@Param("itemId") UUID itemId, @Param("owner") String owner);
 
     /** Whether any item of this run is still held by a live lease, in this JVM or another. */
     @Query("""
