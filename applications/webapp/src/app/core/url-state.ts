@@ -55,8 +55,12 @@ export function syncQueryParams(
     if (guard && !(typeof guard === 'function' ? guard(raw) : guard.includes(raw))) continue;
     const current = signal();
     if (typeof current === 'number') {
+      // Every numeric signal here is a page, and the server takes a non-negative integer:
+      // `clampPage` deliberately leaves anything at 0 or below alone, so `?page=-3` used to go to
+      // the wire as-is and answer with a server error instead of the self-heal `?status=BOGUS`
+      // gets. A rejected value keeps the declared default and the write effect drops the key.
       const parsed = Number(raw);
-      if (Number.isFinite(parsed)) signal.set(parsed);
+      if (Number.isInteger(parsed) && parsed >= 0) signal.set(parsed);
     } else if (typeof current === 'boolean') {
       signal.set(raw === 'true');
     } else {
