@@ -139,6 +139,30 @@ describe('syncQueryParams', () => {
     expect(written['run']).toBe(id);
   });
 
+  /**
+   * The number branch is the one type the guard philosophy stopped short of: every numeric signal
+   * here is a page, the server takes a non-negative integer, and `clampPage` deliberately ignores
+   * anything at 0 or below — so `?page=-3` sailed through the only check (`isFinite`) and went to
+   * the wire as-is, answering with a server error instead of the self-heal `?status=BOGUS` gets.
+   */
+  it('ignores a negative number in the URL and heals it', () => {
+    setup({ page: '-3' });
+    const page = signal(0);
+    sync({ page });
+
+    expect(page()).toBe(0);
+    expect(written['page']).toBeNull();
+  });
+
+  it('ignores a fractional number in the URL and heals it', () => {
+    setup({ page: '2.7' });
+    const page = signal(0);
+    sync({ page });
+
+    expect(page()).toBe(0);
+    expect(written['page']).toBeNull();
+  });
+
   it('takes the declared value as the default even when the URL disagrees on entry', () => {
     setup({ page: '3' });
     const page = signal(0);
