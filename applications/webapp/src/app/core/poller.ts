@@ -79,17 +79,24 @@ export class Poller {
     // and those are not bound yet while a constructor runs (NG0950). The first fetch is the
     // resource's own.
     let last = Date.now();
-    const tick = setInterval(() => {
-      if (this.stopped() || Date.now() - last < Math.max(1000, intervalMs())) return;
+    // What `fire()` invokes — not the raw `fn`. A fire resets the deadline like a tick does:
+    // without that, returning to the tab (or unpausing) ran the callback and then the next 1s tick
+    // saw a deadline that had elapsed while stopped and ran it *again* — two full reload bursts
+    // within a second, on every registered screen, on every tab return.
+    const run = () => {
       last = Date.now();
       fn();
+    };
+    const tick = setInterval(() => {
+      if (this.stopped() || Date.now() - last < Math.max(1000, intervalMs())) return;
+      run();
       this.lastTick.set(last);
     }, 1000);
 
-    this.callbacks.add(fn);
+    this.callbacks.add(run);
     inject(DestroyRef).onDestroy(() => {
       clearInterval(tick);
-      this.callbacks.delete(fn);
+      this.callbacks.delete(run);
     });
   }
 }
