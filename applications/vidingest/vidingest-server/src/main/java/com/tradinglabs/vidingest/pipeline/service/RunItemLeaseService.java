@@ -86,9 +86,14 @@ public class RunItemLeaseService {
      * Take responsibility for an item, before it is handed to the executor. In-memory only: at this
      * point the item is {@code PENDING} with nothing running, which is precisely what the
      * reconciler reaps, and there is no lease to write until it is past the gate.
+     *
+     * @return {@code false} when this JVM already holds the claim — a concurrent retry got there
+     *         first, and the caller must not submit the item a second time. Ignoring this return
+     *         is what let two simultaneous retries of the same item run two workers over the same
+     *         video.
      */
-    public void claim(UUID itemId) {
-        claimed.add(itemId);
+    public boolean claim(UUID itemId) {
+        return claimed.add(itemId);
     }
 
     /** Drop the claim. Must cover every exit path, including a submit that was rejected. */
@@ -126,25 +131,40 @@ public class RunItemLeaseService {
     /**
      * Start heartbeating an item that is past the gate.
      *
-     * <p>Best-effort on the database half, and that policy lives here rather than at the call site:
-     * losing the lease write costs reap protection, not correctness, and failing the item over it
-     * would be strictly worse than proceeding without it. The in-memory half is unconditional, so a
-     * failed write still gets retried by the next heartbeat.
+     * <p>Two failure modes, two policies. A database <em>error</em> stays best-effort, and that
+     * policy lives here rather than at the call site: losing the lease write costs reap
+     * protection, not correctness, and failing the item over it would be strictly worse than
+     * proceeding without it. But an update that succeeds and matches <em>zero rows</em> is not an
+     * error — it is the database saying another instance holds a live lease on this item right
+     * now (or the row is gone), and executing anyway is exactly the two-workers-one-video
+     * collision the lease exists to prevent.
+     *
+     * @return {@code false} only in that zero-rows case — the caller must skip execution and
+     *         leave the item to its owner.
      */
-    public void acquire(UUID itemId) {
-        leased.add(itemId);
+    public boolean acquire(UUID itemId) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         try {
-            runItemRepository.acquireLease(itemId, owner, OffsetDateTime.now(ZoneOffset.UTC).plus(ttl));
+            if (runItemRepository.acquireLease(itemId, owner, now, now.plus(ttl)) == 0) {
+                log.warn("Item {} is leased by another instance; skipping execution here", itemId);
+                return false;
+            }
         } catch (Exception e) {
             log.warn("Could not acquire lease for item {}: {}", itemId, e.getMessage());
         }
+        leased.add(itemId);
+        return true;
     }
 
-    /** Stop heartbeating and clear the lease. Best-effort for the same reason as {@link #acquire}. */
+    /**
+     * Stop heartbeating and clear the lease. Best-effort for the same reason as {@link #acquire},
+     * and owner-scoped in SQL, so calling it for an item whose lease this instance never won is a
+     * no-op rather than a theft of the real owner's reap protection.
+     */
     public void release(UUID itemId) {
         leased.remove(itemId);
         try {
-            runItemRepository.releaseLease(itemId);
+            runItemRepository.releaseLease(itemId, owner);
         } catch (Exception e) {
             log.warn("Could not release lease for item {}: {}", itemId, e.getMessage());
         }

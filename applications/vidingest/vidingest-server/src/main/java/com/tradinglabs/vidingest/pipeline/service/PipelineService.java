@@ -168,7 +168,9 @@ public class PipelineService {
                         return rejected(i, retryRejection(i));
                     }
                     runItemLifecycleService.prepareRetry(itemId);
-                    enqueueItem(runId, itemId, i.getUrl(), skipPhases);
+                    if (!enqueueItem(runId, itemId, i.getUrl(), skipPhases)) {
+                        return rejected(i, "run item is already running");
+                    }
                     return new CreatePipelineRunResponse.ItemResult(
                             i.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, itemId.toString(), null);
                 })
@@ -238,7 +240,10 @@ public class PipelineService {
 
         runLifecycle.prepareRetry(runId, skipPhases);
         runItemLifecycleService.prepareRetry(itemId);
-        enqueueItem(runId, itemId, item.getUrl(), skipPhases);
+        if (!enqueueItem(runId, itemId, item.getUrl(), skipPhases)) {
+            return new CreatePipelineRunResponse(runId.toString(),
+                    List.of(rejected(item, "run item is already running")));
+        }
         return new CreatePipelineRunResponse(runId.toString(), List.of(
                 new CreatePipelineRunResponse.ItemResult(
                         item.getUrl(), CreatePipelineRunResponse.ItemStatus.ACCEPTED, item.getId().toString(), null)
@@ -263,10 +268,19 @@ public class PipelineService {
         return requestedSkips != null ? requestedSkips : runLifecycle.getPipelineRun(runId).getSkipPhases();
     }
 
-    private void enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
+    /**
+     * Claim, then submit. The claim doubles as the submission guard: {@code false} means this JVM
+     * already holds the item — a concurrent retry won the race between the eligibility check and
+     * here — and the caller must answer REJECTED rather than run the item twice. Fresh items from
+     * {@link #enqueuePipelineRunBatch} have brand-new ids and can never collide.
+     */
+    private boolean enqueueItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
         // Claimed before the submit, not inside the task: between the two the item is PENDING with
         // nothing running, which is precisely what the reconciler now reaps.
-        runItemLeaseService.claim(itemId);
+        if (!runItemLeaseService.claim(itemId)) {
+            log.warn("Pipeline run {} item {} already claimed here; refusing a second submit", runId, itemId);
+            return false;
+        }
         try {
             ingestionExecutor.submit(() -> {
                 try {
@@ -288,6 +302,7 @@ public class PipelineService {
             runItemLeaseService.unclaim(itemId);
             throw e;
         }
+        return true;
     }
 
     private void runPipelineRunItem(UUID runId, UUID itemId, String videoUrl, Set<PipelineRunPhase> skipPhases) {
@@ -299,12 +314,17 @@ public class PipelineService {
             log.warn("Interrupted waiting for an ingestion slot: runId={}, itemId={}", runId, itemId);
             return;
         }
-        // Leased after the gate, so a queued item is never counted as running. Best-effort, and
-        // the policy lives in RunItemLeaseService rather than here.
-        runItemLeaseService.acquire(itemId);
         // Started after the gate so elapsedMs stays execution time, not queue wait.
         long itemStartNs = System.nanoTime();
         try {
+            // Leased after the gate, so a queued item is never counted as running. A refused
+            // lease means another instance is executing this item right now — leave it to them.
+            // Inside the try so the finally still returns the gate permit; release() is
+            // owner-scoped, so it cannot clear the lease we just failed to win.
+            if (!runItemLeaseService.acquire(itemId)) {
+                log.warn("Pipeline run {} item {} skipped: live lease held by another instance", runId, itemId);
+                return;
+            }
             executePhases(ctx);
             finalizeSuccess(ctx);
             pipelineMetrics.incrementCompleted();

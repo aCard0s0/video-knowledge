@@ -37,10 +37,18 @@ public class RunLifecycleService {
      * run's configuration from then on, so the next retry that omits the field inherits the last
      * attempt and not the original one — and the run screen's phase picker, which seeds from this
      * field, keeps describing the attempt the operator is looking at.
+     *
+     * <p>Read under {@code FOR UPDATE}, because this is the serialising gate for every retry.
+     * With a plain read, two concurrent retries of the same run both saw {@code FAILED} before
+     * either committed, both passed, and both enqueued the same item — two workers wiping and
+     * repopulating the same video side by side. The lock makes concurrent behave like sequential:
+     * the second caller blocks, then reads {@code PENDING} and gets the same 409 it would have
+     * got arriving a moment later. This is a cold operator path, nothing like the per-phase-
+     * transition writes the run-row lock is deliberately kept off of.
      */
     @Transactional
     public PipelineRun prepareRetry(UUID runId, Set<PipelineRunPhase> skipPhases) {
-        PipelineRun run = pipelineRunRepository.findById(runId)
+        PipelineRun run = pipelineRunRepository.findWithLockById(runId)
                 .orElseThrow(() -> new RunNotFoundException(runId));
 
         if (run.getStatus() != RunStatus.FAILED) {

@@ -4,9 +4,11 @@ import com.tradinglabs.vidingest.pipeline.domain.PipelineRun;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunItem;
 import com.tradinglabs.vidingest.pipeline.domain.PipelineRunPhase;
 import com.tradinglabs.vidingest.pipeline.domain.RunStatus;
+import com.tradinglabs.vidingest.pipeline.exceptions.RunRetryNotAllowedException;
 import com.tradinglabs.vidingest.pipeline.repo.PipelineRunItemRepository;
 import com.tradinglabs.vidingest.pipeline.repo.PipelineRunRepository;
 import com.tradinglabs.vidingest.pipeline.service.RunAggregationService;
+import com.tradinglabs.vidingest.pipeline.service.RunLifecycleService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -40,6 +42,9 @@ class RunAggregationLockIntegrationTest extends BaseVidingestIntegrationTest {
 
     @Autowired
     private RunAggregationService runAggregationService;
+
+    @Autowired
+    private RunLifecycleService runLifecycleService;
 
     @Autowired
     private TransactionTemplate transactionTemplate;
@@ -87,6 +92,70 @@ class RunAggregationLockIntegrationTest extends BaseVidingestIntegrationTest {
         PipelineRun reloaded = pipelineRunRepository.findById(runId).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(RunStatus.COMPLETED);
         assertThat(reloaded.getPhase()).isEqualTo(PipelineRunPhase.DONE);
+    }
+
+    /**
+     * {@code prepareRetry} is the serialising gate for every retry, and its FAILED check is only a
+     * gate if the read locks the row. With a plain read, two concurrent retries both saw FAILED
+     * before either committed, both passed, and both enqueued the same item — two workers over the
+     * same video. Same mechanism-proof shape as the refreshRunState test above: blocked while the
+     * row is held, and once through, the second caller sees the first one's PENDING and is refused.
+     */
+    @Test
+    void prepareRetryBlocksOnTheRunRowAndAdmitsExactlyOneWinner() throws Exception {
+        UUID runId = seedFailedRun();
+
+        CountDownLatch lockHeld = new CountDownLatch(1);
+        CountDownLatch releaseLock = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> winner = pool.submit(() -> transactionTemplate.execute(status -> {
+                PipelineRun run = pipelineRunRepository.findWithLockById(runId).orElseThrow();
+                run.setStatus(RunStatus.PENDING);
+                pipelineRunRepository.save(run);
+                lockHeld.countDown();
+                awaitQuietly(releaseLock);
+                return null;
+            }));
+
+            assertThat(lockHeld.await(10, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> contender = pool.submit(() ->
+                    runLifecycleService.prepareRetry(runId, java.util.Set.of()));
+
+            // Blocked on the row lock. With the old plain findById this returned immediately,
+            // reading the stale FAILED — the window the double retry lived in.
+            assertThatThrownBy(() -> contender.get(1, TimeUnit.SECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releaseLock.countDown();
+            winner.get(10, TimeUnit.SECONDS);
+
+            // Once through, it sees the winner's PENDING and refuses — same answer a sequential
+            // second retry gets.
+            assertThatThrownBy(() -> contender.get(10, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(RunRetryNotAllowedException.class);
+        } finally {
+            releaseLock.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    private UUID seedFailedRun() {
+        PipelineRun run = pipelineRunRepository.saveAndFlush(PipelineRun.builder()
+                .status(RunStatus.FAILED)
+                .videoUrl("https://example.com/video")
+                .phase(PipelineRunPhase.DONE)
+                .build());
+
+        runItemRepository.saveAndFlush(PipelineRunItem.builder()
+                .pipelineRun(run)
+                .url("https://example.com/video")
+                .status(RunStatus.FAILED)
+                .phase(PipelineRunPhase.DONE)
+                .build());
+
+        return run.getId();
     }
 
     /** A run left IN_PROGRESS whose only item already reached COMPLETED — the stranded shape. */

@@ -28,6 +28,10 @@ where the lease lives. If you are debugging "a run", you are almost always debug
   gap is the point: an item queued behind the gate is `PENDING` with **no lease**, so the sweep
   covers `PENDING` too and the local claim is the only thing keeping queued work alive. Before that,
   a process dying with items queued left them unreachable and every retry refused.
+- **Both are gates, not just markers.** `claim` refuses a second claim of the same item (the
+  loser answers REJECTED instead of submitting a second worker), and `acquireLease` refuses to
+  overwrite a live lease held elsewhere — the task skips execution when it loses. `releaseLease`
+  is owner-scoped so the loser's exit cannot clear the winner's lease.
 
 ## Shape
 

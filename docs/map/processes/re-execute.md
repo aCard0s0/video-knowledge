@@ -37,7 +37,11 @@ from skipped.
 4. `RunLifecycleService.prepareRetry` **validates and mutates in one call**, writes the effective
    `skipPhases` back and sets `phase = CREATED` — `RunLifecycleService.java:42`. The run-level gate
    ("only a FAILED run may be retried") is answered *first* and separately; a retry that accepts
-   nothing must leave the run `FAILED`.
+   nothing must leave the run `FAILED`. The read is `findWithLockById` (`FOR UPDATE`): it is the
+   serialising gate for concurrent retries, so the second of two simultaneous retries blocks, sees
+   `PENDING`, and gets the same 409 a sequential second attempt gets — a plain read let both pass
+   and run the same item twice. `RunItemLeaseService.claim` at enqueue is the backstop: a lost
+   claim answers REJECTED "run item is already running" instead of submitting a second worker.
 5. Item eligibility: not `COMPLETED`, not `CANCELLED`, not claimed — the same question the sweep
    asks. Rejections come back in the body — `PipelineService.java:193`, `:211`.
 6. Per-phase rerun: `POST /api/v1/videos/{videoId}/phases/{phase}/run` →

@@ -91,6 +91,59 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
                 .isEqualTo(RunStatus.FAILED);
     }
 
+    /** The in-JVM half of the double-submit guard: one claim per item until it is dropped. */
+    @Test
+    void claimIsExclusiveUntilUnclaimed() {
+        UUID id = UUID.randomUUID();
+        try {
+            assertThat(leaseService.claim(id)).isTrue();
+            assertThat(leaseService.claim(id)).isFalse();
+            leaseService.unclaim(id);
+            assertThat(leaseService.claim(id)).isTrue();
+        } finally {
+            // The service is a singleton shared across this class's tests; leave it clean.
+            leaseService.unclaim(id);
+        }
+    }
+
+    /**
+     * The two-workers-one-video guard, database half. An instance that lost the enqueue race must
+     * neither take the lease over the live owner nor — on its way out — clear the owner's lease
+     * with its release. Both halves are asserted on the same row because they fail together: an
+     * unconditional release after a refused acquire is exactly a theft of the winner's reap
+     * protection.
+     */
+    @Test
+    void acquireRefusesALiveForeignLeaseAndReleaseLeavesItUntouched() {
+        PipelineRunItem item = staleItem();
+        OffsetDateTime theirExpiry = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5);
+        setLease(item, OTHER_INSTANCE, theirExpiry);
+
+        assertThat(leaseService.acquire(item.getId()))
+                .as("a live lease held elsewhere must refuse this instance")
+                .isFalse();
+
+        leaseService.release(item.getId());
+
+        PipelineRunItem after = runItemRepository.findById(item.getId()).orElseThrow();
+        assertThat(after.getLeaseOwner()).isEqualTo(OTHER_INSTANCE);
+        assertThat(after.getLeaseExpiresAt()).isEqualTo(theirExpiry);
+    }
+
+    /** An expired lease is a dead owner; taking it over is the whole point of the TTL. */
+    @Test
+    void acquireTakesOverAnExpiredForeignLeaseAndReacquiresItsOwn() {
+        PipelineRunItem item = staleItem();
+        setLease(item, OTHER_INSTANCE, OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1));
+
+        assertThat(leaseService.acquire(item.getId())).isTrue();
+        assertThat(runItemRepository.findById(item.getId()).orElseThrow().getLeaseOwner())
+                .isEqualTo(leaseService.owner());
+
+        // Re-acquiring one's own live lease is a renewal, never a refusal.
+        assertThat(leaseService.acquire(item.getId())).isTrue();
+    }
+
     @Test
     void runHasLiveLeaseSeesAnyItemOfTheRun() {
         PipelineRunItem item = staleItem();
@@ -105,8 +158,11 @@ class RunItemLeaseIntegrationTest extends BaseVidingestIntegrationTest {
         assertThat(leaseService.runHasLiveLease(runId)).isFalse();
     }
 
+    /** Plants a lease directly — a fixture must not depend on the guarded acquire query. */
     private void setLease(PipelineRunItem item, String owner, OffsetDateTime expiresAt) {
-        runItemRepository.acquireLease(item.getId(), owner, expiresAt);
+        item.setLeaseOwner(owner);
+        item.setLeaseExpiresAt(expiresAt);
+        runItemRepository.saveAndFlush(item);
     }
 
     private PipelineRunItem staleItem() {
