@@ -162,7 +162,15 @@
 
       @switch (pane()) {
         @case ('transcript') {
-          @if (segments.isLoading()) {
+          <!--
+            `!hasValue()` on every loading branch in this switch: the constructor polls
+            `reloadPane()` every 2s while the video moves (15s settled), and `reload()` reports
+            `isLoading()` while holding the previous value — without the guard each tick replaced
+            the pane with "Loading…", losing scroll, recreating every lazy frame image, and on the
+            speakers pane destroying the inputs with any name typed but not yet saved. Same rule,
+            same reason as every list screen.
+          -->
+          @if (segments.isLoading() && !segments.hasValue()) {
             <p class="quiet muted">Loading segments…</p>
           } @else if (transcription()?.present === false || (valueOf(segments)?.items ?? []).length === 0) {
             <vk-empty message="No transcript segments for this video.">
@@ -184,7 +192,7 @@
         }
 
         @case ('frames') {
-          @if (frames.isLoading()) {
+          @if (frames.isLoading() && !frames.hasValue()) {
             <p class="quiet muted">Loading frames…</p>
           } @else if ((valueOf(frames)?.items ?? []).length === 0) {
             <vk-empty message="No OCR frames for this video.">
@@ -242,7 +250,7 @@
         }
 
         @case ('fused') {
-          @if (fused.isLoading()) {
+          @if (fused.isLoading() && !fused.hasValue()) {
             <p class="quiet muted">Loading timeline…</p>
           } @else if ((valueOf(fused)?.items ?? []).length === 0) {
             <vk-empty message="No fused segments for this video.">
@@ -287,7 +295,7 @@
             }
           </div>
 
-          @if (knowledge.isLoading()) {
+          @if (knowledge.isLoading() && !knowledge.hasValue()) {
             <p class="quiet muted">Loading knowledge…</p>
           } @else if (knowledgeAll().length === 0 && knowledgeType()) {
             <!--
@@ -337,7 +345,7 @@
         }
 
         @case ('speakers') {
-          @if (speakers.isLoading()) {
+          @if (speakers.isLoading() && !speakers.hasValue()) {
             <p class="quiet muted">Loading speakers…</p>
           } @else if ((valueOf(speakers) ?? []).length === 0) {
             <vk-empty message="No speakers for this video.">
