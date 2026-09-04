@@ -3,7 +3,7 @@ import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { provideLocationMocks } from '@angular/common/testing';
 import { Router, RouterOutlet, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { Ingest, parseUrls } from './ingest';
@@ -163,6 +163,34 @@ describe('Ingest', () => {
     // …and the one that was not is still there to be fixed, with the reason beside it.
     expect(textarea.value).toBe('www.youtube.com/watch?v=TYPO');
     expect(el.querySelector('.rejects')?.textContent).toContain('not http(s)');
+  });
+
+  /**
+   * The counterpart to the leftover-rewrite above: the rewrite is right only while the box still
+   * holds what was sent. The comment on `submit()` promises the operator can keep typing while the
+   * request is in flight — and the rewrite then landed on top of that draft, replacing the next
+   * batch with the previous one's leftovers.
+   */
+  it('leaves a draft typed during the request alone, instead of rewriting it', async () => {
+    const answer = new Subject<{ runId: string; items: unknown[] }>();
+    const pipelines = stubPipelines({ createRuns: () => answer });
+    const { el } = await screen(pipelines);
+
+    type(el, 'https://www.youtube.com/watch?v=xxxxxxxxxxx');
+    press(el, 'button[type=submit]');
+    // Request open; the operator is already pasting the next batch.
+    const textarea = type(el, 'https://www.youtube.com/watch?v=nextbatch11');
+
+    answer.next({
+      runId: 'run-1',
+      items: [
+        { url: 'https://www.youtube.com/watch?v=xxxxxxxxxxx', status: ItemResultStatusEnum.Accepted },
+      ],
+    });
+    answer.complete();
+    TestBed.tick();
+
+    expect(textarea.value).toBe('https://www.youtube.com/watch?v=nextbatch11');
   });
 
   it('puts the started run in the URL, so a refresh does not lose it', async () => {
