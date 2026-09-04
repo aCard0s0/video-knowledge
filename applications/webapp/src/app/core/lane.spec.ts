@@ -140,6 +140,53 @@ describe('buildLane', () => {
     expect(laneTotalMs(lane)).toBe(0);
   });
 
+  it('draws a queued item as unreached, never as skipped', () => {
+    // A fresh batch runs four items at a time (vidingest.ingestion.concurrency), so most of a
+    // 100-URL run sits PENDING with nothing but ITEM_CREATED in the trail. The frontier used to
+    // fall back to the end for a live item that had entered nothing, which rendered all ten phases
+    // as "skipped — turned off for this run" — for phases that were all about to run.
+    const item: RunItem = { itemId: 'i1', status: 'PENDING', attempt: 1 };
+    const events = [ev('ITEM_CREATED', 'CREATED', '20.000000')];
+
+    const lane = buildLane(item, events, Date.parse('2026-08-26T15:00:00Z'));
+
+    expect(lane.every((s) => s.state === 'pending')).toBe(true);
+    expect(lane.some((s) => s.state === 'skipped')).toBe(false);
+  });
+
+  it('draws a just-retried item as unreached until its new attempt enters a phase', () => {
+    // A retry bumps the attempt before METADATA re-enters, so the newest attempt briefly has no
+    // ENTERED events at all — the same no-frontier window as a queued item, and it can last as
+    // long as the retry sits behind the semaphore.
+    const item: RunItem = { itemId: 'i1', status: 'PENDING', attempt: 2 };
+    const events = [
+      ev('ITEM_PHASE_ENTERED', 'METADATA', '10.000000'),
+      ev('ITEM_PHASE_COMPLETED', 'METADATA', '12.000000'),
+      ev('ITEM_RETRY_REQUESTED', '', '20.000000', { attempt: 2, phase: undefined }),
+    ];
+
+    const lane = buildLane(item, events, Date.parse('2026-08-26T15:00:00Z'));
+
+    expect(lane.every((s) => s.state === 'pending')).toBe(true);
+  });
+
+  it('still reads an unentered phase on a finished item as skipped', () => {
+    // The end is the right frontier fallback for an item that is over: execution passed every
+    // phase, so one with no ENTERED event really was turned off for the run.
+    const item: RunItem = { itemId: 'i1', status: 'COMPLETED', failedPhase: 'DONE', attempt: 1 };
+    const events = [
+      ev('ITEM_PHASE_ENTERED', 'METADATA', '10.000000'),
+      ev('ITEM_PHASE_COMPLETED', 'METADATA', '12.000000'),
+    ];
+
+    const lane = buildLane(item, events, Date.parse('2026-08-26T15:00:00Z'));
+    const byPhase = Object.fromEntries(lane.map((s) => [s.phase, s]));
+
+    expect(byPhase['METADATA'].state).toBe('done');
+    expect(byPhase['OCR'].state).toBe('skipped');
+    expect(lane.some((s) => s.state === 'pending')).toBe(false);
+  });
+
   it('keeps other items out of this item’s lane', () => {
     const item: RunItem = { itemId: 'i1', status: 'IN_PROGRESS' };
     const events = [
