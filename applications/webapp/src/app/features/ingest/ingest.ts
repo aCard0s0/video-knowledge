@@ -265,16 +265,18 @@ export class Ingest {
     this.result.set(null);
 
     // Captured before the request: the operator can keep typing while it is in flight, and these
-    // are the lines *this* submission left behind.
+    // are the lines *this* submission left behind. The draft is captured with them, because the
+    // rewrite below is only right while the box still holds it.
     const notSent: ItemResult[] = this.parsed().invalid.map((url) => ({
       url,
       status: ItemResultStatusEnum.Rejected,
       reason: 'not http(s) — not sent',
     }));
+    const draft = this.urls.value;
 
     this.pipelines.createRuns({ urls: this.parsed().valid, skipPhases: this.skipped() }).subscribe({
       next: (response) => {
-        this.accept(response, notSent);
+        this.accept(response, notSent, draft);
       },
       error: (err: unknown) => {
         // `POST /pipelines` answers **400 with a CreatePipelineRunResponse body** — not a
@@ -283,7 +285,7 @@ export class Ingest {
         // which are the entire content of that answer.
         const body =
           err instanceof HttpErrorResponse ? (err.error as CreatePipelineRunResponse | null) : null;
-        if (body?.items?.length) this.accept(body, notSent);
+        if (body?.items?.length) this.accept(body, notSent, draft);
         else this.actionFailure.set(toApiFailure(err));
         this.submitting.set(false);
       },
@@ -291,7 +293,7 @@ export class Ingest {
   }
 
   /** Shared by the 200 and the all-rejected 400: both carry the same body. */
-  private accept(response: CreatePipelineRunResponse, notSent: ItemResult[]): void {
+  private accept(response: CreatePipelineRunResponse, notSent: ItemResult[], draft: string): void {
     // Kept even when `runId` is null — that is the all-rejected 400, whose entire content is the
     // per-URL reasons in `items`. The watch panel keys off `runId`, not this, so an empty id simply
     // leaves the column on its recent-runs branch.
@@ -301,10 +303,14 @@ export class Ingest {
     this.submitting.set(false);
     // Everything that did not start stays in the box so it can be fixed and resubmitted — the
     // server's rejects *and* the lines the client never sent. Dropping the latter deleted the
-    // operator's typos along with the record that they had ever been pasted.
-    this.urls.setValue(
-      [...notSent.map((r) => r.url), ...rejectsOf(response).map((r) => r.url)].join('\n'),
-    );
+    // operator's typos along with the record that they had ever been pasted. But only while the box
+    // still holds what was submitted: a draft typed while the request was open outranks the record,
+    // and the rejects table below keeps saying what did not start.
+    if (this.urls.value === draft) {
+      this.urls.setValue(
+        [...notSent.map((r) => r.url), ...rejectsOf(response).map((r) => r.url)].join('\n'),
+      );
+    }
   }
 
   /**
